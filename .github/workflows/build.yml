@@ -1,0 +1,65 @@
+name: build DYKiller packages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'Makefile'
+      - 'control'
+      - 'DYKiller.plist'
+      - '.github/**'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve DYKiller version
+        id: package
+        run: |
+          version=$(awk -F': *' '$1 == "Version" { print $2; exit }' control)
+          if [ -z "$version" ]; then
+            echo "Unable to read Version from control" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Theos cache key
+        run: |
+          theos_head=$(git ls-remote https://github.com/roothide/theos HEAD | cut -f 1)
+          sdks_head=$(git ls-remote https://github.com/theos/sdks HEAD | cut -f 1)
+          echo "THEOS_CACHE_KEY=${{ runner.os }}-${theos_head}-${sdks_head}" >> "$GITHUB_ENV"
+
+      - name: Cache DYKiller Theos toolchain
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/theos
+          key: ${{ env.THEOS_CACHE_KEY }}
+
+      - name: Setup DYKiller Theos toolchain
+        run: bash .github/scripts/setup-theos.sh
+
+      - name: Build DYKiller release assets
+        run: bash .github/scripts/build-packages.sh
+
+      - name: Verify DYKiller release assets
+        run: bash .github/scripts/verify-assets.sh
+
+      - name: Upload DYKiller artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DYKiller-${{ steps.package.outputs.version }}-${{ github.run_number }}
+          path: |
+            packages/*.deb
+            packages/*.dylib

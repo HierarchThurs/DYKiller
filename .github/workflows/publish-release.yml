@@ -1,0 +1,201 @@
+name: publish DYKiller release
+
+on:
+  workflow_run:
+    workflows:
+      - build DYKiller packages
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Source build workflow run ID'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Artifact name; leave empty to use the first non-expired artifact'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  source:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      has_artifact: ${{ steps.resolve.outputs.has_artifact }}
+      run_id: ${{ steps.resolve.outputs.run_id }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      head_branch: ${{ steps.resolve.outputs.head_branch }}
+      artifact_name: ${{ steps.resolve.outputs.artifact_name }}
+
+    steps:
+      - name: Resolve source build
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.source_run_id }}
+          ARTIFACT_NAME_INPUT: ${{ inputs.artifact_name }}
+        run: |
+          set -euo pipefail
+
+          run_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")
+          workflow_path=$(jq -r '.path' <<< "$run_json")
+          if [[ "$workflow_path" != ".github/workflows/build.yml" ]]; then
+            echo "Run ${SOURCE_RUN_ID} belongs to ${workflow_path}, not build.yml" >&2
+            exit 1
+          fi
+
+          status=$(jq -r '.status' <<< "$run_json")
+          conclusion=$(jq -r '.conclusion // empty' <<< "$run_json")
+          if [[ "$status" != "completed" || "$conclusion" != "success" ]]; then
+            echo "Build run ${SOURCE_RUN_ID} is ${status}/${conclusion:-unknown}." >&2
+            exit 1
+          fi
+
+          if [[ -n "$ARTIFACT_NAME_INPUT" ]]; then
+            artifact_name="$ARTIFACT_NAME_INPUT"
+          else
+            artifact_name=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts" \
+              --jq '[.artifacts[] | select(.expired == false)][0].name')
+          fi
+
+          if [[ -z "$artifact_name" || "$artifact_name" == "null" ]]; then
+            echo "has_artifact=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "has_artifact=true" >> "$GITHUB_OUTPUT"
+          echo "run_id=${SOURCE_RUN_ID}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(jq -r '.head_sha' <<< "$run_json")" >> "$GITHUB_OUTPUT"
+          echo "head_branch=$(jq -r '.head_branch' <<< "$run_json")" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${artifact_name}" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: source
+    if: needs.source.outputs.has_artifact == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download DYKiller artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.source.outputs.artifact_name }}
+          run-id: ${{ needs.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Prepare packages directory
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          mkdir -p packages
+          for file in *.deb *.dylib; do
+            [ -f "$file" ] && mv "$file" packages/
+          done
+          for file in */*.deb */*.dylib; do
+            [ -f "$file" ] && mv "$file" packages/
+          done
+
+      - name: Resolve release metadata
+        id: release
+        env:
+          SOURCE_HEAD_SHA: ${{ needs.source.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+
+          if ! git cat-file -e "${SOURCE_HEAD_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "${SOURCE_HEAD_SHA}"
+          fi
+          git checkout --detach "${SOURCE_HEAD_SHA}"
+
+          version=$(awk -F': *' '$1 == "Version" { print $2; exit }' control)
+          if [ -z "$version" ]; then
+            echo "Unable to read Version from control" >&2
+            exit 1
+          fi
+
+          release_name="DYKiller_${version}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$release_name" >> "$GITHUB_OUTPUT"
+          echo "title=$release_name" >> "$GITHUB_OUTPUT"
+
+      - name: Skip stale build-relevant runs
+        id: freshness
+        env:
+          SOURCE_HEAD_SHA: ${{ needs.source.outputs.head_sha }}
+          SOURCE_HEAD_BRANCH: ${{ needs.source.outputs.head_branch }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$SOURCE_HEAD_BRANCH" || "$SOURCE_HEAD_BRANCH" == "null" ]]; then
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch --no-tags origin "refs/heads/${SOURCE_HEAD_BRANCH}:refs/remotes/origin/${SOURCE_HEAD_BRANCH}"
+          branch_head=$(git rev-parse "refs/remotes/origin/${SOURCE_HEAD_BRANCH}^{commit}")
+
+          if ! git merge-base --is-ancestor "$SOURCE_HEAD_SHA" "$branch_head"; then
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$SOURCE_HEAD_SHA" != "$branch_head" ]] &&
+             git diff --name-only "$SOURCE_HEAD_SHA" "$branch_head" -- src Makefile control DYKiller.plist .github | grep -q .; then
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "fresh=true" >> "$GITHUB_OUTPUT"
+          echo "target_sha=$branch_head" >> "$GITHUB_OUTPUT"
+
+      - name: Verify DYKiller release assets
+        if: steps.freshness.outputs.fresh == 'true'
+        run: bash .github/scripts/verify-assets.sh
+
+      - name: Generate DYKiller release notes
+        if: steps.freshness.outputs.fresh == 'true'
+        env:
+          RELEASE_SHA: ${{ steps.freshness.outputs.target_sha }}
+        run: bash .github/scripts/release-notes.sh
+
+      - name: Publish DYKiller release
+        if: steps.freshness.outputs.fresh == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.release.outputs.title }}
+          RELEASE_TARGET_SHA: ${{ steps.freshness.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          git tag -f "$RELEASE_TAG" "$RELEASE_TARGET_SHA"
+          git push origin "refs/tags/${RELEASE_TAG}" --force
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            while IFS= read -r asset; do
+              [ -n "$asset" ] && gh release delete-asset "$RELEASE_TAG" "$asset" -y
+            done < <(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file release-notes.md --latest
+            gh release upload "$RELEASE_TAG" packages/*.deb packages/*.dylib
+          else
+            gh release create "$RELEASE_TAG" packages/*.deb packages/*.dylib \
+              --target "$RELEASE_TARGET_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md \
+              --latest
+          fi

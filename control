@@ -1,0 +1,10 @@
+Package: com.hierarch.dykiller
+Name: DYKiller
+Version: 0.2.1
+Architecture: iphoneos-arm
+Description: 抖音 UI 增强插件（模块化 hook 框架）
+Section: Tweaks
+Depends: firmware (>= 14.0), mobilesubstrate
+Maintainer: hierarch
+Author: hierarch
+Priority: optional
