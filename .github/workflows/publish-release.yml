@@ -103,10 +103,14 @@ jobs:
 
           mkdir -p packages
           for file in *.deb *.dylib; do
-            [ -f "$file" ] && mv "$file" packages/
+            if [ -f "$file" ]; then
+              mv "$file" packages/
+            fi
           done
           for file in */*.deb */*.dylib; do
-            [ -f "$file" ] && mv "$file" packages/
+            if [ -f "$file" ] && [ "$(dirname "$file")" != packages ]; then
+              mv "$file" packages/
+            fi
           done
 
       - name: Resolve release metadata
