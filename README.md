@@ -1,5 +1,5 @@
 # DYKiller
-
+| 测试版本 39.5.0
 ## 现有功能
 
 - 聊天页视频全屏：竖屏视频画面填满整屏，HUD 保持原有层级。
@@ -61,3 +61,9 @@ DYKiller/
 - [github.com/huami1314/DYYY](https://github.com/huami1314/DYYY)
 - pxx917144686 的 DYYY++ 项目
 - pxx917144686 的 FLEX++ 项目
+
+## 开源协议
+
+本项目基于 [MIT License](LICENSE) 开源。
+
+Copyright (c) 2026 Hierarch, huami1314, pxx917144686, Wtrwx
