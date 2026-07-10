@@ -1,5 +1,9 @@
 # DYKiller
-| 测试版本 39.5.0
+
+> DY测试版本 39.5.0
+
+> 本项目旨在补充和修复 图层、优化、DYYY、DYYY++ 等项目中缺失或已失效的功能，原则上不重复实现已有功能。如有其他需求，开发者可自行 Fork 本项目，并参考“致谢”中列出的相关项目进行修复或扩展。
+
 ## 现有功能
 
 - 聊天页视频全屏：竖屏视频画面填满整屏，HUD 保持原有层级。
@@ -17,33 +21,13 @@ DYKiller/
 ├── control                    
 └── src/
     ├── Debug/                 # 调试入口、运行时信息采集与导出
-    │   ├── DKDebugCapture.h
-    │   ├── DKDebugCapture.m
-    │   ├── DKDebugEntry.xm
-    │   ├── DKDebugExport.h
-    │   ├── DKDebugExport.m
-    │   ├── DKDebugInspector.h
-    │   └── DKDebugInspector.m
     ├── FLEX/                  # 调试导出所需的压缩与类信息辅助工具
-    │   ├── DKClassDump.h
-    │   ├── DKClassDump.m
-    │   ├── DKZipWriter.h
-    │   └── DKZipWriter.m
     ├── Features/              # 独立功能实现
-    │   ├── ChatVideo/
-    │   │   ├── DKChatVideoBottomBar.xm
-    │   │   └── DKChatVideoFullscreen.xm
-    │   └── Interaction/
-    │       └── DKHideFollowButton.xm
+    │   ├── ChatVideo/         # 聊天页视频相关功能
+    │   └── Interaction/       # 页面交互相关功能
     ├── Headers/               # 抖音私有类前向声明与必要接口声明
-    │   └── DouyinHeaders.h
     ├── Settings/              # 抖音设置入口注入与功能开关注册框架
-    │   ├── DKSettings.h
-    │   └── DKSettingsMenu.xm
     └── Shared/                # 共享开关、版本宏与无状态工具函数
-        ├── DKKeys.h
-        ├── DKUtils.h
-        └── DKUtils.m
 ```
 
 
@@ -61,6 +45,10 @@ DYKiller/
 - [github.com/huami1314/DYYY](https://github.com/huami1314/DYYY)
 - pxx917144686 的 DYYY++ 项目
 - pxx917144686 的 FLEX++ 项目
+
+## 免责声明
+
+本项目仅供学习、研究与测试使用，严禁用于任何商业用途或违法活动。使用者应自行遵守所在地法律法规及相关平台规则，并自行承担因使用、修改或分发本项目所产生的一切风险与责任，包括但不限于账户异常、数据丢失、设备损坏及其他直接或间接损失。项目作者及贡献者不对上述后果承担任何责任。下载或使用本项目即表示您已阅读并同意本声明。
 
 ## 开源协议
 
