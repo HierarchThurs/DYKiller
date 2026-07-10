@@ -45,9 +45,10 @@
 @end
 
 @interface AWEPlayInteractionViewController : UIViewController      // HUD 控制器；评论态其 view 顶部会被塞状态栏黑底，全屏时需压掉
+@property (nonatomic, assign) BOOL hideMusicInfo;
 @end
 
-#pragma mark - 右侧栏交互区功能组用到的类
+#pragma mark - 播放体验功能组用到的类
 
 @interface AWEPlayInteractionFollowPromptView : UIView             // 头像下方「关注(+)」容器；整视图仅含 + 图标
 @end

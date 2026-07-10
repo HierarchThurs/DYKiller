@@ -18,9 +18,10 @@
 static NSString *const DKKeyChatVideoFullscreen    = @"DYKillerChatVideoFullscreen";
 static NSString *const DKKeyChatVideoHideBottomBar = @"DYKillerHideChatVideoBottomBar";
 
-#pragma mark - 功能组：右侧栏
+#pragma mark - 功能组：播放体验
 
 static NSString *const DKKeyHideFollowButton = @"DYKillerHideFollowButton";
+static NSString *const DKKeyHideMusicInfo    = @"DYKillerHideMusicInfo";
 
 #pragma mark - 功能组：调试工具
 

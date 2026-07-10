@@ -1,6 +1,6 @@
 //
 //  DKHideFollowButton.xm
-//  功能：右侧栏交互区 —— 移除用户头像下方的「关注(+)」按钮。
+//  功能：播放体验 —— 移除用户头像下方的「关注(+)」按钮。
 //
 //  作用面：首页信息流 / 用户主页 / 好友分享页等竖屏播放交互层。
 //  目标视图是头像下方的 AWEPlayInteractionFollowPromptView。
@@ -40,7 +40,7 @@ static char kDKFollowBtnHiddenByDK;   // 标记：此 + 由本功能隐藏，供
 #pragma mark - 设置项注册
 
 %ctor {
-    DKSettingsRegisterItem(@"右侧栏", ^AWESettingItemModel *{
+    DKSettingsRegisterItem(@"播放体验", ^AWESettingItemModel *{
         return DKMakeSwitch(DKKeyHideFollowButton, @"移除关注按钮", @"隐藏头像下方的＋并禁止点击");
     });
 }
