@@ -23,6 +23,10 @@ static NSString *const DKKeyChatVideoHideBottomBar = @"DYKillerHideChatVideoBott
 static NSString *const DKKeyHideFollowButton = @"DYKillerHideFollowButton";
 static NSString *const DKKeyHideMusicInfo    = @"DYKillerHideMusicInfo";
 
+#pragma mark - 功能组：个人主页
+
+static NSString *const DKKeyProfileHideUGCGuide = @"DYKillerHideProfileUGCGuide";
+
 #pragma mark - 功能组：调试工具
 
 static NSString *const DKKeyDebugInspectorEnabled = @"DYKillerDebugInspectorEnabled";

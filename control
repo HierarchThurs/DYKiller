@@ -1,6 +1,6 @@
 Package: com.hierarch.dykiller
 Name: DYKiller
-Version: 0.2.2-beta1
+Version: 0.2.2
 Architecture: iphoneos-arm
 Description: 抖音 UI 增强插件（模块化 hook 框架）
 Section: Tweaks

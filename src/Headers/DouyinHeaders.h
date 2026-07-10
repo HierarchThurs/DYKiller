@@ -53,6 +53,13 @@
 @interface AWEPlayInteractionFollowPromptView : UIView             // 头像下方「关注(+)」容器；整视图仅含 + 图标
 @end
 
+#pragma mark - 个人主页功能组用到的类
+
+@interface AWEUserProfileUGCContributionGuideEmptyCollectionViewCell : UICollectionViewCell
+@property (nonatomic, strong) UIView *bodyView;
++ (double)viewHeight;
+@end
+
 #pragma mark - 抖音设置系统（注入设置菜单用）
 
 @interface AWESettingItemModel : NSObject
