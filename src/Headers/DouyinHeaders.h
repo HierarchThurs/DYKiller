@@ -48,6 +48,17 @@
 @property (nonatomic, assign) BOOL hideMusicInfo;
 @end
 
+#pragma mark - 评论区功能组用到的类
+
+@interface AWECommentContainerViewController : UIViewController
+@end
+
+@interface AWEListKitMagicCollectionView : UICollectionView
+@end
+
+@interface AWECommentInputBackgroundView : UIView
+@end
+
 #pragma mark - 播放体验功能组用到的类
 
 @interface AWEPlayInteractionFollowPromptView : UIView             // 头像下方「关注(+)」容器；整视图仅含 + 图标

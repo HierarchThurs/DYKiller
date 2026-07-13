@@ -1,10 +1,8 @@
 //
 //  DKChatVideoBottomBar.xm
-//  功能：聊天页「分享视频」详情页 —— 底部快捷回复栏的透明化 / 移除。
+//  功能：作品详情页固定底栏移除，以及聊天页全屏时的快捷回复栏透明化。
 //
-//  行为矩阵（与全屏开关联动）：
-//   底栏背景透明   = (全屏 || 移除底栏)
-//   底栏移除       = 接管抖音自己的固定底栏状态，不改子视图 hidden。
+//  固定底栏移除通过抖音原生状态接口实现，不改底栏子视图和页面布局。
 //
 
 #import "DouyinHeaders.h"
@@ -16,8 +14,8 @@
 static char kBarOrigBGKey;   // 底栏原始背景色缓存，便于关闭时还原
 static char kBarOrigOpaqueKey;
 
-static BOOL DKShouldHideChatBottomBar(void) {
-    return DKPrefBool(DKKeyChatVideoHideBottomBar);
+static BOOL DKShouldHideDetailBottomBar(void) {
+    return DKPrefBool(DKKeyDetailHideBottomBar);
 }
 
 static AWEAwemeIMDetailTableViewController *DKFindIMDetailController(UIViewController *vc) {
@@ -63,12 +61,12 @@ static void DKApplyBarBackground(UIView *view, BOOL clear) {
 %hook AWEAwemeDetailTableViewController
 
 - (BOOL)canShowFixedBottomBar {
-    if (DKShouldHideChatBottomBar() && DKVCInIMDetail(self)) return NO;
+    if (DKShouldHideDetailBottomBar()) return NO;
     return %orig;
 }
 
 - (void)setBottomBarHidden:(BOOL)hidden {
-    if (DKShouldHideChatBottomBar() && DKVCInIMDetail(self)) hidden = YES;
+    if (DKShouldHideDetailBottomBar()) hidden = YES;
     %orig(hidden);
 }
 
@@ -77,7 +75,7 @@ static void DKApplyBarBackground(UIView *view, BOOL clear) {
 %hook AWEAwemeIMDetailTableViewController
 
 - (void)setBottomBarHidden:(BOOL)hidden {
-    if (DKShouldHideChatBottomBar()) hidden = YES;
+    if (DKShouldHideDetailBottomBar()) hidden = YES;
     %orig(hidden);
 }
 
@@ -88,10 +86,10 @@ static void DKApplyBarBackground(UIView *view, BOOL clear) {
 - (void)viewDidLayoutSubviews {
     %orig;
 
-    BOOL clear = DKPrefBool(DKKeyChatVideoFullscreen) || DKShouldHideChatBottomBar();
+    BOOL clear = DKPrefBool(DKKeyChatVideoFullscreen) || DKShouldHideDetailBottomBar();
     DKApplyBarBackground(self.view, clear);
 
-    if (DKShouldHideChatBottomBar()) {
+    if (DKShouldHideDetailBottomBar()) {
         AWEAwemeIMDetailTableViewController *detail = DKFindIMDetailController(self);
         if (detail) [detail setBottomBarHidden:YES];
     }
@@ -102,7 +100,7 @@ static void DKApplyBarBackground(UIView *view, BOOL clear) {
 #pragma mark - 设置项注册
 
 %ctor {
-    DKSettingsRegisterItem(@"聊天页", ^AWESettingItemModel *{
-        return DKMakeSwitch(DKKeyChatVideoHideBottomBar, @"移除聊天页视频底栏", @"隐藏底部快捷回复栏并禁止点击");
+    DKSettingsRegisterItem(@"播放体验", ^AWESettingItemModel *{
+        return DKMakeSwitch(DKKeyDetailHideBottomBar, @"移除作品详情页底栏", @"隐藏详情页底部快捷评论栏并禁止点击");
     });
 }

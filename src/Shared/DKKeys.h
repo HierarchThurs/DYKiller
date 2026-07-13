@@ -15,13 +15,17 @@
 
 #pragma mark - 功能组：聊天页视频
 
-static NSString *const DKKeyChatVideoFullscreen    = @"DYKillerChatVideoFullscreen";
-static NSString *const DKKeyChatVideoHideBottomBar = @"DYKillerHideChatVideoBottomBar";
+static NSString *const DKKeyChatVideoFullscreen = @"DYKillerChatVideoFullscreen";
+
+#pragma mark - 功能组：评论区
+
+static NSString *const DKKeyCommentHideBottomBar = @"DYKillerHideCommentBottomBar";
 
 #pragma mark - 功能组：播放体验
 
-static NSString *const DKKeyHideFollowButton = @"DYKillerHideFollowButton";
-static NSString *const DKKeyHideMusicInfo    = @"DYKillerHideMusicInfo";
+static NSString *const DKKeyDetailHideBottomBar = @"DYKillerHideChatVideoBottomBar";
+static NSString *const DKKeyHideFollowButton     = @"DYKillerHideFollowButton";
+static NSString *const DKKeyHideMusicInfo        = @"DYKillerHideMusicInfo";
 
 #pragma mark - 功能组：个人主页
 
