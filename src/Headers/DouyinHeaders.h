@@ -9,11 +9,13 @@
 
 #import <UIKit/UIKit.h>
 
-#pragma mark - 聊天页视频功能组用到的类
+#pragma mark - 详情页视频功能组用到的类
 
 @interface AWEAwemeDetailTableViewController : UIViewController
+@property (nonatomic, copy) NSString *referString;
 - (BOOL)canShowFixedBottomBar;
 - (void)setBottomBarHidden:(BOOL)hidden;
+- (NSString *)realReferString;
 @end
 
 @interface AWEAwemeIMDetailTableViewController : AWEAwemeDetailTableViewController   // 私信「分享视频」详情页专属表控制器（作用域判定用）
@@ -34,6 +36,7 @@
 @property (nonatomic, strong) AWEAwemeModel *model;                 // 取视频宽高做比例限幅
 @property (nonatomic, assign) BOOL hasInlandscape;                  // 横屏视频判据（横屏排除全屏）
 @property (nonatomic, strong) UIView *gradientBackgroundView;       // 评论 shrink 会调整该渐变透明度
+@property (nonatomic, copy) NSString *referString;                  // 页面来源，用于限定搜索详情页
 - (BOOL)isInLandscapeFeedStatus;
 - (void)videoDidShrink;
 @end
@@ -46,6 +49,7 @@
 
 @interface AWEPlayInteractionViewController : UIViewController      // HUD 控制器；评论态其 view 顶部会被塞状态栏黑底，全屏时需压掉
 @property (nonatomic, assign) BOOL hideMusicInfo;
+@property (nonatomic, copy) NSString *referString;
 @end
 
 #pragma mark - 评论区功能组用到的类
