@@ -1,6 +1,9 @@
 //
 //  DKCommentBottomBar.xm
-//  功能：隐藏标准竖屏评论面板常驻输入栏，并在回复编辑期间恢复原生输入界面。
+//  功能：隐藏标准竖屏评论面板常驻输入栏、让评论流铺满面板，并在回复编辑期间恢复原生输入界面。
+//
+//  本文件同时是 AWECommentInputBackgroundView（作品详情页底栏本体）显隐的唯一 owner，
+//  「作品详情页底栏移除」开关也在此取或；背景色归 DKChatVideoBottomBar，属性不相交。
 //
 
 #import "DouyinHeaders.h"
@@ -25,6 +28,7 @@ static char kListNativeContentInsetKey;
 static char kListNativeIndicatorInsetKey;
 static char kListApplyingContentInsetKey;
 static char kListApplyingIndicatorInsetKey;
+static char kListStretchedKey;
 
 static id gTextViewBeginEditingObserver;
 static id gTextViewEndEditingObserver;
@@ -194,6 +198,12 @@ static void DKApplyCommentListState(AWEListKitMagicCollectionView *collectionVie
         }
     }
 
+    // 恢复列表高度不反向写 frame（会和布局引擎打架），只请父视图重排让抖音自己算回去。
+    if (!suppress && objc_getAssociatedObject(collectionView, &kListStretchedKey)) {
+        objc_setAssociatedObject(collectionView, &kListStretchedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [collectionView.superview setNeedsLayout];
+    }
+
     if (forgetState) {
         objc_setAssociatedObject(collectionView, &kListNativeContentInsetKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(collectionView, &kListNativeIndicatorInsetKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -286,7 +296,9 @@ static AWECommentContainerViewController *DKActiveCommentControllerInWindow(UIWi
     return DKFindActiveCommentController(window.rootViewController, window);
 }
 
+// 两个功能都要让这条底栏消失：评论面板打开时的临时抑制，以及「作品详情页底栏移除」。
 static BOOL DKShouldSuppressDetailInputBackground(AWECommentInputBackgroundView *backgroundView) {
+    if (DKPrefBool(DKKeyDetailHideBottomBar)) return YES;
     AWECommentContainerViewController *controller = DKActiveCommentControllerInWindow(backgroundView.window);
     return DKCommentControllerShouldSuppress(controller);
 }
@@ -385,6 +397,22 @@ static void DKSetCommentEditing(AWECommentContainerViewController *controller, B
 %end
 
 %hook AWEListKitMagicCollectionView
+
+// 抖音按「底部要留出输入栏」把列表高度算矮了一个底栏，contentInset 改不到 frame。
+// 在尺寸落地的汇聚点补回：改传入值不会和父视图互相追赶，也不触发布局环。
+- (void)setFrame:(CGRect)frame {
+    UIView *parent = self.superview;
+    CGFloat parentHeight = parent ? CGRectGetHeight(parent.bounds) : 0.0;
+    CGFloat wanted = parentHeight - CGRectGetMinY(frame);
+
+    if (parentHeight > 0.0
+        && wanted > CGRectGetHeight(frame) + 0.5
+        && DKCommentControllerShouldSuppress(DKCommentControllerForView(self))) {
+        frame.size.height = wanted;
+        objc_setAssociatedObject(self, &kListStretchedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    %orig(frame);
+}
 
 - (void)setContentInset:(UIEdgeInsets)contentInset {
     if ([objc_getAssociatedObject(self, &kListApplyingContentInsetKey) boolValue]) {
