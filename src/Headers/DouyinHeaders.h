@@ -41,6 +41,14 @@
 - (void)videoDidShrink;
 @end
 
+// 视频播放控制器。抖音把横屏智能背景色画在 playerBackgroundView 上（插入其 view 的最底层）。
+@interface AWEPlayVideoViewController : UIViewController
+@property (nonatomic, strong) UIView *playerBackgroundView;
+@end
+
+@interface AWEDPlayerProgressContainerView : UIView                // 进度条容器；底边压着一条纯黑细条
+@end
+
 @interface AWEGradientView : UIView                                // HUD 可读性压暗渐变
 @end
 
@@ -60,7 +68,7 @@
 @interface AWEListKitMagicCollectionView : UICollectionView
 @end
 
-@interface AWECommentInputBackgroundView : UIView
+@interface AWECommentInputBackgroundView : UIView                   // 详情页底部输入栏，是 AWECommentInputViewController 的根视图
 @end
 
 #pragma mark - 播放体验功能组用到的类

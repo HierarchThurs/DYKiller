@@ -1,9 +1,10 @@
 //
 //  DKDetailVideoFullscreen.xm
-//  聊天与搜索详情页 —— 竖屏视频画面填满整屏，HUD 原地不动。
+//  好友页与搜索页详情页：竖屏视频画面填满整屏，其他比例视频把抖音原生背景色延伸到底栏，
+//  并清除进度条底边的黑条。HUD 位置与尺寸全程不变。
 //
-//  仅拦截 AWEDPlayerViewController_Merge.view 的 frame 写入。视频子树随
-//  Merge 容器自动伸展，HUD 位于兄弟层，不参与尺寸修改。
+//  竖屏全屏只拦截 AWEDPlayerViewController_Merge.view 的 frame 写入，视频子树随容器伸展，
+//  HUD 位于兄弟层不受影响。
 //
 
 #import "DouyinHeaders.h"
@@ -13,15 +14,11 @@
 #import <objc/runtime.h>
 #import <math.h>
 
-typedef NS_ENUM(NSUInteger, DKVideoFullscreenContext) {
-    DKVideoFullscreenContextNone = 0,
-    DKVideoFullscreenContextChat,
-    DKVideoFullscreenContextSearch,
-};
-
 // 高/宽达到此阈值才进入全屏处理。低比例竖屏与横屏保持原布局。
 static const CGFloat kDKFullscreenMinAspect = 1.70;
 static const long long kDKAwemeTypeImage = 68;
+// 结构签名的统一容差：覆盖 @3x 像素对齐与进度条收放时的亚像素漂移。
+static const CGFloat kDKSignatureTolerance = 0.5;
 
 static Class DKMergeClass(void) {
     static Class cls;
@@ -32,50 +29,25 @@ static Class DKMergeClass(void) {
     return cls;
 }
 
-static Class DKInteractionClass(void) {
-    static Class cls;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        cls = NSClassFromString(@"AWEPlayInteractionViewController");
-    });
-    return cls;
-}
+static BOOL DKColorIsOpaqueBlack(UIColor *color) {
+    if (!color) return NO;
 
-static Class DKDetailTableClass(void) {
-    static Class cls;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        cls = NSClassFromString(@"AWEAwemeDetailTableViewController");
-    });
-    return cls;
-}
-
-static Class DKSearchViewControllerClass(void) {
-    static Class cls;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        cls = NSClassFromString(@"AWESearchViewController");
-    });
-    return cls;
-}
-
-static BOOL DKIsSearchReferString(NSString *referString) {
-    if (![referString isKindOfClass:[NSString class]] || referString.length == 0) {
-        return NO;
+    CGFloat red = 0.0;
+    CGFloat green = 0.0;
+    CGFloat blue = 0.0;
+    CGFloat alpha = 0.0;
+    if ([color getRed:&red green:&green blue:&blue alpha:&alpha]) {
+        return red <= 0.02 && green <= 0.02 && blue <= 0.02 && alpha >= 0.98;
     }
 
-    static NSSet<NSString *> *referStrings;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        referStrings = [NSSet setWithArray:@[
-            @"general_search",
-            @"search_result",
-            @"search_ecommerce",
-            @"general_search_scan",
-        ]];
-    });
-    return [referStrings containsObject:referString];
+    CGFloat white = 0.0;
+    if ([color getWhite:&white alpha:&alpha]) {
+        return white <= 0.02 && alpha >= 0.98;
+    }
+    return NO;
 }
+
+#pragma mark - 全屏目标判定
 
 static AWEDPlayerViewController_Merge *DKMergeForView(UIView *view) {
     Class mergeCls = DKMergeClass();
@@ -83,99 +55,15 @@ static AWEDPlayerViewController_Merge *DKMergeForView(UIView *view) {
 
     UIResponder *responder = view.nextResponder;
     for (NSUInteger i = 0; responder && i < 40; i++) {
-        if ([responder isKindOfClass:[UIViewController class]]) {
-            UIViewController *controller = (UIViewController *)responder;
-            for (NSUInteger j = 0; controller && j < 12; j++) {
-                if ([controller isKindOfClass:mergeCls]) {
-                    return (AWEDPlayerViewController_Merge *)controller;
-                }
-                controller = controller.parentViewController;
-            }
+        if ([responder isKindOfClass:mergeCls]) {
+            return (AWEDPlayerViewController_Merge *)responder;
         }
         responder = responder.nextResponder;
     }
     return nil;
 }
 
-static AWEPlayInteractionViewController *DKSiblingInteractionController(
-    AWEDPlayerViewController_Merge *merge
-) {
-    Class interactionCls = DKInteractionClass();
-    UIViewController *parent = merge.parentViewController;
-    if (!interactionCls || !parent) return nil;
-
-    for (UIViewController *child in parent.childViewControllers) {
-        if ([child isKindOfClass:interactionCls]) {
-            return (AWEPlayInteractionViewController *)child;
-        }
-    }
-    return nil;
-}
-
-static AWEAwemeDetailTableViewController *DKDetailControllerForMerge(
-    AWEDPlayerViewController_Merge *merge
-) {
-    Class detailCls = DKDetailTableClass();
-    UIViewController *controller = merge.parentViewController;
-    for (NSUInteger i = 0; detailCls && controller && i < 12; i++) {
-        if ([controller isKindOfClass:detailCls]) {
-            return (AWEAwemeDetailTableViewController *)controller;
-        }
-        controller = controller.parentViewController;
-    }
-    return nil;
-}
-
-static BOOL DKDetailNavigationComesFromSearch(
-    AWEAwemeDetailTableViewController *detail
-) {
-    Class searchCls = DKSearchViewControllerClass();
-    NSArray<UIViewController *> *stack = detail.navigationController.viewControllers;
-    NSUInteger index = [stack indexOfObjectIdenticalTo:detail];
-    if (!searchCls || index == NSNotFound || index == 0) return NO;
-    return [stack[index - 1] isKindOfClass:searchCls];
-}
-
-static BOOL DKMergeIsInSearchDetail(AWEDPlayerViewController_Merge *merge) {
-    if (DKIsSearchReferString(merge.referString)) return YES;
-
-    AWEPlayInteractionViewController *interaction =
-        DKSiblingInteractionController(merge);
-    if (DKIsSearchReferString(interaction.referString)) return YES;
-
-    AWEAwemeDetailTableViewController *detail = DKDetailControllerForMerge(merge);
-    if (!detail) return NO;
-    if (DKIsSearchReferString(detail.referString)) return YES;
-    if ([detail respondsToSelector:@selector(realReferString)]
-        && DKIsSearchReferString([detail realReferString])) {
-        return YES;
-    }
-
-    // referString 尚未传递到子控制器时，以紧邻的搜索页导航来源兜底。
-    return DKDetailNavigationComesFromSearch(detail);
-}
-
-static DKVideoFullscreenContext DKContextForMerge(
-    AWEDPlayerViewController_Merge *merge
-) {
-    if (!merge) return DKVideoFullscreenContextNone;
-    if (DKVCInIMDetail(merge)) return DKVideoFullscreenContextChat;
-    if (DKMergeIsInSearchDetail(merge)) return DKVideoFullscreenContextSearch;
-    return DKVideoFullscreenContextNone;
-}
-
-static BOOL DKContextIsEnabled(DKVideoFullscreenContext context) {
-    switch (context) {
-        case DKVideoFullscreenContextChat:
-            return DKPrefBool(DKKeyChatVideoFullscreen);
-        case DKVideoFullscreenContextSearch:
-            return DKPrefBool(DKKeySearchVideoFullscreen);
-        case DKVideoFullscreenContextNone:
-            return NO;
-    }
-    return NO;
-}
-
+// 图文、横屏、低比例竖屏一律保持原生布局，避免误伤或 aspect-fill 过裁。
 static BOOL DKMergeHasEligibleVideo(AWEDPlayerViewController_Merge *merge) {
     AWEAwemeModel *model = merge.model;
     if (model.awemeType == kDKAwemeTypeImage) return NO;
@@ -194,8 +82,9 @@ static BOOL DKMergeHasEligibleVideo(AWEDPlayerViewController_Merge *merge) {
 }
 
 static BOOL DKMergeIsFullscreenTarget(AWEDPlayerViewController_Merge *merge) {
-    DKVideoFullscreenContext context = DKContextForMerge(merge);
-    return DKContextIsEnabled(context) && DKMergeHasEligibleVideo(merge);
+    if (!merge) return NO;
+    if (!DKDetailPageFullscreenOn(DKDetailPageForResponder(merge))) return NO;
+    return DKMergeHasEligibleVideo(merge);
 }
 
 #pragma mark - 视频容器
@@ -249,28 +138,198 @@ static BOOL DKMergeIsFullscreenTarget(AWEDPlayerViewController_Merge *merge) {
 
 %end
 
+#pragma mark - 背景延伸至底栏
+
+// 抖音把横屏智能背景色画在 playerBackgroundView 上；该色在首帧渲染出图后才算出来，
+// 因此同步点必须是抖音自己落色的时刻，而不是 setModel:/setFrame: 这类首帧之前的入口。
+static char kDKBackdropAppliedKey;    // 挂播放控制器：是否接管过
+static char kDKCellBackdropKey;       // 挂承载视图：原背景色
+
+// 容器下方那块空区由哪一层兜住，两页不同（好友页是 Cell contentView，搜索页是铺满且不透明的
+// CellVC.view）。故动态求：从播放器 view 往上，第一个高度超过它底边的祖先才是会露出来的那层。
+static UIView *DKBackdropCanvas(UIView *playerView) {
+    UIView *contentView = DKCellContentView(playerView);
+    if (!contentView) return nil;
+
+    for (UIView *ancestor = playerView.superview; ancestor; ancestor = ancestor.superview) {
+        CGRect rect = [playerView convertRect:playerView.bounds toView:ancestor];
+        if (CGRectGetHeight(ancestor.bounds)
+            > CGRectGetMaxY(rect) + kDKSignatureTolerance) {
+            return ancestor;
+        }
+        if (ancestor == contentView) break;
+    }
+    return nil;
+}
+
+// 承载层会随页面/布局变化，按标记回收，不假设它是哪一个。
+static void DKRestoreBackdrop(UIView *playerView, UIView *except) {
+    UIView *ancestor = playerView.superview;
+    for (NSUInteger i = 0; ancestor && i < 12; i++, ancestor = ancestor.superview) {
+        if (ancestor == except) continue;
+
+        id baseline = objc_getAssociatedObject(ancestor, &kDKCellBackdropKey);
+        if (!baseline) continue;
+
+        ancestor.backgroundColor =
+            baseline == [NSNull null] ? nil : (UIColor *)baseline;
+        objc_setAssociatedObject(
+            ancestor,
+            &kDKCellBackdropKey,
+            nil,
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        );
+    }
+}
+
+static void DKSyncCellBackdrop(AWEPlayVideoViewController *controller) {
+    // 仅当背景层确实挂在视图树上并可见时才算「抖音画了背景」，避免跟随已摘除的残留层。
+    UIView *backdrop = controller.playerBackgroundView;
+    UIColor *color =
+        (backdrop.superview && !backdrop.hidden) ? backdrop.backgroundColor : nil;
+    BOOL applied =
+        objc_getAssociatedObject(controller, &kDKBackdropAppliedKey) != nil;
+    // 绝大多数视频没有原生背景，这里直接退出，不做任何链式遍历。
+    if (!color && !applied) return;
+
+    UIView *playerView = controller.viewIfLoaded;
+    if (!playerView) return;
+
+    UIView *canvas = nil;
+    if (color && DKDetailPageFullscreenOn(DKDetailPageForResponder(controller))) {
+        canvas = DKBackdropCanvas(playerView);
+    }
+
+    DKRestoreBackdrop(playerView, canvas);
+    if (!canvas) {
+        objc_setAssociatedObject(
+            controller,
+            &kDKBackdropAppliedKey,
+            nil,
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        );
+        return;
+    }
+
+    if (!objc_getAssociatedObject(canvas, &kDKCellBackdropKey)) {
+        objc_setAssociatedObject(
+            canvas,
+            &kDKCellBackdropKey,
+            canvas.backgroundColor ?: (id)[NSNull null],
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        );
+    }
+    if (![canvas.backgroundColor isEqual:color]) {
+        canvas.backgroundColor = color;
+    }
+    objc_setAssociatedObject(
+        controller,
+        &kDKBackdropAppliedKey,
+        @YES,
+        OBJC_ASSOCIATION_RETAIN_NONATOMIC
+    );
+}
+
+%hook AWEPlayVideoViewController
+
+- (void)setPlayerBackgroundView:(UIView *)backgroundView {
+    %orig;
+    DKSyncCellBackdrop(self);
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    DKSyncCellBackdrop(self);
+}
+
+%end
+
+#pragma mark - 进度条底边黑条
+
+static char kDKProgressUnderColorKey;
+static char kDKProgressUnderOpaqueKey;
+
+// 不能带位置锚点：相对滑杆的位置随进度条收放漂移，相对容器底边的位置随页面 HUD 高度而变。
+// 「容器直属 + 普通 UIView + 满宽 + 极薄 + 纯黑不透明」本身已足够唯一。
+static BOOL DKIsProgressUnderView(UIView *view, UIView *container) {
+    if (object_getClass(view) != [UIView class]) return NO;
+
+    CGRect frame = view.frame;
+    CGFloat height = CGRectGetHeight(frame);
+    return height > 0.0
+        && height <= 2.0 + kDKSignatureTolerance
+        && fabs(CGRectGetMinX(frame)) <= kDKSignatureTolerance
+        && fabs(CGRectGetWidth(frame) - CGRectGetWidth(container.bounds))
+            <= kDKSignatureTolerance
+        && DKColorIsOpaqueBlack(view.backgroundColor);
+}
+
+static void DKClearProgressUnderView(UIView *view) {
+    if (!objc_getAssociatedObject(view, &kDKProgressUnderColorKey)) {
+        objc_setAssociatedObject(
+            view,
+            &kDKProgressUnderColorKey,
+            view.backgroundColor,
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        );
+        objc_setAssociatedObject(
+            view,
+            &kDKProgressUnderOpaqueKey,
+            @(view.opaque),
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        );
+    }
+
+    if (![view.backgroundColor isEqual:[UIColor clearColor]]) {
+        view.backgroundColor = [UIColor clearColor];
+    }
+    if (view.opaque) view.opaque = NO;
+}
+
+static void DKRestoreProgressUnderView(UIView *view) {
+    UIColor *color = objc_getAssociatedObject(view, &kDKProgressUnderColorKey);
+    if (!color) return;
+
+    NSNumber *opaque = objc_getAssociatedObject(view, &kDKProgressUnderOpaqueKey);
+    view.backgroundColor = color;
+    view.opaque = opaque.boolValue;
+    objc_setAssociatedObject(
+        view,
+        &kDKProgressUnderColorKey,
+        nil,
+        OBJC_ASSOCIATION_RETAIN_NONATOMIC
+    );
+    objc_setAssociatedObject(
+        view,
+        &kDKProgressUnderOpaqueKey,
+        nil,
+        OBJC_ASSOCIATION_RETAIN_NONATOMIC
+    );
+}
+
+%hook AWEDPlayerProgressContainerView
+
+- (void)layoutSubviews {
+    %orig;
+
+    BOOL enabled = DKDetailPageFullscreenOn(DKDetailPageForResponder(self));
+    for (UIView *view in self.subviews) {
+        // 已接管的视图只按开关决定去留：进度条收起时签名会漂移，据此还原会让黑条重现。
+        if (objc_getAssociatedObject(view, &kDKProgressUnderColorKey)) {
+            enabled ? DKClearProgressUnderView(view) : DKRestoreProgressUnderView(view);
+        } else if (enabled && DKIsProgressUnderView(view, self)) {
+            DKClearProgressUnderView(view);
+        }
+    }
+}
+
+%end
+
 #pragma mark - 评论态 HUD 顶部遮罩
 
-static BOOL DKColorIsOpaqueBlack(UIColor *color) {
-    if (!color) return NO;
-
-    CGFloat red = 0.0;
-    CGFloat green = 0.0;
-    CGFloat blue = 0.0;
-    CGFloat alpha = 0.0;
-    if ([color getRed:&red green:&green blue:&blue alpha:&alpha]) {
-        return red <= 0.02
-            && green <= 0.02
-            && blue <= 0.02
-            && alpha >= 0.98;
-    }
-
-    CGFloat white = 0.0;
-    if ([color getWhite:&white alpha:&alpha]) {
-        return white <= 0.02 && alpha >= 0.98;
-    }
-    return NO;
-}
+// 评论展开时抖音会在 HUD 顶部现场插入一条「安全区高 × 满宽」的纯黑遮罩，
+// 它是「视频缩小」态的产物，被强钉满屏的视频顶上去就成了黑边。
+static char kDKStatusBarCoverHiddenKey;
 
 static UIView *DKFindHUDStatusBarCover(UIView *hudView) {
     CGFloat safeTop = hudView.safeAreaInsets.top;
@@ -293,15 +352,12 @@ static UIView *DKFindHUDStatusBarCover(UIView *hudView) {
     return nil;
 }
 
-static char kDKStatusBarCoverHiddenKey;
-
 static void DKUpdateHUDStatusBarCover(
     AWEPlayInteractionViewController *interaction
 ) {
     AWEDPlayerViewController_Merge *merge = nil;
     Class mergeCls = DKMergeClass();
-    UIViewController *parent = interaction.parentViewController;
-    for (UIViewController *child in parent.childViewControllers) {
+    for (UIViewController *child in interaction.parentViewController.childViewControllers) {
         if (mergeCls && [child isKindOfClass:mergeCls]) {
             merge = (AWEDPlayerViewController_Merge *)child;
             break;
@@ -345,6 +401,7 @@ static void DKUpdateHUDStatusBarCover(
 
 #pragma mark - 底部压暗渐变
 
+// 渐变由 Auto Layout 管理，改 frame 会被滑动重排冲掉并可能触发布局环，只能叠 transform。
 static char kDKGradientTransformKey;
 
 %hook AWEGradientView
@@ -404,11 +461,11 @@ static char kDKGradientTransformKey;
 #pragma mark - 设置项注册
 
 %ctor {
-    DKSettingsRegisterItem(@"聊天页", ^AWESettingItemModel *{
+    DKSettingsRegisterItem(@"好友页", ^AWESettingItemModel *{
         return DKMakeSwitch(
             DKKeyChatVideoFullscreen,
-            @"聊天页视频全屏",
-            @"竖屏视频画面填满整屏，HUD 不变"
+            @"好友页视频全屏",
+            @"竖屏视频填满整屏，其他比例视频的原生背景延伸至底栏"
         );
     });
 
@@ -416,7 +473,7 @@ static char kDKGradientTransformKey;
         return DKMakeSwitch(
             DKKeySearchVideoFullscreen,
             @"搜索页视频全屏",
-            @"搜索结果中的竖屏视频画面填满整屏，HUD 不变"
+            @"竖屏视频填满整屏，其他比例视频的原生背景延伸至底栏"
         );
     });
 }
