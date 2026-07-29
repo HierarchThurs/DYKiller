@@ -1,0 +1,569 @@
+//
+//  DKGlassTabBar.xm
+//  自建 UITabBar（4 个 tab 的玻璃胶囊）+ 右侧独立玻璃圆键（拍摄），顶替抖音自绘底栏。
+//  内容全部镜像自抖音自己的按钮：标题、顺序、拍摄图标、未读角标，抖音改什么这里跟着变。
+//
+//  两条不可回退的结论：
+//
+//  · 不能复活抖音自带的 AWEFakeTabBar。它与自建 UITabBar 的 appearance、platter 子树、
+//    layer 属性完全一致，却只有自建的渲染出玻璃——它自创建起即隐藏，UIKit 从未为它建过
+//    玻璃背景层，事后改可见性不会补建。
+//
+//  · 两块玻璃都做成抖音底栏的【子视图】。显隐、透明度、位置、生命周期由 UIKit 沿视图树
+//    继承，无需任何同步代码，也就不会出现「抖音不布局就不更新」。驱动点放在抖音底栏自己的
+//    layoutSubviews，冷启动首帧即可挂上。唯一继承不到的是深浅色，见 DKGlassApplyStyle。
+//
+
+#import "DKGlassTabBar.h"
+#import "DouyinHeaders.h"
+#import "DKKeys.h"
+#import "DKSettings.h"
+#import "DKUtils.h"
+
+#import <QuartzCore/QuartzCore.h>
+#import <math.h>
+#import <objc/message.h>
+
+// 依赖的抖音/UIKit 私有符号集中在此，抖音改名时只改这里。
+static NSString *const kDKBadgeContainerClass = @"AWENormalModeTabBarBadgeContainerView";
+static NSString *const kDKBadgeClass = @"DUXBadge";
+static NSString *const kDKPlatterClass = @"_UITabBarItemPlatterView";
+static NSString *const kDKPlusClickSelector = @"plusTabBarButtonDidClick:";
+static NSString *const kDKTabClickSelector = @"tabBarButtonDidTouchUpInside:gestureRecognizer:";
+
+// 抖音按钮的 type：拍摄入口。它不是页面，不参与 selectedIndex，单独做成右侧圆键。
+static const long long kDKPlusButtonType = 2;
+// 标题字号。抖音原生底栏是 10pt——那是留给「图标在上、10pt 标签在下」的层叠布局的，
+// 标题独占整个按钮后 10pt 会显得空落，故按纯文字胶囊的比例取值。
+static const CGFloat kDKTitleFontSize = 15.0;
+// 胶囊与拍摄键之间的间距。
+static const CGFloat kDKPlusKeyGap = 12.0;
+// 拍摄图标在圆键内的四周留白。
+static const CGFloat kDKPlusIconInset = 14.0;
+// platter 还没建起来时的兜底几何（beta7 实测值），次帧即被真实值取代。
+static const CGFloat kDKPlatterFallbackHeight = 62.0;
+static const CGFloat kDKPlatterFallbackInset = 21.0;
+
+#pragma mark - 状态
+
+static UITabBar *gBar = nil;
+static id gProxy = nil;
+// 每个 item 对应的 tab 序号（validIndex）。与 items 同序等长。
+static NSArray<NSNumber *> *gItemKinds = nil;
+// 每个 item 对应的抖音按钮，转发点击与读取角标都用它。与 items 同序等长。
+static NSArray *gItemButtons = nil;
+// 上次构建 items 用的签名，变了才重建，避免每次布局都换 items。
+static NSString *gSignature = nil;
+// 最近一次见到的抖音底栏，供开关变化时立即生效。
+static __weak AWENormalModeTabBar *gDouyinBar = nil;
+// 已挂上深浅色监听的场景，避免重复注册。
+static __weak UIWindowScene *gObservedScene = nil;
+
+// 拍摄圆键及其内容。
+static UIVisualEffectView *gPlusKey = nil;
+static UIImageView *gPlusIcon = nil;
+static UIButton *gPlusHit = nil;
+// 抖音的拍摄按钮；被其他插件移除时为 nil，圆键随之隐藏。
+static __weak UIView *gPlusButton = nil;
+// 上次裁过的图标源图，按指针比对，变了才重裁。
+static UIImage *gPlusSourceIcon = nil;
+
+UITabBar *DKGlassTabBarCurrent(void) {
+    return gBar;
+}
+
+UIVisualEffectView *DKGlassPlusKeyCurrent(void) {
+    return gPlusKey;
+}
+
+#pragma mark - 小工具
+
+static id DKGlassValue(id object, NSString *key) {
+    if (!object || key.length == 0) return nil;
+    @try {
+        return [object valueForKey:key];
+    } @catch (__unused NSException *exception) {
+        return nil;
+    }
+}
+
+static NSString *DKGlassButtonTitle(id button) {
+    id inner = DKGlassValue(button, @"innerView");
+    NSString *text = DKGlassValue(DKGlassValue(inner, @"label"), @"text");
+    if (text.length > 0) return text;
+
+    NSString *current = DKGlassValue(inner, @"currentTitleText");
+    if (current.length > 0) return current;
+
+    NSString *label = [button isKindOfClass:UIView.class] ? [(UIView *)button accessibilityLabel] : nil;
+    return label.length > 0 ? label : nil;
+}
+
+static UITabBarController *DKGlassControllerForView(UIView *view) {
+    for (UIResponder *responder = view.nextResponder; responder; responder = responder.nextResponder) {
+        if ([responder isKindOfClass:UITabBarController.class]) return (UITabBarController *)responder;
+    }
+    return nil;
+}
+
+#pragma mark - 深浅色
+
+// 深浅色是唯一不能靠继承拿到的东西：抖音把 window.overrideUserInterfaceStyle 钉死为浅色
+// （beta3 探针逐级实证），它的深色模式是自己换肤画出来的，压根不进 UIKit 的 trait，
+// 所以沿视图树继承到的永远是浅色。
+//
+// UIWindowScene 的 trait 由系统直接下发，而 overrideUserInterfaceStyle 只存在于
+// UIView / UIViewController / UIWindow 上——抖音没有 API 能盖住场景那一层，取它即得真值。
+static void DKGlassApplyStyle(UIUserInterfaceStyle style) {
+    if (style == UIUserInterfaceStyleUnspecified) return;
+    if (gBar && gBar.overrideUserInterfaceStyle != style) gBar.overrideUserInterfaceStyle = style;
+    if (gPlusKey && gPlusKey.overrideUserInterfaceStyle != style) {
+        gPlusKey.overrideUserInterfaceStyle = style;
+    }
+}
+
+// 挂在场景上监听，系统一切深浅色即刻改；否则只能等抖音下次布局，就是 beta3 那种「切一下页才变」。
+static void DKGlassObserveStyle(UIView *host) API_AVAILABLE(ios(26.0)) {
+    UIWindowScene *scene = host.window.windowScene;
+    if (!scene || scene == gObservedScene) return;
+    gObservedScene = scene;
+    [scene registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
+                       withHandler:^(UIWindowScene *changed, __unused UITraitCollection *previous) {
+        if (gBar) DKGlassApplyStyle(changed.traitCollection.userInterfaceStyle);
+    }];
+}
+
+#pragma mark - 标题图
+
+// iOS 26 悬浮底栏按「图标在上、标签在下」排版，只给标题时图标槽空着、标题落到按钮底部；
+// titlePositionAdjustment 属于旧版层叠布局，悬浮 provider 完全忽略（实测给到 -168 仍纹丝
+// 不动）。故把标题渲染成模板图当图标用、标题置空，由系统把它当图标居中。
+// 模板图只取 alpha，着色仍归系统，选中态与深浅色都自动跟上。
+static UIImage *DKGlassTitleImage(NSString *title) {
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [UIFont systemFontOfSize:kDKTitleFontSize weight:UIFontWeightMedium],
+        NSForegroundColorAttributeName: UIColor.blackColor
+    };
+    CGSize size = [title sizeWithAttributes:attributes];
+    size.width = ceil(size.width);
+    size.height = ceil(size.height);
+
+    UIGraphicsImageRendererFormat *format = UIGraphicsImageRendererFormat.preferredFormat;
+    format.opaque = NO;
+    UIImage *image = [[[UIGraphicsImageRenderer alloc] initWithSize:size format:format]
+        imageWithActions:^(__unused UIGraphicsImageRendererContext *context) {
+            [title drawAtPoint:CGPointZero withAttributes:attributes];
+        }];
+    return [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+}
+
+#pragma mark - 拍摄图标
+
+// 取抖音当前真实显示的拍摄图标。别的插件替换图标改的正是这个 image view，故天然跟随
+//（UIButton 自己的 state image 也经 imageView 渲染，同样命中）。
+static UIImage *DKGlassPlusSourceIcon(UIView *button) {
+    for (UIView *subview in button.subviews) {
+        if (![subview isKindOfClass:UIImageView.class]) continue;
+        UIImage *image = ((UIImageView *)subview).image;
+        if (image) return image;
+    }
+    return nil;
+}
+
+// 按 alpha 裁掉四周透明留白。抖音给的图是 75×49 而字形只有约 33×30，直接缩进圆键会小到看不清；
+// 裁完再排版，换了图标也自适应，不必写死内缩。
+static UIImage *DKGlassTrimTransparent(UIImage *image) {
+    CGImageRef source = image.CGImage;
+    if (!source) return image;
+
+    size_t width = CGImageGetWidth(source);
+    size_t height = CGImageGetHeight(source);
+    if (width == 0 || height == 0) return image;
+
+    uint8_t *alpha = (uint8_t *)calloc(width * height, sizeof(uint8_t));
+    if (!alpha) return image;
+
+    CGContextRef context = CGBitmapContextCreate(alpha, width, height, 8, width, NULL,
+                                                 (CGBitmapInfo)kCGImageAlphaOnly);
+    if (!context) {
+        free(alpha);
+        return image;
+    }
+    CGContextDrawImage(context, CGRectMake(0.0, 0.0, width, height), source);
+    CGContextRelease(context);
+
+    size_t minX = width, minY = height, maxX = 0, maxY = 0;
+    for (size_t y = 0; y < height; y++) {
+        for (size_t x = 0; x < width; x++) {
+            if (alpha[y * width + x] == 0) continue;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        }
+    }
+    free(alpha);
+    if (minX > maxX || minY > maxY) return image;   // 整张全透明，原样返回
+
+    CGImageRef cropped = CGImageCreateWithImageInRect(
+        source, CGRectMake(minX, minY, maxX - minX + 1, maxY - minY + 1));
+    if (!cropped) return image;
+
+    UIImage *result = [UIImage imageWithCGImage:cropped
+                                          scale:image.scale
+                                    orientation:image.imageOrientation];
+    CGImageRelease(cropped);
+    return result;
+}
+
+// 图标同样走模板图：抖音会随页面在白/黑两版图标间切换，只取 alpha 则两版形状一致，
+// 着色交给圆键的 trait，浅色玻璃上不会出现看不见的白图标。
+static void DKGlassSyncPlusIcon(UIView *button) {
+    UIImage *source = DKGlassPlusSourceIcon(button);
+    if (!source || source == gPlusSourceIcon) return;
+    gPlusSourceIcon = source;
+    gPlusIcon.image = [DKGlassTrimTransparent(source)
+        imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+}
+
+#pragma mark - 点击转发
+
+@interface DKGlassTabBarProxy : NSObject <UITabBarDelegate>
+- (void)plusKeyDidTap;
+@end
+
+@implementation DKGlassTabBarProxy
+
+// 拍摄不是页面，走抖音自己的拍摄回调，传它自己的按钮。
+- (void)plusKeyDidTap {
+    UITabBarController *controller = DKGlassControllerForView(gPlusKey);
+    SEL selector = NSSelectorFromString(kDKPlusClickSelector);
+    if (controller && gPlusButton && [controller respondsToSelector:selector]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, gPlusButton);
+    }
+}
+
+- (void)tabBar:(UITabBar *)tabBar didSelectItem:(UITabBarItem *)item {
+    UITabBarController *controller = DKGlassControllerForView(tabBar);
+    NSUInteger index = [tabBar.items indexOfObjectIdenticalTo:item];
+    if (!controller || index == NSNotFound || index >= gItemButtons.count) return;
+
+    id button = gItemButtons[index];
+    // 切页必须走抖音自己的按钮点击回调。直接写 selectedIndex 会被它的 override 吞掉——
+    // 实测底栏选中态变了、抖音的 selectedIndex 仍是 0、页面也没换，只是「看着切了」。
+    // 连手势一并原样回传，抖音据此构造点击上下文，与真实点按走完全相同的路径。
+    SEL selector = NSSelectorFromString(kDKTabClickSelector);
+    if ([controller respondsToSelector:selector]) {
+        ((void (*)(id, SEL, id, id))objc_msgSend)(controller, selector, button,
+                                                  DKGlassValue(button, @"singleTapGes"));
+    }
+}
+
+@end
+
+#pragma mark - 材质
+
+// UITabBar 的出厂 appearance 是 iOS 13 时代的 SystemChromeMaterial 毛玻璃——「不碰
+// appearance 即得液态玻璃」是错的，必须显式装 UIGlassEffect。它是 UIVisualEffect 的另一支、
+// 不是 UIBlurEffect，而 backgroundEffect 声明为 UIBlurEffect *，故需强转。
+static void DKGlassApplyMaterial(UITabBar *bar) API_AVAILABLE(ios(26.0)) {
+    UITabBarAppearance *appearance = [[UITabBarAppearance alloc] init];
+    [appearance configureWithDefaultBackground];
+    appearance.backgroundEffect =
+        (UIBlurEffect *)[UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
+    bar.standardAppearance = appearance;
+    bar.scrollEdgeAppearance = appearance;
+}
+
+#pragma mark - 未读角标镜像
+
+// 读抖音按钮当前的角标。走子视图扫描而不是 badge / badgeContainerView 属性：那两个 getter
+// 可能懒建对象，而这里是逐帧路径，只读不建才安全。
+static NSString *DKGlassBadgeValue(id button) {
+    if (![button isKindOfClass:UIView.class]) return nil;
+
+    UIView *badge = nil;
+    for (UIView *container in ((UIView *)button).subviews) {
+        if (![NSStringFromClass(container.class) isEqualToString:kDKBadgeContainerClass]
+            || container.isHidden || container.alpha < 0.01) {
+            continue;
+        }
+        for (UIView *candidate in container.subviews) {
+            // 尺寸也要判：抖音会把角标留在树里收成零尺寸，那不算「有角标」。
+            if ([NSStringFromClass(candidate.class) isEqualToString:kDKBadgeClass]
+                && !candidate.isHidden && candidate.alpha >= 0.01
+                && !CGRectIsEmpty(candidate.bounds)) {
+                badge = candidate;
+                break;
+            }
+        }
+        if (badge) break;
+    }
+    if (!badge) return nil;
+
+    NSString *text = DKGlassValue(badge, @"badgeText");
+    if (text.length > 0) return text;                      // 抖音自己给的文案，如 "99+"
+    unsigned long long count = [DKGlassValue(badge, @"badgeNumber") unsignedLongLongValue];
+    if (count > 0) return @(count).stringValue;
+    return @"";                                            // 有角标但无数字 → 纯红点
+}
+
+// badgeValue 交给系统渲染即得 iOS 26 悬浮胶囊里的原生红点，badgeColor 留 nil 用系统默认色。
+static void DKGlassSyncBadges(void) {
+    NSUInteger count = MIN(gItemButtons.count, gBar.items.count);
+    for (NSUInteger i = 0; i < count; i++) {
+        UITabBarItem *item = gBar.items[i];
+        NSString *value = DKGlassBadgeValue(gItemButtons[i]);
+        NSString *current = item.badgeValue;
+        if (current != value && ![current isEqualToString:value]) item.badgeValue = value;
+    }
+}
+
+#pragma mark - 内容镜像
+
+// 抖音的按钮数组本身就是视觉顺序，直接照抄；拍摄入口按 type 认出来单独交给圆键，
+// 其余按 validIndex 映射到 tab。
+static void DKGlassSyncItems(UITabBarController *controller, NSArray *buttons) {
+    NSMutableArray<UITabBarItem *> *items = [NSMutableArray array];
+    NSMutableArray<NSNumber *> *kinds = [NSMutableArray array];
+    NSMutableArray *mirrored = [NSMutableArray array];
+    NSMutableString *signature = [NSMutableString string];
+    UIView *plus = nil;
+
+    for (id button in buttons) {
+        UIView *view = [button isKindOfClass:UIView.class] ? button : nil;
+        if (view.isHidden) continue;   // 别的插件移除了这个按钮
+
+        if ([DKGlassValue(button, @"type") longLongValue] == kDKPlusButtonType) {
+            plus = view;
+            continue;                  // 拍摄不进胶囊，见 DKGlassSyncPlusKey
+        }
+
+        NSString *title = DKGlassButtonTitle(button);
+        if (title.length == 0) continue;
+
+        NSInteger kind = [DKGlassValue(button, @"validIndex") integerValue];
+        // 标题走 image 槽（见 DKGlassTitleImage），title 置空，否则系统还会再排一行标签。
+        UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:nil
+                                                           image:DKGlassTitleImage(title)
+                                                             tag:items.count];
+        item.accessibilityLabel = title;   // 标题不再是文字，旁白与探针都靠它认人
+        [items addObject:item];
+        [kinds addObject:@(kind)];
+        [mirrored addObject:button];
+        [signature appendFormat:@"%@:%ld|", title, (long)kind];
+    }
+
+    gPlusButton = plus;
+
+    if (items.count == 0) return;
+    // 按钮引用每次都刷新：抖音可能重建出标题相同的新按钮，签名察觉不到，
+    // 拿着旧对象转发点击就会落空。items 与它同序等长，只在签名变化时才重建。
+    gItemButtons = mirrored;
+    if (![signature isEqualToString:gSignature]) {
+        gBar.items = items;
+        gItemKinds = kinds;
+        gSignature = [signature copy];
+    }
+
+    NSUInteger current = [gItemKinds indexOfObject:@((NSInteger)controller.selectedIndex)];
+    if (current != NSNotFound && current < gBar.items.count) {
+        UITabBarItem *item = gBar.items[current];
+        if (gBar.selectedItem != item) gBar.selectedItem = item;
+    }
+
+    DKGlassSyncBadges();
+}
+
+#pragma mark - 拍摄圆键
+
+// interactive 是 iOS 26 玻璃自带的触摸反馈（按压形变），不需要我们画任何东西；
+// capsuleConfiguration 作用在正方形 frame 上即为正圆。
+// 触发用铺满的透明 UIButton：touchUpInside 同时满足「轻点触发」与「长按后松手仍触发」。
+static UIVisualEffectView *DKGlassMakePlusKey(id target) API_AVAILABLE(ios(26.0)) {
+    UIGlassEffect *effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
+    effect.interactive = YES;
+    UIVisualEffectView *key = [[UIVisualEffectView alloc] initWithEffect:effect];
+    key.cornerConfiguration = [UICornerConfiguration capsuleConfiguration];
+
+    gPlusIcon = [[UIImageView alloc] init];
+    gPlusIcon.contentMode = UIViewContentModeScaleAspectFit;
+    gPlusIcon.tintColor = UIColor.labelColor;
+    [key.contentView addSubview:gPlusIcon];
+
+    gPlusHit = [UIButton buttonWithType:UIButtonTypeCustom];
+    [gPlusHit addTarget:target action:@selector(plusKeyDidTap)
+       forControlEvents:UIControlEventTouchUpInside];
+    [key.contentView addSubview:gPlusHit];
+    return key;
+}
+
+static UIView *DKGlassFindPlatter(UIView *root) {
+    for (UIView *subview in root.subviews) {
+        if ([NSStringFromClass(subview.class) containsString:kDKPlatterClass]) return subview;
+        UIView *found = DKGlassFindPlatter(subview);
+        if (found) return found;
+    }
+    return nil;
+}
+
+// 胶囊让出右侧一块，圆键补上。几何全部从 platter 实测：直径取它的高、纵向与它对齐、
+// 右边距取它自己的左内缩，这样胶囊与圆键的外边距对称。
+// platter 首帧还不存在时用兜底值，次帧即被真实值取代；写入先比较，不会形成布局环。
+static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar) {
+    UIView *platterView = DKGlassFindPlatter(gBar);
+    CGRect platter = platterView ? [platterView convertRect:platterView.bounds toView:gBar] : CGRectZero;
+    BOOL measured = CGRectGetHeight(platter) > 0.0;
+    CGFloat diameter = measured ? CGRectGetHeight(platter) : kDKPlatterFallbackHeight;
+    CGFloat inset = measured ? CGRectGetMinX(platter) : kDKPlatterFallbackInset;
+    CGFloat top = measured ? CGRectGetMinY(platter) : 0.0;
+
+    // 拍摄按钮被其他插件移除时圆键一并隐藏，胶囊占回整条宽度。
+    BOOL available = gPlusButton != nil;
+    if (gPlusKey.isHidden == available) gPlusKey.hidden = !available;
+
+    CGSize size = douyinBar.bounds.size;
+    CGFloat barWidth = available ? size.width - diameter - kDKPlusKeyGap : size.width;
+    CGRect barFrame = CGRectMake(0.0, 0.0, barWidth, size.height);
+    if (!CGRectEqualToRect(gBar.frame, barFrame)) gBar.frame = barFrame;
+    if (!available) return;
+
+    CGRect keyFrame = CGRectMake(size.width - inset - diameter, top, diameter, diameter);
+    if (!CGRectEqualToRect(gPlusKey.frame, keyFrame)) gPlusKey.frame = keyFrame;
+
+    CGRect bounds = gPlusKey.bounds;
+    CGRect iconFrame = CGRectInset(bounds, kDKPlusIconInset, kDKPlusIconInset);
+    if (!CGRectEqualToRect(gPlusIcon.frame, iconFrame)) gPlusIcon.frame = iconFrame;
+    if (!CGRectEqualToRect(gPlusHit.frame, bounds)) gPlusHit.frame = bounds;
+
+    DKGlassSyncPlusIcon(gPlusButton);
+}
+
+// 抖音自绘底栏的内容隐去：背景层与按钮都不可见、不接收触摸，交互交给覆盖其上的玻璃底栏。
+// 只动内容，不动底栏自身的 hidden/alpha——那是抖音的显隐状态，玻璃底栏靠继承跟随它。
+//
+// 驱动点是抖音底栏的 layoutSubviews，每帧都会走到这里，因此所有写入都必须先比较：
+// 值没变还照写会让 UITabBar 反复重新布局，把系统的选中状态与长按拖动手势冲掉。
+static void DKGlassSetDouyinContentVisible(AWENormalModeTabBar *douyinBar, NSArray *buttons, BOOL visible) {
+    float opacity = visible ? 1.0f : 0.0f;
+    NSArray *backdrops = @[ DKGlassValue(douyinBar, @"backgroundView") ?: NSNull.null,
+                            DKGlassValue(douyinBar, @"awe_blurView") ?: NSNull.null,
+                            DKGlassValue(douyinBar, @"separatorLine") ?: NSNull.null,
+                            DKGlassValue(douyinBar, @"skinContainerView") ?: NSNull.null ];
+    for (id backdrop in backdrops) {
+        if (![backdrop isKindOfClass:UIView.class]) continue;
+        CALayer *layer = ((UIView *)backdrop).layer;
+        if (layer.opacity != opacity) layer.opacity = opacity;
+    }
+    for (id button in buttons) {
+        if (![button isKindOfClass:UIView.class]) continue;
+        UIView *view = button;
+        if (view.layer.opacity != opacity) view.layer.opacity = opacity;
+        if (view.userInteractionEnabled != visible) view.userInteractionEnabled = visible;
+    }
+}
+
+#pragma mark - 挂载与拆除
+
+// 整个功能只在 iOS 26 及以上成立——低版本没有 UIGlassEffect，装上去只是一条没有玻璃的
+// UITabBar 盖住抖音底栏，比原生还差。故在此一处挡住，各 helper 用 API_AVAILABLE 标注。
+static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0)) {
+    gDouyinBar = douyinBar;
+
+    NSArray *buttons = DKGlassValue(douyinBar, @"tabBarButtons");
+    if (!DKPrefBool(DKKeyGlassTabBar)) {
+        if (!gBar) return;
+        DKGlassSetDouyinContentVisible(douyinBar, buttons, YES);
+        [gBar removeFromSuperview];
+        [gPlusKey removeFromSuperview];
+        gBar = nil;
+        gPlusKey = nil;
+        gPlusIcon = nil;
+        gPlusHit = nil;
+        gPlusButton = nil;
+        gPlusSourceIcon = nil;
+        gProxy = nil;
+        gItemKinds = nil;
+        gItemButtons = nil;
+        gSignature = nil;
+        return;
+    }
+    // 场景监听不撤：handler 只在 gBar 存在时才动手，重新开启开关后照旧生效。
+
+    UITabBarController *controller = DKGlassControllerForView(douyinBar);
+    if (!controller) return;
+
+    if (!gBar) {
+        gProxy = [[DKGlassTabBarProxy alloc] init];
+        gBar = [[UITabBar alloc] initWithFrame:douyinBar.bounds];
+        DKGlassApplyMaterial(gBar);
+        gBar.delegate = gProxy;
+        gPlusKey = DKGlassMakePlusKey(gProxy);
+    }
+
+    // 作为子视图挂在抖音底栏内：显隐/透明度/位置全部随父视图继承。
+    if (gBar.superview != douyinBar) [douyinBar addSubview:gBar];
+    if (gPlusKey.superview != douyinBar) [douyinBar addSubview:gPlusKey];
+    // 置顶兜底——其他插件遍历底栏子视图后可能改动层级。圆键在胶囊之上。
+    if (douyinBar.subviews.lastObject != gPlusKey) {
+        [douyinBar bringSubviewToFront:gBar];
+        [douyinBar bringSubviewToFront:gPlusKey];
+    }
+
+    DKGlassObserveStyle(douyinBar);
+    // 监听之外再逐帧比对一次：冷启动首帧与刚挂上时都没有 trait 变化事件可等。
+    DKGlassApplyStyle(douyinBar.window.windowScene.traitCollection.userInterfaceStyle);
+    DKGlassSyncItems(controller, buttons);
+    DKGlassLayoutGlass(douyinBar);
+    DKGlassSetDouyinContentVisible(douyinBar, buttons, NO);
+}
+
+#pragma mark - Hook
+
+%hook AWENormalModeTabBar
+
+- (void)layoutSubviews {
+    %orig;
+    if (@available(iOS 26.0, *)) DKGlassUpdate(self);
+}
+
+%end
+
+// 角标变化不一定伴随底栏重新布局（收到推送时就不会），故在抖音写入角标的两个入口上
+// 立即重跑一次同步。逐帧同步只兜稳态。
+%hook AWENormalModeTabBarGeneralButton
+
+- (id)p_showBadgeWithStyle:(unsigned long long)style count:(long long)count text:(id)text config:(id)config {
+    id result = %orig;
+    if (gBar) DKGlassSyncBadges();
+    return result;
+}
+
+- (void)hideBadge {
+    %orig;
+    if (gBar) DKGlassSyncBadges();
+}
+
+%end
+
+#pragma mark - 设置项注册
+
+%ctor {
+    DKSettingsRegisterItem(@"底栏", ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeSwitch(
+            DKKeyGlassTabBar,
+            @"悬浮玻璃底栏",
+            @"用 iOS 26 原生液态玻璃底栏顶替抖音底栏，标题与拍摄入口镜像自抖音"
+        );
+        // 开关一变立刻生效，不必等抖音下一次布局。
+        void (^origBlock)(void) = [item.switchChangedBlock copy];
+        item.switchChangedBlock = ^{
+            if (origBlock) origBlock();
+            AWENormalModeTabBar *bar = gDouyinBar;
+            if (@available(iOS 26.0, *)) {
+                if (bar) DKGlassUpdate(bar);
+            }
+        };
+        return item;
+    });
+}
