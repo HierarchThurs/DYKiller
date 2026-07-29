@@ -114,6 +114,26 @@ BOOL DKDetailPageFullscreenOn(DKDetailPage page) {
     return NO;
 }
 
+#pragma mark - 颜色
+
+BOOL DKColorIsOpaqueBlack(UIColor *color) {
+    if (!color) return NO;
+
+    CGFloat red = 0.0;
+    CGFloat green = 0.0;
+    CGFloat blue = 0.0;
+    CGFloat alpha = 0.0;
+    if ([color getRed:&red green:&green blue:&blue alpha:&alpha]) {
+        return red <= 0.02 && green <= 0.02 && blue <= 0.02 && alpha >= 0.98;
+    }
+
+    CGFloat white = 0.0;
+    if ([color getWhite:&white alpha:&alpha]) {
+        return white <= 0.02 && alpha >= 0.98;
+    }
+    return NO;
+}
+
 #pragma mark - Cell 几何
 
 UIView *DKCellContentView(UIView *view) {

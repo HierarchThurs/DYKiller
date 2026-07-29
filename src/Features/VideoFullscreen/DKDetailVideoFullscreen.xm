@@ -1,7 +1,7 @@
 //
 //  DKDetailVideoFullscreen.xm
-//  好友页与搜索页详情页：竖屏视频画面填满整屏，其他比例视频把抖音原生背景色延伸到底栏，
-//  并清除进度条底边的黑条。HUD 位置与尺寸全程不变。
+//  好友页与搜索页详情页：竖屏视频画面填满整屏，其他比例视频把抖音原生背景色延伸到底栏。
+//  HUD 位置与尺寸全程不变。进度条底边的黑垫层与首页共用一处处理，见 DKProgressUnderline。
 //
 //  竖屏全屏只拦截 AWEDPlayerViewController_Merge.view 的 frame 写入，视频子树随容器伸展，
 //  HUD 位于兄弟层不受影响。
@@ -27,24 +27,6 @@ static Class DKMergeClass(void) {
         cls = NSClassFromString(@"AWEDPlayerViewController_Merge");
     });
     return cls;
-}
-
-static BOOL DKColorIsOpaqueBlack(UIColor *color) {
-    if (!color) return NO;
-
-    CGFloat red = 0.0;
-    CGFloat green = 0.0;
-    CGFloat blue = 0.0;
-    CGFloat alpha = 0.0;
-    if ([color getRed:&red green:&green blue:&blue alpha:&alpha]) {
-        return red <= 0.02 && green <= 0.02 && blue <= 0.02 && alpha >= 0.98;
-    }
-
-    CGFloat white = 0.0;
-    if ([color getWhite:&white alpha:&alpha]) {
-        return white <= 0.02 && alpha >= 0.98;
-    }
-    return NO;
 }
 
 #pragma mark - 全屏目标判定
@@ -240,87 +222,6 @@ static void DKSyncCellBackdrop(AWEPlayVideoViewController *controller) {
 - (void)viewDidLayoutSubviews {
     %orig;
     DKSyncCellBackdrop(self);
-}
-
-%end
-
-#pragma mark - 进度条底边黑条
-
-static char kDKProgressUnderColorKey;
-static char kDKProgressUnderOpaqueKey;
-
-// 不能带位置锚点：相对滑杆的位置随进度条收放漂移，相对容器底边的位置随页面 HUD 高度而变。
-// 「容器直属 + 普通 UIView + 满宽 + 极薄 + 纯黑不透明」本身已足够唯一。
-static BOOL DKIsProgressUnderView(UIView *view, UIView *container) {
-    if (object_getClass(view) != [UIView class]) return NO;
-
-    CGRect frame = view.frame;
-    CGFloat height = CGRectGetHeight(frame);
-    return height > 0.0
-        && height <= 2.0 + kDKSignatureTolerance
-        && fabs(CGRectGetMinX(frame)) <= kDKSignatureTolerance
-        && fabs(CGRectGetWidth(frame) - CGRectGetWidth(container.bounds))
-            <= kDKSignatureTolerance
-        && DKColorIsOpaqueBlack(view.backgroundColor);
-}
-
-static void DKClearProgressUnderView(UIView *view) {
-    if (!objc_getAssociatedObject(view, &kDKProgressUnderColorKey)) {
-        objc_setAssociatedObject(
-            view,
-            &kDKProgressUnderColorKey,
-            view.backgroundColor,
-            OBJC_ASSOCIATION_RETAIN_NONATOMIC
-        );
-        objc_setAssociatedObject(
-            view,
-            &kDKProgressUnderOpaqueKey,
-            @(view.opaque),
-            OBJC_ASSOCIATION_RETAIN_NONATOMIC
-        );
-    }
-
-    if (![view.backgroundColor isEqual:[UIColor clearColor]]) {
-        view.backgroundColor = [UIColor clearColor];
-    }
-    if (view.opaque) view.opaque = NO;
-}
-
-static void DKRestoreProgressUnderView(UIView *view) {
-    UIColor *color = objc_getAssociatedObject(view, &kDKProgressUnderColorKey);
-    if (!color) return;
-
-    NSNumber *opaque = objc_getAssociatedObject(view, &kDKProgressUnderOpaqueKey);
-    view.backgroundColor = color;
-    view.opaque = opaque.boolValue;
-    objc_setAssociatedObject(
-        view,
-        &kDKProgressUnderColorKey,
-        nil,
-        OBJC_ASSOCIATION_RETAIN_NONATOMIC
-    );
-    objc_setAssociatedObject(
-        view,
-        &kDKProgressUnderOpaqueKey,
-        nil,
-        OBJC_ASSOCIATION_RETAIN_NONATOMIC
-    );
-}
-
-%hook AWEDPlayerProgressContainerView
-
-- (void)layoutSubviews {
-    %orig;
-
-    BOOL enabled = DKDetailPageFullscreenOn(DKDetailPageForResponder(self));
-    for (UIView *view in self.subviews) {
-        // 已接管的视图只按开关决定去留：进度条收起时签名会漂移，据此还原会让黑条重现。
-        if (objc_getAssociatedObject(view, &kDKProgressUnderColorKey)) {
-            enabled ? DKClearProgressUnderView(view) : DKRestoreProgressUnderView(view);
-        } else if (enabled && DKIsProgressUnderView(view, self)) {
-            DKClearProgressUnderView(view);
-        }
-    }
 }
 
 %end

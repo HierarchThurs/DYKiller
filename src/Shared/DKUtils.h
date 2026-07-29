@@ -29,6 +29,9 @@ DKDetailPage DKDetailPageForResponder(UIResponder *responder);
 /// 该页面的全屏开关是否开启。
 BOOL DKDetailPageFullscreenOn(DKDetailPage page);
 
+/// 该颜色是否为不透明纯黑（识别抖音铺的黑色垫层用）。
+BOOL DKColorIsOpaqueBlack(UIColor *color);
+
 /// 从 view 自身起向上找所在 Cell 的 contentView；不在 Cell 内返回 nil。
 UIView *DKCellContentView(UIView *view);
 
