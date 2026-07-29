@@ -12,6 +12,17 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
     exit 1
 fi
 
+# Theos resolves `latest` to the newest SDK across Xcode and ${THEOS}/sdks, and the theos/sdks
+# repo tops out at iPhoneOS16.5.sdk — so the effective SDK is whatever Xcode the runner ships.
+# Fail here with one clear line instead of a wall of `use of undeclared identifier` later.
+min_ios_sdk=${DYKILLER_MIN_IOS_SDK:-26}
+sdk_version=$(xcrun --sdk iphoneos --show-sdk-version)
+if [[ "${sdk_version%%.*}" -lt "${min_ios_sdk}" ]]; then
+    echo "DYKiller requires an iOS ${min_ios_sdk}+ SDK (UIGlassEffect / UICornerConfiguration); Xcode provides ${sdk_version}." >&2
+    echo "  runner: $(sw_vers -productVersion), xcode: $(xcodebuild -version | head -1)" >&2
+    exit 1
+fi
+
 brew install ldid make p7zip
 
 gnu_make_path="$(brew --prefix make)/libexec/gnubin"

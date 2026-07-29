@@ -18,7 +18,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    # Pinned on purpose: the glass tab bar needs an iOS 26 SDK, and the macos-latest label
+    # migrates gradually — falling back to macOS 15 breaks the build on undeclared symbols.
+    runs-on: macos-26
 
     steps:
       - uses: actions/checkout@v4
