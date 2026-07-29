@@ -323,8 +323,11 @@ static void DKGlassSyncBadges(void) {
 
 // 抖音的按钮数组本身就是视觉顺序，直接照抄；拍摄入口按 type 认出来单独交给圆键，
 // 其余按 validIndex 映射到 tab。
-static void DKGlassSyncItems(UITabBarController *controller, NSArray *buttons) {
-    NSMutableArray<UITabBarItem *> *items = [NSMutableArray array];
+//
+// 分两段走：先用一轮廉价循环算出内容签名，签名没变就不碰 items。渲染标题图并不便宜，
+// 而这个函数每次底栏布局都会跑一遍。返回值表示 items 是否真的重建过。
+static BOOL DKGlassSyncItems(UITabBarController *controller, NSArray *buttons) {
+    NSMutableArray<NSString *> *titles = [NSMutableArray array];
     NSMutableArray<NSNumber *> *kinds = [NSMutableArray array];
     NSMutableArray *mirrored = [NSMutableArray array];
     NSMutableString *signature = [NSMutableString string];
@@ -332,23 +335,20 @@ static void DKGlassSyncItems(UITabBarController *controller, NSArray *buttons) {
 
     for (id button in buttons) {
         UIView *view = [button isKindOfClass:UIView.class] ? button : nil;
-        if (view.isHidden) continue;   // 别的插件移除了这个按钮
+        // 别的插件移除按钮有三种写法：hidden、alpha 归零、摘出视图树，三种都要认，
+        // 漏掉哪种都会在胶囊里留下一个点不动的幽灵格子。
+        if (!view || view.isHidden || view.alpha < 0.01 || !view.superview) continue;
 
         if ([DKGlassValue(button, @"type") longLongValue] == kDKPlusButtonType) {
             plus = view;
-            continue;                  // 拍摄不进胶囊，见 DKGlassSyncPlusKey
+            continue;                  // 拍摄不进胶囊，见 DKGlassMakePlusKey
         }
 
         NSString *title = DKGlassButtonTitle(button);
         if (title.length == 0) continue;
 
         NSInteger kind = [DKGlassValue(button, @"validIndex") integerValue];
-        // 标题走 image 槽（见 DKGlassTitleImage），title 置空，否则系统还会再排一行标签。
-        UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:nil
-                                                           image:DKGlassTitleImage(title)
-                                                             tag:items.count];
-        item.accessibilityLabel = title;   // 标题不再是文字，旁白与探针都靠它认人
-        [items addObject:item];
+        [titles addObject:title];
         [kinds addObject:@(kind)];
         [mirrored addObject:button];
         [signature appendFormat:@"%@:%ld|", title, (long)kind];
@@ -356,11 +356,22 @@ static void DKGlassSyncItems(UITabBarController *controller, NSArray *buttons) {
 
     gPlusButton = plus;
 
-    if (items.count == 0) return;
+    if (mirrored.count == 0) return NO;
     // 按钮引用每次都刷新：抖音可能重建出标题相同的新按钮，签名察觉不到，
     // 拿着旧对象转发点击就会落空。items 与它同序等长，只在签名变化时才重建。
     gItemButtons = mirrored;
-    if (![signature isEqualToString:gSignature]) {
+
+    BOOL rebuilt = ![signature isEqualToString:gSignature];
+    if (rebuilt) {
+        NSMutableArray<UITabBarItem *> *items = [NSMutableArray arrayWithCapacity:titles.count];
+        [titles enumerateObjectsUsingBlock:^(NSString *title, NSUInteger index, __unused BOOL *stop) {
+            // 标题走 image 槽（见 DKGlassTitleImage），title 置空，否则系统还会再排一行标签。
+            UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:nil
+                                                               image:DKGlassTitleImage(title)
+                                                                 tag:(NSInteger)index];
+            item.accessibilityLabel = title;   // 标题不再是文字，旁白与探针都靠它认人
+            [items addObject:item];
+        }];
         gBar.items = items;
         gItemKinds = kinds;
         gSignature = [signature copy];
@@ -373,6 +384,29 @@ static void DKGlassSyncItems(UITabBarController *controller, NSArray *buttons) {
     }
 
     DKGlassSyncBadges();
+    return rebuilt;
+}
+
+// 其他插件（DYYY 等）改标题、隐红点都发生在按钮的子视图里，而 UIKit 的布局遍历是父先子后，
+// 抖音底栏那一轮读到的必然是它们改写前的旧值；改标题本身又不会让底栏重新布局，不补这一次
+// 就会一直停在旧内容。
+//
+// 延到主队列再读，而不是在子视图的 hook 里直接读：谁的 hook 在外层取决于插件加载顺序，
+// 只有等整轮布局结束才保证读到最终值。gPendingMirror 让一轮布局最多排一次。
+static BOOL gPendingMirror = NO;
+
+static void DKGlassScheduleMirror(void) {
+    if (gPendingMirror || !gBar) return;
+    gPendingMirror = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        gPendingMirror = NO;
+        AWENormalModeTabBar *bar = gDouyinBar;
+        UITabBarController *controller = bar ? DKGlassControllerForView(bar) : nil;
+        if (!gBar || !controller) return;
+        // 内容没变时纯空转；变了才重建 items，并要求底栏重排一次几何——胶囊宽度归 UIKit 算，
+        // 圆键位置得跟着它走。签名收敛后不再标脏，不会形成布局环。
+        if (DKGlassSyncItems(controller, DKGlassValue(bar, @"tabBarButtons"))) [bar setNeedsLayout];
+    });
 }
 
 #pragma mark - 拍摄圆键
@@ -542,6 +576,26 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
 - (void)hideBadge {
     %orig;
     if (gBar) DKGlassSyncBadges();
+}
+
+%end
+
+// 这两个子视图是其他插件改底栏内容的落点：DYYY 在 TextView 里写 label.text 改标题，
+// 在 BadgeContainerView 里把 DUXBadge 隐掉。见 DKGlassScheduleMirror。
+%hook AWENormalModeTabBarTextView
+
+- (void)layoutSubviews {
+    %orig;
+    DKGlassScheduleMirror();
+}
+
+%end
+
+%hook AWENormalModeTabBarBadgeContainerView
+
+- (void)layoutSubviews {
+    %orig;
+    DKGlassScheduleMirror();
 }
 
 %end
