@@ -335,9 +335,8 @@ static BOOL DKGlassSyncItems(UITabBarController *controller, NSArray *buttons) {
 
     for (id button in buttons) {
         UIView *view = [button isKindOfClass:UIView.class] ? button : nil;
-        // 别的插件移除按钮有三种写法：hidden、alpha 归零、摘出视图树，三种都要认，
-        // 漏掉哪种都会在胶囊里留下一个点不动的幽灵格子。
-        if (!view || view.isHidden || view.alpha < 0.01 || !view.superview) continue;
+        // 源按钮的 opacity 会被本功能置零，不能作为存在性信号；显隐与父视图关系保留原始语义。
+        if (!view || view.isHidden || !view.superview) continue;
 
         if ([DKGlassValue(button, @"type") longLongValue] == kDKPlusButtonType) {
             plus = view;
