@@ -25,6 +25,14 @@ static NSString *const DKKeySearchVideoFullscreen = @"DYKillerSearchVideoFullscr
 
 static NSString *const DKKeyCommentHideBottomBar = @"DYKillerHideCommentBottomBar";
 
+#pragma mark - 功能组：首页
+
+static NSString *const DKKeyFeedVideoFullscreen = @"DYKillerFeedVideoFullscreen";
+
+#pragma mark - 功能组：底栏
+
+static NSString *const DKKeyGlassTabBar = @"DYKillerGlassTabBar";
+
 #pragma mark - 功能组：播放体验
 
 static NSString *const DKKeyDetailHideBottomBar = @"DYKillerHideChatVideoBottomBar";

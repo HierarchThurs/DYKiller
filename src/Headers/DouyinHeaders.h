@@ -60,6 +60,16 @@
 @property (nonatomic, copy) NSString *referString;
 @end
 
+// 首页与朋友页共用的 feed 表；被底栏压掉一个底栏高，是首页全屏的源头层。
+@interface AWEFeedTableView : UITableView
+@end
+
+#pragma mark - 底栏功能组用到的类
+
+// 抖音自绘底栏。它自身的 hidden/alpha 是抖音全部显隐逻辑的唯一汇聚点，可直接当镜像源。
+@interface AWENormalModeTabBar : UITabBar
+@end
+
 #pragma mark - 评论区功能组用到的类
 
 @interface AWECommentContainerViewController : UIViewController
