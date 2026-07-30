@@ -141,12 +141,16 @@ static void DKCollectSlotCandidates(UIView *view, NSUInteger depth, NSMutableArr
     }
 }
 
-static UIView *DKPanelSlot(AWECommentContainerViewController *controller) {
+// 宿主按 UIViewController 收：放大到全屏时抖音把**同一个** AWECommentContainerViewController
+// 实例接管进全屏容器（beta11 导出实证：容器与 inner VC 地址在半屏 / 全屏完全一致，只是 inner
+// 的 frame 从 {0,296.32,428,629.68} 变成 {0,47,428,879}），所以上面那个钩子在两种状态下都会跑，
+// 不需要再给全屏容器挂一层。槽位判据是结构不是类名，认不出就什么都不做。
+static UIView *DKPanelSlot(UIViewController *controller) {
     UIViewController *inner = DKChildControllerNamed(controller, kDKInnerControllerClass);
     return inner.isViewLoaded ? inner.view : nil;
 }
 
-static UIView *DKInputContainer(AWECommentContainerViewController *controller) {
+static UIView *DKInputContainer(UIViewController *controller) {
     Class containerClass = NSClassFromString(kDKInputContainerClass);
     if (!containerClass || !controller.isViewLoaded) return nil;
     for (UIView *subview in controller.view.subviews) {
@@ -302,7 +306,7 @@ static void DKMaterializeSlotGlass(UIView *slot) API_AVAILABLE(ios(26.0)) {
     if (glass) DKMaterializeGlass(glass);
 }
 
-static void DKCommentGlassSync(AWECommentContainerViewController *controller) API_AVAILABLE(ios(26.0)) {
+static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(26.0)) {
     BOOL enabled = DKPrefBool(DKKeyCommentGlass);
     if (!enabled && !gEverAttached) return;
 
