@@ -35,6 +35,24 @@ BOOL DKRectsClose(CGRect lhs, CGRect rhs);
 /// 视频容器两处重钉的命中数：willDisplay（model 绑定后重算）与布局后兜底。供探针核对。
 NSString *DKVideoContainerPinStats(void);
 
+/// 拦下的「把视频挪走」写入数（来意 origin 不在原点，评论区缩放是唯一来源）。供探针核对。
+/// 评论面板开合、拖拽、缩放进出全屏时视频不动，靠的就是这一条。
+NSString *DKVideoContainerMoveStats(void);
+
+/// 内嵌画中画闸门被关掉的次数。实现在 Comment/DKCommentFullBackdrop.xm。
+/// 恒为 0 说明这个钩子没被调用（签名对不上），窗口作用域守卫仍在兜着。
+NSString *DKCommentPiPGateStats(void);
+
+/// 全屏评论容器此刻在不在屏。实现在 Comment/DKCommentFullBackdrop.xm。
+BOOL DKCommentFullPanelOnScreen(void);
+
+/// 把弹幕切回当前状态该有的可见性；全屏评论区进出时调用。
+/// 实现在 Comment/DKCommentDanmaku.xm，只动接管过的那一层，不做树遍历。
+void DKCommentDanmakuSyncForFullPanel(void);
+
+/// 弹幕接管的命中数与当前可见性。供探针核对。
+NSString *DKCommentDanmakuStats(void);
+
 /// 图文要延伸到底栏的底色（整页背景渐变的末色）；取不到返回 nil。实现与调试探针共用。
 /// 参数是 RichContentContainerViewController，此处按 UIViewController 收以免头文件互相依赖。
 UIColor *DKRichBackdropColor(UIViewController *container);

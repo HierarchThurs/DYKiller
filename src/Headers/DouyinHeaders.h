@@ -95,8 +95,22 @@
 @interface AWECommentContainerViewController : UIViewController
 @end
 
-// 评论区放大到全屏时被 push 上来的容器；其 view 自带不透明黑底，且 push 会把下层视频视图移出层级。
+// 评论区放大到全屏时被 push 上来的容器。它带整套 transition_* 协议方法，配 AWECommentFullScreenZoomTransition
+// 与 CommentFullScreenZoomAnimator——是自定义交互式转场的目标，不能拦下这次 push 改用控制器包含：
+// 转场框架在 push 之前已建好 context 并禁用交互，吞掉 %orig 它的完成回调就永远不来。
 @interface AWECommentFullScreenContainerViewController : UIViewController
+@end
+
+// 视频侧的评论面板控制器。内嵌画中画（全屏评论区里把视频交出去、缩成右上角小窗）归它管，
+// enableShowInnerPiPWhenFullScreen 是这条功能的唯一闸门：enter / show / exit /
+// tryToPause / tryToPlay / viewDidLoad / commentVC 每个入口都先问它。
+@interface AWEPlayInteractionCommentPanelController : NSObject
+- (BOOL)enableShowInnerPiPWhenFullScreen;
+@end
+
+// 弹幕渲染层。抖音开评论面板时就是把这一层的 alpha 压成 0（实测半屏 / 全屏都是），
+// 容器与各条弹幕视图本身不动。
+@interface DDanmakuPlayerView : UIView
 @end
 
 @interface AWEListKitMagicCollectionView : UICollectionView
