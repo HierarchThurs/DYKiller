@@ -11,6 +11,7 @@
 #import "DKUtils.h"
 #import "DKDebugCapture.h"
 #import "DKDebugExport.h"
+#import "DKTabBarProbe.h"
 
 @interface DKDebugOverlayView : UIView
 @end
@@ -88,6 +89,9 @@ static void DKShareZip(NSURL *zipURL, UIViewController *presenter, UIView *sourc
 static void DKStartExport(DKDebugExportContext *context, BOOL includeAppClasses) {
     UIViewController *presenter = context.presenter ?: DKDebugController;
     if (!presenter) return;
+
+    // 探针读 UIKit，必须在主线程生成后塞进上下文；后台任务只做序列化与压缩。
+    context.probeText = DKTabBarProbeReport() ?: @"";
 
     UIAlertController *progressAlert = [UIAlertController alertControllerWithTitle:@"DYKiller"
                                                                            message:@"准备导出..."

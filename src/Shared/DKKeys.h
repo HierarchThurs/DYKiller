@@ -13,21 +13,15 @@
 #error DK_VERSION must be injected by Makefile from control Version.
 #endif
 
-#pragma mark - 功能组：聊天页视频
+#pragma mark - 功能组：视频全屏
 
-static NSString *const DKKeyChatVideoFullscreen = @"DYKillerChatVideoFullscreen";
-
-#pragma mark - 功能组：搜索页视频
-
-static NSString *const DKKeySearchVideoFullscreen = @"DYKillerSearchVideoFullscreen";
+// 首页、朋友页、好友聊天页、搜索页、其他用户作品页统一由这一个开关控制。
+static NSString *const DKKeyVideoFullscreen = @"DYKillerVideoFullscreen";
 
 #pragma mark - 功能组：评论区
 
 static NSString *const DKKeyCommentHideBottomBar = @"DYKillerHideCommentBottomBar";
-
-#pragma mark - 功能组：首页
-
-static NSString *const DKKeyFeedVideoFullscreen = @"DYKillerFeedVideoFullscreen";
+static NSString *const DKKeyCommentGlass         = @"DYKillerCommentGlass";
 
 #pragma mark - 功能组：底栏
 

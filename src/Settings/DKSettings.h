@@ -12,10 +12,19 @@
 /// 打开设置页时调用，返回一个新构建的设置项（以反映当前开关状态）。
 typedef AWESettingItemModel *(^DKSettingItemBuilder)(void);
 
+// 实现分散在 .xm（ObjC++）与 .m（ObjC）两种编译单元里，需统一为 C 链接以正确链接。
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /// 把一个设置项注册到某分区。相同 header 的项归入同一分区，按注册顺序排列。
 void DKSettingsRegisterItem(NSString *sectionHeader, DKSettingItemBuilder builder);
 
 /// 生成一个开关型设置项（identifier 即 NSUserDefaults 键）。
 AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *detail);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* DKSettings_h */

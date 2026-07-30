@@ -23,6 +23,8 @@
 @property (nonatomic, strong) NSData *screenshotPNG;
 @property (nonatomic, copy) NSString *summary;
 @property (nonatomic, strong) NSArray<NSString *> *pageClassNames;
+/// 主线程生成的探针文本（probe/tabbar.txt）；后台导出只落盘，不再读 UIKit。
+@property (nonatomic, copy) NSString *probeText;
 @property (nonatomic, weak) UIView *sourceView;
 @property (nonatomic, weak) UIViewController *presenter;
 @end

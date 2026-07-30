@@ -60,8 +60,28 @@
 @property (nonatomic, copy) NSString *referString;
 @end
 
-// 首页与朋友页共用的 feed 表；被底栏压掉一个底栏高，是首页全屏的源头层。
-@interface AWEFeedTableView : UITableView
+// 图文整页的背景层，挂在图文列表控制器 view 的直接子层，与内容类型无关。
+// +layerClass 是 CAGradientLayer；全屏时用 transform 纵向拉伸以延伸到底栏（不改 frame）。
+@interface AWEKnowledgeGradientView : UIView
+@end
+
+// 图文横滑内容集合；完成 visibleCells 布局后同步贴底压暗，并解除其祖先链上的实际裁剪点。
+@interface AWEStoryContainerCollectionView : UICollectionView
+@end
+
+// 图文的顶层容器控制器。首页、朋友页、好友聊天页三种图文列表实现都挂在它下面，
+// 且全部类导出里只有它声明 updateShrinkState:——那是图文版的 videoDidShrink。
+@interface RichContentContainerViewController : UIViewController
+@property (nonatomic, readonly, strong) UIViewController *contentListViewController;  // 图文列表实现，背景渐变挂在它 view 下
+- (void)updateShrinkState:(BOOL)shrink insets:(UIEdgeInsets)insets animated:(BOOL)animated;
+@end
+
+// 视频表的基类。首页/朋友页的 AWEFeedTableView 与好友聊天/搜索/其他用户主页的
+// AWEAwemeDetailTableView 都从它派生；被底栏压掉一个底栏高时就是视频不全屏的源头层。
+@interface AWEFeedDataSafeTableView : UITableView
+@end
+
+@interface AWEFeedTableView : AWEFeedDataSafeTableView              // 首页 / 朋友页
 @end
 
 #pragma mark - 底栏功能组用到的类
@@ -73,6 +93,10 @@
 #pragma mark - 评论区功能组用到的类
 
 @interface AWECommentContainerViewController : UIViewController
+@end
+
+// 评论区放大到全屏时被 push 上来的容器；其 view 自带不透明黑底，且 push 会把下层视频视图移出层级。
+@interface AWECommentFullScreenContainerViewController : UIViewController
 @end
 
 @interface AWEListKitMagicCollectionView : UICollectionView

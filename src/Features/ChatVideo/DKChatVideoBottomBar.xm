@@ -9,6 +9,7 @@
 //
 
 #import "DouyinHeaders.h"
+#import "DKVideoFullscreen.h"
 #import "DKUtils.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
@@ -99,7 +100,7 @@ static void DKApplyBarBackground(UIView *view, BOOL clear) {
 - (void)viewDidLayoutSubviews {
     %orig;
 
-    BOOL clear = DKPrefBool(DKKeyChatVideoFullscreen) || DKShouldHideDetailBottomBar();
+    BOOL clear = DKVideoFullscreenOn() || DKShouldHideDetailBottomBar();
     DKApplyBarBackground(self.view, clear);
 
     if (DKShouldHideDetailBottomBar()) {
@@ -148,9 +149,9 @@ static UIView *DKBarFillView(UIView *root, NSUInteger depth) {
 }
 
 // 移除开关不参与判定：那种情况下整条底栏已被置为不可见，背景是什么已无意义。
+// 全屏收敛成单一开关后不再按页限定：视频在哪一页都铺满，底栏底色就在哪一页都该让开。
 static void DKApplyDetailBarTransparency(AWECommentInputBackgroundView *bar) {
-    BOOL clear = DKPrefBool(DKKeySearchVideoFullscreen)
-        && DKDetailPageForResponder(bar) == DKDetailPageSearch;
+    BOOL clear = DKVideoFullscreenOn();
     UIView *fill = DKBarFillView(bar, 1);
     if (fill) DKApplyBarBackground(fill, clear);
 }

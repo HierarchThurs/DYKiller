@@ -114,6 +114,8 @@ static UITabBarController *DKGlassControllerForView(UIView *view) {
 //
 // UIWindowScene 的 trait 由系统直接下发，而 overrideUserInterfaceStyle 只存在于
 // UIView / UIViewController / UIWindow 上——抖音没有 API 能盖住场景那一层，取它即得真值。
+//
+// 评论面板的玻璃同源，见 DKCommentGlass.xm 的 DKApplyGlassStyle。
 static void DKGlassApplyStyle(UIUserInterfaceStyle style) {
     if (style == UIUserInterfaceStyleUnspecified) return;
     if (gBar && gBar.overrideUserInterfaceStyle != style) gBar.overrideUserInterfaceStyle = style;

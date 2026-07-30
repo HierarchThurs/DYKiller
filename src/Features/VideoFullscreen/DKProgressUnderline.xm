@@ -6,7 +6,7 @@
 //  面对的是同一条黑边、同一套识别与还原逻辑，只是作用域来源不同，故合并在此。
 //
 
-#import "DKFeedVideoFullscreen.h"
+#import "DKVideoFullscreen.h"
 #import "DouyinHeaders.h"
 #import "DKUtils.h"
 #import <objc/runtime.h>
@@ -18,21 +18,24 @@ static const CGFloat kDKUnderlineTolerance = 0.5;
 static char kDKUnderlineColorKey;
 static char kDKUnderlineOpaqueKey;
 
-// 签名：容器直属 + 普通 UIView + 满宽 + 极薄 + 紧贴容器底边 + 有背景色。
-// 不用屏幕坐标做锚点（随页面 HUD 高度而变），但「贴容器底边」是稳定的相对关系：
-// 实测该层 y 198.1 + 高 2 = 200.1，容器高 200，正好贴底；而进度条轨道既不满宽也不贴底。
-// 不再限定纯黑——全屏态下任何一条贴着容器底边的满宽薄垫层都是多余的。
+// 签名：容器直属 + 普通 UIView + 满宽 + 极薄 + 底色不透明。
+//
+// 不用「贴容器底边」做锚点：beta6 实测该层是 {0, 115.1, 428, 2}、容器高 200，
+// 它贴的是进度条轨道底边（轨道 y 111.1 + 高 4 = 115.1）而不是容器底边，
+// 位置随进度条收放而漂移。改用「底色不透明」——容器里另一条细线是 rgba(1,1,1,0.15)
+// 的半透明分隔线，透明度足以把两者分开，且不依赖任何坐标。
 static BOOL DKIsUnderlineView(UIView *view, UIView *container) {
     if (object_getClass(view) != [UIView class]) return NO;
-    if (!view.backgroundColor) return NO;
+
+    UIColor *color = view.backgroundColor;
+    if (!color || CGColorGetAlpha(color.CGColor) < 0.99) return NO;
 
     CGRect frame = view.frame;
     CGFloat height = CGRectGetHeight(frame);
     return height > 0.0
         && height <= 2.0 + kDKUnderlineTolerance
         && fabs(CGRectGetMinX(frame)) <= kDKUnderlineTolerance
-        && fabs(CGRectGetWidth(frame) - CGRectGetWidth(container.bounds)) <= kDKUnderlineTolerance
-        && CGRectGetMaxY(frame) >= CGRectGetHeight(container.bounds) - kDKUnderlineTolerance;
+        && fabs(CGRectGetWidth(frame) - CGRectGetWidth(container.bounds)) <= kDKUnderlineTolerance;
 }
 
 static void DKClearUnderline(UIView *view) {
@@ -64,8 +67,7 @@ static void DKRestoreUnderline(UIView *view) {
 - (void)layoutSubviews {
     %orig;
 
-    BOOL enabled = DKDetailPageFullscreenOn(DKDetailPageForResponder(self))
-        || DKFeedFullscreenActiveForView(self);
+    BOOL enabled = DKVideoFullscreenOn();
 
     for (UIView *view in self.subviews) {
         // 已接管的视图只按开关决定去留：进度条收起时签名会漂移，据此还原会让黑边重现。

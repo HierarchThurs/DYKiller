@@ -9,7 +9,6 @@
 #import "DKKeys.h"
 #import "DKZipWriter.h"
 #import "DKClassDump.h"
-#import "DKTabBarProbe.h"
 #import <mach-o/dyld.h>
 #import <objc/runtime.h>
 
@@ -164,9 +163,10 @@ NSURL *DKDebugCreateExportZip(DKDebugExportContext *context,
     progress(@"导出本页类头文件...");
     DKWritePageClasses(rootDir, context.pageClassNames ?: @[], files, &error);
 
-    progress(@"采集底栏探针...");
+    // 探针文本必须在主线程已写入 context.probeText；后台只序列化，禁止再读 UIKit。
+    progress(@"写入探针...");
     DKWriteString([rootDir stringByAppendingPathComponent:@"probe/tabbar.txt"],
-                  DKTabBarProbeReport() ?: @"", files, &error);
+                  context.probeText ?: @"", files, &error);
 
     if (includeAppClasses) {
         progress(@"导出 runtime image 索引...");
