@@ -88,7 +88,7 @@ static BOOL DKIsDebugWindow(UIWindow *window) {
     return [cls hasPrefix:@"DKDebug"] || [cls hasPrefix:@"FLEX"];
 }
 
-static NSArray<UIWindow *> *DKActiveWindows(void) {
+NSArray<UIWindow *> *DKDebugActiveWindows(void) {
     NSMutableArray<UIWindow *> *windows = [NSMutableArray array];
     if (@available(iOS 13.0, *)) {
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
@@ -115,7 +115,7 @@ static NSArray<UIWindow *> *DKActiveWindows(void) {
 }
 
 UIWindow *DKDebugTargetWindow(void) {
-    NSArray<UIWindow *> *windows = DKActiveWindows();
+    NSArray<UIWindow *> *windows = DKDebugActiveWindows();
     for (UIWindow *window in windows) if (window.isKeyWindow) return window;
     return windows.firstObject;
 }
@@ -360,11 +360,24 @@ static void DKAppendVCText(UIViewController *vc, NSUInteger depth, NSMutableStri
     }
 }
 
-static NSData *DKScreenshotPNG(UIWindow *window) {
-    if (!window) return NSData.data;
-    UIGraphicsBeginImageContextWithOptions(window.bounds.size, NO, 0);
-    BOOL drew = [window drawViewHierarchyInRect:window.bounds afterScreenUpdates:NO];
-    if (!drew) [window.layer renderInContext:UIGraphicsGetCurrentContext()];
+// 按 windowLevel 从低到高逐个画，截图才等于用户真正看到的画面。
+// 只画 key 窗口会漏掉浮层：抖音的内嵌画中画 AWEDPlayerPiPWindow 在 windowLevel 2000，
+// 它铺满全屏时导出截图却一切正常，排查会整整绕一轮。
+static NSData *DKScreenshotPNG(UIWindow *targetWindow) {
+    if (!targetWindow) return NSData.data;
+
+    NSArray<UIWindow *> *windows =
+        [DKDebugActiveWindows() sortedArrayUsingComparator:^NSComparisonResult(UIWindow *a, UIWindow *b) {
+            if (a.windowLevel == b.windowLevel) return NSOrderedSame;
+            return a.windowLevel < b.windowLevel ? NSOrderedAscending : NSOrderedDescending;
+        }];
+    if (windows.count == 0) windows = @[ targetWindow ];
+
+    UIGraphicsBeginImageContextWithOptions(targetWindow.bounds.size, NO, 0);
+    for (UIWindow *window in windows) {
+        BOOL drew = [window drawViewHierarchyInRect:window.bounds afterScreenUpdates:NO];
+        if (!drew) [window.layer renderInContext:UIGraphicsGetCurrentContext()];
+    }
     UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
     return image ? UIImagePNGRepresentation(image) : NSData.data;
@@ -402,7 +415,7 @@ static void DKCollectPageClassesFromVC(UIViewController *vc, NSMutableSet<NSStri
 
 DKDebugExportContext *DKDebugCaptureContext(UIWindow *targetWindow, CGPoint point, UIView *selectedView) {
     DKDebugExportContext *context = [DKDebugExportContext new];
-    NSArray<UIWindow *> *windows = DKActiveWindows();
+    NSArray<UIWindow *> *windows = DKDebugActiveWindows();
     NSMutableArray *windowsJSON = [NSMutableArray array];
     NSMutableArray *treeJSON = [NSMutableArray array];
     NSMutableArray *layersJSON = [NSMutableArray array];

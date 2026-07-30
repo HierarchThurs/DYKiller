@@ -33,6 +33,11 @@
 extern "C" {
 #endif
 
+/// 前台全部可见窗口（排除调试自身窗口），按系统返回顺序。
+/// 探针必须逐个看：浮层窗口（如 AWEDPlayerPiPWindow，windowLevel 2000）盖在主窗口之上，
+/// 只看 key 窗口会把它当成不存在。
+NSArray<UIWindow *> *DKDebugActiveWindows(void);
+
 /// 前台 key 窗口（排除调试自身窗口）。
 UIWindow *DKDebugTargetWindow(void);
 

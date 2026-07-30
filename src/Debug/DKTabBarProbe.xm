@@ -183,6 +183,44 @@ static void DKProbeAppendPlusKey(NSMutableString *out) {
     }
 }
 
+// 所有活动窗口。浮层窗口盖在主窗口之上，而探针其余各节与导出的 view-tree 都只看主窗口——
+// beta12「播放时进全屏评论区，评论内容全没了」就败在这个盲区：抖音的内嵌画中画
+// AWEDPlayerPiPWindow（windowLevel 2000）被钉位撑成全屏盖住了评论区，主窗口那边一切正常。
+static void DKProbeAppendWindows(NSMutableString *out) {
+    Class playerCls = NSClassFromString(@"AWEDPlayerViewController_Merge");
+
+    for (UIWindow *window in DKDebugActiveWindows()) {
+        [out appendFormat:@"%@  level=%.0f%@  frame=%@  root=%@\n",
+         DKProbeDesc(window), window.windowLevel,
+         window.isKeyWindow ? @"（key）" : @"",
+         NSStringFromCGRect(window.frame),
+         window.rootViewController ? NSStringFromClass(window.rootViewController.class) : @"(nil)"];
+
+        if (window.windowLevel == UIWindowLevelNormal) continue;
+
+        // 浮层窗口里若也有视频容器，它不在几何作用域内，frame 该保持抖音自己的值。
+        NSMutableArray<UIView *> *queue = [NSMutableArray arrayWithObject:window];
+        while (queue.count > 0) {
+            UIView *node = queue.firstObject;
+            [queue removeObjectAtIndex:0];
+
+            if (playerCls && [node.nextResponder isKindOfClass:playerCls]) {
+                [out appendFormat:@"    内含播放器容器 = %@ frame=%@  父视图=%@（不在几何作用域）\n",
+                 DKProbeDesc(node), NSStringFromCGRect(node.frame),
+                 NSStringFromCGRect(node.superview.bounds)];
+                break;
+            }
+            [queue addObjectsFromArray:node.subviews];
+        }
+    }
+
+    // 闸门生效的判据是这一行与上面的窗口列表一起看：命中 > 0 且列表里没有 AWEDPlayerPiPWindow
+    // 才算关住；命中恒为 0 说明钩子没被调用，签名得重找。
+    [out appendFormat:@"%@\n", DKCommentPiPGateStats()];
+    // 半屏评论区那份应是命中 > 0 且 alpha=1；全屏那份 alpha 应回到 0（抖音原生行为）。
+    [out appendFormat:@"%@\n", DKCommentDanmakuStats()];
+}
+
 // 评论面板玻璃：验收 Clear 材质、alpha、场景 trait 与有效圆角。
 // 只检查槽位现有子树，不访问 glass.contentView。
 static void DKProbeAppendCommentGlass(NSMutableString *out) {
@@ -234,6 +272,65 @@ static void DKProbeAppendCommentGlass(NSMutableString *out) {
          [glass effectiveRadiusForCorner:UIRectCornerBottomLeft],
          [glass effectiveRadiusForCorner:UIRectCornerBottomRight]];
     }
+}
+
+// 评论面板缩放（半屏 → 全屏）。验收「玻璃背后是不是视频那一页」，判据是两条同时成立：
+// 视频子树重新进入层级 + 全屏容器底色已清。只满足一条都看不见视频，报告要能区分是哪一条没成。
+// 背后 HUD 打原始读数不下结论：抖音自己在评论态藏的是 HUD 里的元素，根视图本身并不隐藏。
+static void DKProbeAppendCommentZoom(NSMutableString *out) {
+    Class fullCls = NSClassFromString(@"AWECommentFullScreenContainerViewController");
+    Class playerCls = NSClassFromString(@"AWEDPlayerViewController_Merge");
+    Class hudCls = NSClassFromString(@"AWEPlayInteractionViewController");
+
+    UIView *fullView = nil;
+    UIView *playerView = nil;
+    UIView *hudView = nil;
+    NSMutableArray<UIView *> *queue =
+        [NSMutableArray arrayWithObject:DKDebugTargetWindow()];
+    while (queue.count > 0) {
+        UIView *node = queue.firstObject;
+        [queue removeObjectAtIndex:0];
+
+        UIResponder *owner = node.nextResponder;
+        if (!fullView && fullCls && [owner isKindOfClass:fullCls]) fullView = node;
+        if (!playerView && playerCls && [owner isKindOfClass:playerCls]) playerView = node;
+        if (!hudView && hudCls && [owner isKindOfClass:hudCls]) hudView = node;
+        [queue addObjectsFromArray:node.subviews];
+    }
+
+    [out appendFormat:@"全屏评论容器     = %@\n", DKProbeDesc(fullView.nextResponder)];
+    if (fullView) {
+        UIViewController *full = (UIViewController *)fullView.nextResponder;
+        UIColor *color = fullView.backgroundColor;
+        BOOL cleared = !color || CGColorGetAlpha(color.CGColor) < 0.01;
+
+        [out appendFormat:@"  frame=%@  clips=%@\n",
+         NSStringFromCGRect(fullView.frame), fullView.clipsToBounds ? @"YES" : @"NO"];
+        [out appendFormat:@"  容器底色         = %@%@\n", DKProbeColorDesc(color),
+         cleared ? @"（已清）" : @"（未接管，背后被它挡住）"];
+
+        NSMutableArray<NSString *> *children = [NSMutableArray array];
+        for (UIViewController *child in full.childViewControllers) {
+            [children addObject:NSStringFromClass(child.class)];
+        }
+        [out appendFormat:@"  子控制器         = %@\n",
+         children.count ? [children componentsJoinedByString:@"、"] : @"(无)"];
+
+        UIView *slot = DKCommentGlassCurrentSlot();
+        [out appendFormat:@"  面板槽位在其内   = %@  槽位 frame=%@\n",
+         (slot && [slot isDescendantOfView:fullView]) ? @"是" : @"否",
+         slot ? NSStringFromCGRect(slot.frame) : @"—"];
+
+        [out appendFormat:@"  背后垫层         = %@\n",
+         (playerView && cleared) ? @"已垫回（玻璃背后是视频那一页）"
+            : (playerView ? @"视频在场但容器底色没清" : @"视频子树不在层级里")];
+        [out appendFormat:@"  背后 HUD         = %@\n",
+         hudView ? [NSString stringWithFormat:@"%@ frame=%@ hidden=%@ alpha=%.2f",
+                    DKProbeDesc(hudView), NSStringFromCGRect(hudView.frame),
+                    hudView.isHidden ? @"YES" : @"NO", hudView.alpha]
+                 : @"(不在层级里)"];
+    }
+    [out appendFormat:@"%@\n", DKVideoContainerMoveStats()];
 }
 
 // 玻璃底栏显隐的镜像源。抖音那套显隐逻辑最终都汇聚到这里的 hidden/alpha。
@@ -479,8 +576,15 @@ NSString *DKTabBarProbeReport(void) {
     [out appendFormat:@"线程       : 主线程\n"];
 
     // 评论面板与底栏互斥可见，这一节放在底栏之前，避免被「没找到 UITabBarController」挡掉。
+    // 窗口这一节排在最前：其余各节与导出的 view-tree / 截图都只看主窗口，浮层窗口是盲区。
+    [out appendString:@"\n----- 窗口 -----\n"];
+    DKProbeAppendWindows(out);
+
     [out appendString:@"\n----- 评论面板玻璃 -----\n"];
     DKProbeAppendCommentGlass(out);
+
+    [out appendString:@"\n----- 评论面板缩放 -----\n"];
+    DKProbeAppendCommentZoom(out);
 
     [out appendString:@"\n----- 视频冻结 -----\n"];
     DKProbeAppendFrozenMedia(out);
