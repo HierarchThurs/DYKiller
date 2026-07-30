@@ -96,6 +96,16 @@ static BOOL DKMergeCanCoverScreen(AWEDPlayerViewController_Merge *merge) {
 CGRect DKVideoContainerTargetFrame(UIView *view) {
     if (!DKVideoFullscreenOn() && !DKCommentFreezeOn()) return CGRectNull;
 
+    // 作用域只到主窗口：浮层窗口（画中画、横屏播放器）自带一整套 Merge / PlayVideo 层级，
+    // 与 feed 里那套长得一样，钉成满幅会把小窗撑成盖住整页的全屏播放器。
+    // 取不到 window（布局早期还没入树）时按在作用域内处理，与其余判据一致。
+    //
+    // 这条守卫**挡不住入窗前的那一次写入**：抖音在把播放器加进 PiP 窗口之前就写好 frame，
+    // 那一刻 window 为 nil，写完之后也不会再写第二次（beta13 实测两份导出一对一错）。
+    // 评论面板那条画中画因此改为直接关掉功能本身，见 Comment/DKCommentFullBackdrop.xm。
+    UIWindow *window = view.window;
+    if (window && window.windowLevel != UIWindowLevelNormal) return CGRectNull;
+
     UIView *parent = view.superview;
     CGFloat width = CGRectGetWidth(parent.bounds);
     CGFloat height = CGRectGetHeight(parent.bounds);
@@ -116,6 +126,15 @@ BOOL DKRectsClose(CGRect lhs, CGRect rhs) {
         && fabs(CGRectGetHeight(lhs) - CGRectGetHeight(rhs)) <= kDKGeometryTolerance;
 }
 
+// 钉位目标恒在原点，所以来意的 origin 不在原点就是有人要把视频整体挪走——评论区缩放是唯一来源。
+// 与「容器还没铺满」那种写入区分开：评论面板开合、拖拽、缩放进出全屏时视频不动，就是这一条在扛，
+// 39.8.0 实测每页 27~36 次。
+static NSUInteger gMoveWrites = 0;
+
+NSString *DKVideoContainerMoveStats(void) {
+    return [NSString stringWithFormat:@"挪动写入被拦=%lu", (unsigned long)gMoveWrites];
+}
+
 // 这条钩子挂在全局 UIView 上，抖音每一次 frame 写入都会经过，守卫必须极便宜：
 // 只取一次 nextResponder、最多两次类型判断，不是目标立刻放行。
 // 视频表自己的撑高不走这里：它有类可挂，直接在 DKVideoFeedTable.xm 里拦。
@@ -126,6 +145,10 @@ static CGRect DKAdjustFrame(UIView *view, CGRect frame) {
     if ([owner isKindOfClass:DKMergeClass()]) {
         CGRect target = DKVideoContainerTargetFrame(view);
         if (CGRectIsNull(target) || DKRectsClose(frame, target)) return CGRectNull;
+        if (fabs(CGRectGetMinX(frame)) > kDKGeometryTolerance
+            || fabs(CGRectGetMinY(frame)) > kDKGeometryTolerance) {
+            gMoveWrites++;
+        }
         return target;
     }
     if ([owner isKindOfClass:DKPlayInteractionClass()]) {
