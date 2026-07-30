@@ -34,6 +34,12 @@ static id gTextViewBeginEditingObserver;
 static id gTextViewEndEditingObserver;
 static NSHashTable *gDetailInputBackgroundViews;
 
+// 正在编辑的那一对。抖音的回复输入是独立输入页（评论容器下挂着 CommentInputPageLifeCycleDetector），
+// textView 被搬进那一页之后就不再是评论面板的后代，结束编辑时按层级回查必然落空、编辑标记
+// 永远停在 YES，底栏就再也不隐藏。开始编辑那一刻层级是完整的，记住即可，结束时按对象比对。
+static __weak UIView *gEditingTextView;
+static __weak AWECommentContainerViewController *gEditingController;
+
 static BOOL DKShouldHideCommentBottomBar(void) {
     return DKPrefBool(DKKeyCommentHideBottomBar);
 }
@@ -161,6 +167,24 @@ static void DKSetListIndicatorInset(AWEListKitMagicCollectionView *collectionVie
     objc_setAssociatedObject(collectionView, &kListApplyingIndicatorInsetKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+// 抑制态下列表应铺满父视图：抖音按「底部留输入栏」把高度算矮 ~83pt。
+// setFrame: 写入时改；退出回复后若抖音不再写 frame，必须在状态重入时主动撑一次。
+static BOOL DKStretchCommentListFrame(AWEListKitMagicCollectionView *collectionView, CGRect *frame) {
+    if (!collectionView || !frame) return NO;
+    if (!DKCommentControllerShouldSuppress(DKCommentControllerForView(collectionView))) return NO;
+
+    UIView *parent = collectionView.superview;
+    CGFloat parentHeight = parent ? CGRectGetHeight(parent.bounds) : 0.0;
+    if (parentHeight <= 0.0) return NO;
+
+    CGFloat wanted = parentHeight - CGRectGetMinY(*frame);
+    if (wanted <= CGRectGetHeight(*frame) + 0.5) return NO;
+
+    frame->size.height = wanted;
+    objc_setAssociatedObject(collectionView, &kListStretchedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return YES;
+}
+
 static void DKApplyCommentListState(AWEListKitMagicCollectionView *collectionView, BOOL forgetState) {
     if (!collectionView) return;
 
@@ -188,6 +212,13 @@ static void DKApplyCommentListState(AWEListKitMagicCollectionView *collectionVie
         }
         if (!UIEdgeInsetsEqualToEdgeInsets(collectionView.scrollIndicatorInsets, indicatorInset)) {
             DKSetListIndicatorInset(collectionView, indicatorInset);
+        }
+
+        // 回复面板关闭后抖音往往不再重写 frame，这里把矮掉的列表主动撑回满高。
+        CGRect frame = collectionView.frame;
+        if (DKStretchCommentListFrame(collectionView, &frame)
+            && !CGRectEqualToRect(collectionView.frame, frame)) {
+            collectionView.frame = frame;
         }
     } else {
         if (nativeContentValue && !UIEdgeInsetsEqualToEdgeInsets(collectionView.contentInset, nativeContentValue.UIEdgeInsetsValue)) {
@@ -222,19 +253,18 @@ static void DKRefreshCommentListsInView(UIView *view, BOOL forgetState) {
 
 #pragma mark - 评论底部渐隐层
 
-static UIViewController *DKFindChildControllerNamed(UIViewController *controller, NSString *className, NSUInteger depth) {
-    if (!controller || depth > 12) return nil;
-    for (UIViewController *child in controller.childViewControllers) {
-        if ([NSStringFromClass(child.class) isEqualToString:className]) return child;
-        UIViewController *match = DKFindChildControllerNamed(child, className, depth + 1);
-        if (match) return match;
-    }
-    return nil;
+// iOS 26+ 底部雾化由两层组成：UIKit.ScrollEdgeEffectView 本体 + 其 BackdropView 兄弟层。
+// 只压本体时 Backdrop 仍以 alpha=1 贴在面板底边，回复面板开关一次就会复现「底栏蒙版」。
+static BOOL DKIsScrollEdgeEffectLayer(UIView *view) {
+    if (!view) return NO;
+    NSString *name = NSStringFromClass(view.class);
+    if ([name isEqualToString:@"UIKit.ScrollEdgeEffectView"]) return YES;
+    // _TtCC5UIKit20ScrollEdgeEffectView12BackdropView
+    return [name containsString:@"ScrollEdgeEffectView"] && [name containsString:@"BackdropView"];
 }
 
 static BOOL DKIsBottomCommentEdgeEffect(UIView *view, UIView *containerView) {
-    if (!view || !containerView) return NO;
-    if (![NSStringFromClass(view.class) isEqualToString:@"UIKit.ScrollEdgeEffectView"]) return NO;
+    if (!view || !containerView || !DKIsScrollEdgeEffectLayer(view)) return NO;
 
     CGRect frame = [view convertRect:view.bounds toView:containerView];
     CGRect bounds = containerView.bounds;
@@ -260,10 +290,9 @@ static void DKApplyCommentEdgeEffectsInView(UIView *view, UIView *containerView,
 }
 
 static void DKApplyCommentEdgeEffectState(AWECommentContainerViewController *controller, BOOL suppress) {
-    UIViewController *innerController = DKFindChildControllerNamed(
+    UIViewController *innerController = DKChildControllerNamed(
         controller,
-        @"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController",
-        0
+        @"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController"
     );
     if (!innerController.isViewLoaded) return;
     DKApplyCommentEdgeEffectsInView(innerController.view, innerController.view, suppress);
@@ -401,16 +430,7 @@ static void DKSetCommentEditing(AWECommentContainerViewController *controller, B
 // 抖音按「底部要留出输入栏」把列表高度算矮了一个底栏，contentInset 改不到 frame。
 // 在尺寸落地的汇聚点补回：改传入值不会和父视图互相追赶，也不触发布局环。
 - (void)setFrame:(CGRect)frame {
-    UIView *parent = self.superview;
-    CGFloat parentHeight = parent ? CGRectGetHeight(parent.bounds) : 0.0;
-    CGFloat wanted = parentHeight - CGRectGetMinY(frame);
-
-    if (parentHeight > 0.0
-        && wanted > CGRectGetHeight(frame) + 0.5
-        && DKCommentControllerShouldSuppress(DKCommentControllerForView(self))) {
-        frame.size.height = wanted;
-        objc_setAssociatedObject(self, &kListStretchedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
+    DKStretchCommentListFrame(self, &frame);
     %orig(frame);
 }
 
@@ -485,18 +505,27 @@ static void DKSetCommentEditing(AWECommentContainerViewController *controller, B
                                                         queue:[NSOperationQueue mainQueue]
                                                    usingBlock:^(NSNotification *notification) {
         if (![notification.object isKindOfClass:[UIView class]]) return;
-        AWECommentContainerViewController *controller = DKCommentControllerForTextView((UIView *)notification.object);
+        UIView *textView = (UIView *)notification.object;
+        AWECommentContainerViewController *controller = DKCommentControllerForTextView(textView);
+        if (!controller) return;
+
+        gEditingTextView = textView;
+        gEditingController = controller;
         DKSetCommentEditing(controller, YES);
     }];
     gTextViewEndEditingObserver = [center addObserverForName:UITextViewTextDidEndEditingNotification
                                                      object:nil
                                                       queue:[NSOperationQueue mainQueue]
                                                  usingBlock:^(NSNotification *notification) {
-        if (![notification.object isKindOfClass:[UIView class]]) return;
-        AWECommentContainerViewController *controller = DKCommentControllerForTextView((UIView *)notification.object);
-        if (!controller) return;
-        __weak AWECommentContainerViewController *weakController = controller;
+        // 只认进入编辑时记下的那一个，别处的输入框不会误触发。
+        if (notification.object != gEditingTextView) return;
+
+        __weak AWECommentContainerViewController *weakController = gEditingController;
+        gEditingTextView = nil;
+        gEditingController = nil;
         dispatch_async(dispatch_get_main_queue(), ^{
+            // 期间又开始了新一轮编辑（如在回复框之间切换）就不再退出编辑态。
+            if (gEditingTextView) return;
             DKSetCommentEditing(weakController, NO);
         });
     }];
