@@ -92,6 +92,37 @@ static UITabBarController *DKProbeTabBarController(void) {
 
 #pragma mark - 各分节
 
+static NSString *DKProbeGestureStateName(UIGestureRecognizerState state) {
+    switch (state) {
+        case UIGestureRecognizerStatePossible:  return @"Possible";
+        case UIGestureRecognizerStateBegan:     return @"Began";
+        case UIGestureRecognizerStateChanged:   return @"Changed";
+        case UIGestureRecognizerStateEnded:     return @"Ended";
+        case UIGestureRecognizerStateCancelled: return @"Cancelled";
+        case UIGestureRecognizerStateFailed:    return @"Failed";
+        default: return [NSString stringWithFormat:@"%ld", (long)state];
+    }
+}
+
+// 长按拖动切页归 UIKit 的悬浮底栏所有，但抖音在窗口上也挂了一条长按（视频面板），
+// 窗口是底栏的祖先，两条会抢同一次触摸。长按拖动几次后导出，看 AWEMaskWindowLongPressGestureRecognizer
+// 的 state：Failed 说明 UIKit 赢了、拖动正常；若它 Began/Changed 而底栏没反应，就是被它抢走了。
+static void DKProbeAppendWindowGestures(NSMutableString *out, UIWindow *window) {
+    [out appendFormat:@"窗口手势（%@）\n", window ? NSStringFromClass(window.class) : @"(无窗口)"];
+    for (UIGestureRecognizer *gesture in window.gestureRecognizers) {
+        NSString *duration = [gesture isKindOfClass:UILongPressGestureRecognizer.class]
+            ? [NSString stringWithFormat:@"  minDuration=%.2f",
+               ((UILongPressGestureRecognizer *)gesture).minimumPressDuration]
+            : @"";
+        [out appendFormat:@"  %@  enabled=%@  state=%@  delegate=%@%@\n",
+         NSStringFromClass(gesture.class),
+         gesture.isEnabled ? @"YES" : @"NO",
+         DKProbeGestureStateName(gesture.state),
+         gesture.delegate ? NSStringFromClass([gesture.delegate class]) : @"(nil)",
+         duration];
+    }
+}
+
 // 玻璃质感与深色适配的判据：backgroundEffect 读到 nil 或 UIGlassEffect 才是出厂的液态玻璃；
 // 读到 UIBlurEffect 说明被降级成了老毛玻璃。trait 各级对照用于定位深色不跟随的源头。
 static void DKProbeAppendGlassBar(NSMutableString *out, UITabBarController *controller) {
@@ -104,10 +135,14 @@ static void DKProbeAppendGlassBar(NSMutableString *out, UITabBarController *cont
 
     [out appendFormat:@"  frame=%@  hidden=%@  alpha=%.3f\n",
      NSStringFromCGRect(bar.frame), bar.isHidden ? @"YES" : @"NO", bar.alpha];
-    [out appendFormat:@"  standardAppearance.backgroundEffect   = %@\n",
-     bar.standardAppearance.backgroundEffect ?: (id)@"(nil)"];
+    // tintColor 单打一行。材质档位不打——style 属性由 _style ivar 支持而 +effectWithStyle:
+    // 不写它，读回恒为 0，无论装的是哪一档都会显示 Regular。
+    UIVisualEffect *barEffect = bar.standardAppearance.backgroundEffect;
+    [out appendFormat:@"  standardAppearance.backgroundEffect   = %@\n", barEffect ?: (id)@"(nil)"];
     [out appendFormat:@"  scrollEdgeAppearance.backgroundEffect = %@\n",
      bar.scrollEdgeAppearance.backgroundEffect ?: (id)@"(nil)"];
+    [out appendFormat:@"  backgroundEffect.tintColor            = %@\n",
+     DKProbeColorDesc(DKProbeValue(barEffect, @"tintColor"))];
     // 标题走的是 image 槽（模板图），title 恒为空，认人靠 accessibilityLabel。
     // badgeValue 为原生角标：nil=无，""=纯红点，其余为显示的数字或文案。
     [out appendFormat:@"  items=%lu  selectedItem=%@\n",
@@ -150,16 +185,8 @@ static void DKProbeAppendGlassBar(NSMutableString *out, UITabBarController *cont
     }
 
     [out appendFormat:@"  抖音 selectedIndex = %lu\n", (unsigned long)controller.selectedIndex];
-}
 
-// UIGlassEffectStyle：0=Regular，1=Clear。用数值对照，避免在低 SDK 编译期引用枚举。
-static NSString *DKProbeGlassStyleName(id styleValue) {
-    if (!styleValue || styleValue == (id)[NSNull null]) return @"-";
-    switch ([styleValue integerValue]) {
-        case 0: return @"Regular";
-        case 1: return @"Clear";
-        default: return [NSString stringWithFormat:@"%@", styleValue];
-    }
+    DKProbeAppendWindowGestures(out, bar.window);
 }
 
 // 拍摄圆键。effect 应为 UIGlassEffect 且 interactive=YES。
@@ -173,10 +200,10 @@ static void DKProbeAppendPlusKey(NSMutableString *out) {
     [out appendFormat:@"  frame=%@  hidden=%@  alpha=%.3f  界面风格=%@\n",
      NSStringFromCGRect(key.frame), key.isHidden ? @"YES" : @"NO", key.alpha,
      DKProbeStyleName(key.traitCollection.userInterfaceStyle)];
-    [out appendFormat:@"  effect             = %@  style=%@  interactive=%@\n",
+    [out appendFormat:@"  effect             = %@  interactive=%@  tintColor=%@\n",
      effect ? NSStringFromClass(effect.class) : @"(nil)",
-     DKProbeGlassStyleName(DKProbeValue(effect, @"style")),
-     [DKProbeValue(effect, @"interactive") boolValue] ? @"YES" : @"NO"];
+     [DKProbeValue(effect, @"interactive") boolValue] ? @"YES" : @"NO",
+     DKProbeColorDesc(DKProbeValue(effect, @"tintColor"))];
     if (@available(iOS 26.0, *)) {
         [out appendFormat:@"  圆角有效半径       = %.1f（直径 %.1f 的一半即为正圆）\n",
          [key effectiveRadiusForCorner:UIRectCornerTopLeft], CGRectGetWidth(key.bounds)];

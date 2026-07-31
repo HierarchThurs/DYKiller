@@ -141,9 +141,10 @@ static void DKGlassObserveStyle(UIView *host) API_AVAILABLE(ios(26.0)) {
 // titlePositionAdjustment 属于旧版层叠布局，悬浮 provider 完全忽略（实测给到 -168 仍纹丝
 // 不动）。故把标题渲染成模板图当图标用、标题置空，由系统把它当图标居中。
 // 模板图只取 alpha，着色仍归系统，选中态与深浅色都自动跟上。
+// 字重取 Semibold：玻璃胶囊上压着的内容要够重，太细在半透明底上会发糊。
 static UIImage *DKGlassTitleImage(NSString *title) {
     NSDictionary *attributes = @{
-        NSFontAttributeName: [UIFont systemFontOfSize:kDKTitleFontSize weight:UIFontWeightMedium],
+        NSFontAttributeName: [UIFont systemFontOfSize:kDKTitleFontSize weight:UIFontWeightSemibold],
         NSForegroundColorAttributeName: UIColor.blackColor
     };
     CGSize size = [title sizeWithAttributes:attributes];
@@ -503,6 +504,13 @@ static void DKGlassSetDouyinContentVisible(AWENormalModeTabBar *douyinBar, NSArr
 // 整个功能只在 iOS 26 及以上成立——低版本没有 UIGlassEffect，装上去只是一条没有玻璃的
 // UITabBar 盖住抖音底栏，比原生还差。故在此一处挡住，各 helper 用 API_AVAILABLE 标注。
 static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0)) {
+    // 抖音换过底栏实例时，先把旧那条的内容还原——玻璃底栏只会跟着新实例走，
+    // 旧实例的按钮若停在 opacity=0，它再次出现时就是一条空底栏。
+    AWENormalModeTabBar *previousBar = gDouyinBar;
+    if (previousBar && previousBar != douyinBar && gBar) {
+        DKGlassSetDouyinContentVisible(
+            previousBar, DKGlassValue(previousBar, @"tabBarButtons"), YES);
+    }
     gDouyinBar = douyinBar;
 
     NSArray *buttons = DKGlassValue(douyinBar, @"tabBarButtons");

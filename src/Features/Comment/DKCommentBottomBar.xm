@@ -40,6 +40,9 @@ static NSHashTable *gDetailInputBackgroundViews;
 static __weak UIView *gEditingTextView;
 static __weak AWECommentContainerViewController *gEditingController;
 
+// 评论区的表情面板复用 IM 那一套，类名带 AWEIM 前缀。
+static NSString *const kDKEmoticonPanelClass = @"AWEIMEmoticonPanelContainerView";
+
 static BOOL DKShouldHideCommentBottomBar(void) {
     return DKPrefBool(DKKeyCommentHideBottomBar);
 }
@@ -64,12 +67,6 @@ static BOOL DKCommentControllerIsStandard(AWECommentContainerViewController *con
     if (DKReadBoolSelector(controller, NSSelectorFromString(@"isEmbeddedVC"))) return NO;
     if (DKReadBoolSelector(controller, NSSelectorFromString(@"isEmbeddedLandscape"))) return NO;
     return YES;
-}
-
-static BOOL DKCommentControllerShouldSuppress(AWECommentContainerViewController *controller) {
-    if (!DKShouldHideCommentBottomBar() || !DKCommentControllerIsStandard(controller)) return NO;
-    if (![objc_getAssociatedObject(controller, &kCommentVisibleKey) boolValue]) return NO;
-    return ![objc_getAssociatedObject(controller, &kCommentEditingKey) boolValue];
 }
 
 static AWECommentContainerViewController *DKCommentControllerForView(UIView *view) {
@@ -106,6 +103,30 @@ static BOOL DKViewIsDescendantOfView(UIView *view, UIView *ancestor) {
         if (candidate == ancestor) return YES;
     }
     return NO;
+}
+
+// 表情面板挂在输入容器里。点「表情包」会让 textView 收起、照常发出结束编辑通知，但输入流程
+// 并没有结束；此时若按「没在编辑」照常抑制，整个输入容器 alpha 归零，表情面板作为它的后代
+// 一起看不见（beta20 导出实证：面板 428×433、hidden=NO、alpha=1，祖先容器 alpha=0）。
+//
+// 命中即停，面板在容器下第 3 层，扫不到几个视图，不会下探到它自己那几十个表情 cell。
+// 不看容器自身的 alpha——被抑制时它本来就是 0。
+static BOOL DKContainsVisibleEmoticonPanel(UIView *view, NSUInteger depth) {
+    if (!view || depth > 5) return NO;
+    for (UIView *subview in view.subviews) {
+        if (subview.hidden || subview.alpha < 0.01 || CGRectIsEmpty(subview.bounds)) continue;
+        if ([NSStringFromClass(subview.class) isEqualToString:kDKEmoticonPanelClass]) return YES;
+        if (DKContainsVisibleEmoticonPanel(subview, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+// 抑制的前提是「输入界面没在用」：正在编辑，或表情面板开着，都算在用。
+static BOOL DKCommentControllerShouldSuppress(AWECommentContainerViewController *controller) {
+    if (!DKShouldHideCommentBottomBar() || !DKCommentControllerIsStandard(controller)) return NO;
+    if (![objc_getAssociatedObject(controller, &kCommentVisibleKey) boolValue]) return NO;
+    if ([objc_getAssociatedObject(controller, &kCommentEditingKey) boolValue]) return NO;
+    return !DKContainsVisibleEmoticonPanel(DKCommentInputContainer(controller), 0);
 }
 
 #pragma mark - 通用视图状态
@@ -470,6 +491,18 @@ static void DKSetCommentEditing(AWECommentContainerViewController *controller, B
     AWECommentContainerViewController *controller = DKCommentControllerForView(self);
     BOOL forgetState = controller && (!DKShouldHideCommentBottomBar() || !DKCommentControllerIsStandard(controller));
     DKApplyCommentListState(self, forgetState);
+}
+
+%end
+
+// 表情面板出现/移除时立刻重评一次，不必等下一次布局。判定仍归 DKCommentControllerShouldSuppress，
+// 这里只提供触发点。面板在 IM 聊天里也用，但那边取不到评论控制器，DKApplyCommentControllerState
+// 收到 nil 直接返回，不会误伤。
+%hook AWEIMEmoticonPanelContainerView
+
+- (void)didMoveToWindow {
+    %orig;
+    DKApplyCommentControllerState(DKCommentControllerForView(self));
 }
 
 %end
