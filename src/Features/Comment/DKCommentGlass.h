@@ -2,7 +2,7 @@
 //  DKCommentGlass.h
 //  DYKiller
 //
-//  评论区液态玻璃对外只暴露最近接管的面板槽位，供调试导出采集其状态。
+//  评论区液态玻璃对外只暴露最近接管的两个槽位，供调试导出采集其状态。
 //  玻璃层挂在槽位的最底层，探针从槽位自己推出来即可。
 //
 
@@ -17,6 +17,10 @@ extern "C" {
 
 /// 最近接管的评论面板槽位；从未接管过时为 nil。
 UIView *DKCommentGlassCurrentSlot(void);
+
+/// 最近接管的输入框槽位（那枚圆角胶囊）；从未接管过时为 nil。
+/// 它的尺寸由抖音在常驻态与回复态之间来回改，探针据此核对玻璃有没有跟上。
+UIView *DKCommentGlassCurrentField(void);
 
 #ifdef __cplusplus
 }

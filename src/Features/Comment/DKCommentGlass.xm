@@ -66,11 +66,16 @@ static BOOL gEverAttached = NO;
 static NSHashTable *gGlassCarriers = nil;
 // 已挂上深浅色监听的场景，避免重复注册。
 static __weak UIWindowScene *gObservedScene = nil;
-// 最近接管的面板槽位，只给调试探针读。
+// 最近接管的面板槽位与输入框槽位，只给调试探针读。
 static __weak UIView *gLastPanelSlot = nil;
+static __weak UIView *gLastFieldSlot = nil;
 
 UIView *DKCommentGlassCurrentSlot(void) {
     return gLastPanelSlot;
+}
+
+UIView *DKCommentGlassCurrentField(void) {
+    return gLastFieldSlot;
 }
 
 #pragma mark - 小工具
@@ -201,6 +206,11 @@ static UIVisualEffectView *DKMakeGlassShell(void) API_AVAILABLE(ios(26.0)) {
     UIVisualEffectView *glass = [[UIVisualEffectView alloc] initWithEffect:nil];
     glass.userInteractionEnabled = NO;
     glass.alpha = 1.0;
+    // 槽位尺寸是抖音自己改的（输入框在 36pt 常驻态与 60pt 回复态之间来回切），而同步只挂在评论
+    // 容器的布局回调上，槽位单独改尺寸时同步不到，玻璃就停在上一次的大小（beta15 实测：常驻态
+    // 槽位 404×36、玻璃仍是 404×60；回复态槽位 404×60、玻璃仍是 341×36）。交给 UIKit 跟随，
+    // 挂上那一刻的 frame 是基线，之后每次尺寸变化都自动等于槽位 bounds。
+    glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     return glass;
 }
 
@@ -296,6 +306,7 @@ static void DKSyncInputGlass(UIView *container) API_AVAILABLE(ios(26.0)) {
     // 胶囊不用 UIGlassContainerEffect：嵌套会被合并成同一形状。
     UIVisualEffectView *glass = (UIVisualEffectView *)DKAttachGlass(field, DKGlassShapeCapsule);
     if (!glass) return;
+    gLastFieldSlot = field;
     if (!CGRectEqualToRect(glass.frame, field.bounds)) glass.frame = field.bounds;
     DKEnsureBackmost(field, glass);
 }
@@ -363,6 +374,8 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
 
 #pragma mark - Hook
 
+// DKCommentBottomBar.xm 也在这两个方法上挂了一层（底栏抑制），两处分属两个功能、各有各的开关，
+// 本文件这一层还整体受 iOS 26 可用性约束。多层 %hook 会正常串联，两条同时生效。
 %hook AWECommentContainerViewController
 
 - (void)viewWillAppear:(BOOL)animated {
