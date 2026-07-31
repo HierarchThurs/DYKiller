@@ -219,6 +219,9 @@ static void DKProbeAppendWindows(NSMutableString *out) {
     [out appendFormat:@"%@\n", DKCommentPiPGateStats()];
     // 半屏评论区那份应是命中 > 0 且 alpha=1；全屏那份 alpha 应回到 0（抖音原生行为）。
     [out appendFormat:@"%@\n", DKCommentDanmakuStats()];
+    // 全屏评论区下让视频播到结尾再导出。三个读数各答一个问题：补播有没有发（钩子层对不对）、
+    // 期间有没有 pause（是被拒还是播起来又被停）、放行前闸门原本怎么答（这次放行需不需要）。
+    [out appendFormat:@"%@\n", DKCommentLoopResumeStats()];
 }
 
 // 评论面板玻璃：验收 Clear 材质、alpha、场景 trait 与有效圆角。
@@ -272,6 +275,19 @@ static void DKProbeAppendCommentGlass(NSMutableString *out) {
          [glass effectiveRadiusForCorner:UIRectCornerBottomLeft],
          [glass effectiveRadiusForCorner:UIRectCornerBottomRight]];
     }
+
+    // 输入框那枚胶囊：抖音在常驻态（36pt）与回复态（60pt）之间反复改它的尺寸，玻璃必须跟上。
+    // 「尺寸跟随 = 否」就是 beta15 那两个观感 bug——常驻底栏被高出来的一截挡住、回复框缩成细长条。
+    UIView *field = DKCommentGlassCurrentField();
+    if (!field) return;
+    UIView *fieldGlass = field.subviews.firstObject;
+    [out appendFormat:@"输入框槽位           = %@  frame=%@\n",
+     DKProbeDesc(field), NSStringFromCGRect(field.frame)];
+    [out appendFormat:@"  玻璃层             = %@  frame=%@\n",
+     DKProbeDesc(fieldGlass), NSStringFromCGRect(fieldGlass.frame)];
+    [out appendFormat:@"  尺寸跟随           = %@\n",
+     [fieldGlass isKindOfClass:UIVisualEffectView.class]
+         && CGSizeEqualToSize(fieldGlass.bounds.size, field.bounds.size) ? @"是" : @"否"];
 }
 
 // 评论面板缩放（半屏 → 全屏）。验收「玻璃背后是不是视频那一页」，判据是两条同时成立：
