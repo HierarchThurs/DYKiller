@@ -16,7 +16,8 @@
 //
 //  另一半是关掉内嵌画中画：视频还在播时进全屏评论区，抖音原生会把视频交给
 //  AWEDPlayerPiPWindow（windowLevel 2000）缩成右上角小窗，垫回的这一页就只剩静帧。
-//  关掉之后视频留在 feed 页原地继续播，全屏与半屏的视频行为完全一致。
+//  关掉之后视频留在 feed 页原地继续播，全屏与半屏的视频行为完全一致；随之要自己接上
+//  「播完再放一遍」——原生那一环挂在画中画播放器上，见文件末尾的循环补播。
 //
 
 #import "DouyinHeaders.h"
@@ -28,6 +29,11 @@ static char kDKBackdropPageKey;   // 全屏容器 → 垫回去的那一页的 v
 static char kDKPanelColorKey;     // 全屏容器 view → 原底色（NSNull 表示原本就是 nil）
 
 static NSUInteger gPiPGateHits = 0;
+static NSUInteger gLoopResumeHits = 0;
+static NSUInteger gPauseHits = 0;
+
+// 最近一次补播的现场读数。
+static NSString *gLastResumeTrace = nil;
 
 // 在屏的全屏容器。用弱引用而不是计数：交互式返回中途取消会再发一次 viewDidAppear:
 // 而没有配对的 viewWillDisappear:，计数会一去不回。
@@ -35,6 +41,12 @@ static __weak UIViewController *gFullPanel = nil;
 
 NSString *DKCommentPiPGateStats(void) {
     return [NSString stringWithFormat:@"内嵌画中画闸门已关=%lu 次", (unsigned long)gPiPGateHits];
+}
+
+NSString *DKCommentLoopResumeStats(void) {
+    return [NSString stringWithFormat:@"全屏评论区补播=%lu 次  期间主播放器 pause=%lu 次  最近一次: %@",
+            (unsigned long)gLoopResumeHits, (unsigned long)gPauseHits,
+            gLastResumeTrace ?: @"(还没发生过)"];
 }
 
 BOOL DKCommentFullPanelOnScreen(void) {
@@ -123,6 +135,64 @@ static void DKDetachBackdrop(UIViewController *panel) {
 
     gPiPGateHits++;
     return NO;
+}
+
+%end
+
+// 闸门关掉之后剩下的那一环：谁负责「播完之后」。
+//
+// 抖音原生进全屏评论区时会把主播放器暂停（tryToPauseByInnerPlayer：闸门开 + 已进画中画 +
+// 正在播 → pause），画面交给内嵌画中画那个独立播放器，循环由它负责，主播放器根本走不到播完。
+// 闸门关掉后主播放器留在原地继续播，于是走到了原生不存在的那一步，而全屏评论区的状态机里
+// 没有这一支，视频就停在最后一帧。半屏不进这条流程，所以半屏播完照常重播。
+//
+// 用 play 而不是 replay：`-[AWEDPlayerPlayControlContainer replay]` 头一件事就是重发
+// `AWEDPlayerCoreEvent.PlayerWillStartNextLoopEvent`——正是刚被否掉的那个事件，等于把同一次
+// 表决再走一遍（beta16 实测补播 2 次、画面纹丝不动）。play 走的是 `_play:` → `play:` 那条
+// 真正的播放入口。
+%hook AWEPlayVideoViewController
+
+- (void)playerWillLoopPlaying:(id)player {
+    %orig;
+    if (!DKCommentFreezeOn() || !DKCommentFullPanelOnScreen()) return;
+
+    AWEDPlayerViewController_Merge *merge = (AWEDPlayerViewController_Merge *)self.parentViewController;
+    if (![merge isKindOfClass:%c(AWEDPlayerViewController_Merge)]) return;
+
+    // 落到下一轮 runloop，才排在抖音自己那串同步监听之后；它自己续上了就不插手。
+    __weak AWEDPlayerViewController_Merge *weakMerge = merge;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        AWEDPlayerViewController_Merge *strongMerge = weakMerge;
+        if (!strongMerge || !DKCommentFullPanelOnScreen() || [strongMerge isPlaying]) return;
+
+        gLoopResumeHits++;
+        // 播放入口 `_play:` / `play:` 都先问 videoShouldPlay（第一个判据就是 shouldPreventPlay）。
+        // 这两个值直接读就有，不必为了拿它们挂钩子——beta17 曾在 videoShouldPlay 上挂过一层
+        // 放行，实测原始答复恒为 YES，那层从未改变过任何一次结果，已删。
+        BOOL prevent = [strongMerge shouldPreventPlay];
+        BOOL shouldPlay = [strongMerge videoShouldPlay];
+        [strongMerge play];
+
+        // 播没播起来要等引擎一拍，下一轮再采。
+        dispatch_async(dispatch_get_main_queue(), ^{
+            gLastResumeTrace = [NSString stringWithFormat:
+                @"shouldPreventPlay=%@ videoShouldPlay=%@ play 后 isPlaying=%@",
+                prevent ? @"YES" : @"NO",
+                shouldPlay ? @"YES" : @"NO",
+                [weakMerge isPlaying] ? @"YES" : @"NO"];
+        });
+    });
+}
+
+%end
+
+// 只数不拦，纯排查用：分辨「播放请求被拒」与「播起来之后又被停掉」，
+// 这正是 beta16 → beta17 花了两轮才分清的那个问题。
+%hook AWEDPlayerViewController_Merge
+
+- (void)pause {
+    if (DKCommentFreezeOn() && DKCommentFullPanelOnScreen()) gPauseHits++;
+    %orig;
 }
 
 %end
