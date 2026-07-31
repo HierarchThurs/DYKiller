@@ -480,6 +480,8 @@ void DKHUDStatusBarCoverSync(UIViewController *interaction) {
     }
 }
 
+// DKVideoFeedTable.xm 也在同一个方法上挂了一层（HUD 高度的布局后补正），两处分属两个功能、
+// 各自跟着自己的模块走，串联生效，互不依赖。
 %hook AWEPlayInteractionViewController
 
 - (void)viewDidLayoutSubviews {

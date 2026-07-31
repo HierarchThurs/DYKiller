@@ -169,6 +169,10 @@ CGRect DKFeedHUDAdjustFrame(UIView *view, CGRect frame) {
 
 // 补正那些在取不到原高的时刻被放行的写入，布局结束后拉回「顶边贴合、高度为原高」。
 // 不是冗余兜底：实测每页仍有 4~11 次命中，是 HUD 尚未进入视图层级那几次写入的唯一出路。
+//
+// DKVideoPageChrome.xm 也在同一个方法上挂了一层（顶部黑遮罩同步），这是有意分开的：
+// 两件事分属两个功能，各自跟着自己的模块走，删掉任一模块另一个都不受影响。多层 %hook 会
+// 正常串联，装机版本上两条同时生效。
 %hook AWEPlayInteractionViewController
 
 - (void)viewDidLayoutSubviews {
