@@ -52,8 +52,6 @@ static NSString *const kDKInputContainerClass =
 static const CGFloat kDKSlotSizeTolerance = 0.5;
 // 槽位尚未写入圆角时的顶部半径下限，保证玻璃有效半径 > 0。
 static const CGFloat kDKTopRadiusFloor = 8.0;
-// 深色档的黑色染色强度：实测亮度比 0.90，明确是深色玻璃且视频细节完整。
-static const CGFloat kDKDarkTintAlpha = 0.30;
 
 #pragma mark - 状态（全部挂在被改动的视图上，多个评论面板并存也互不干扰）
 
@@ -90,11 +88,7 @@ static BOOL DKViewIsVisible(UIView *view) {
 
 #pragma mark - 深浅色
 
-// 该外观下玻璃应有的染色；浅色档不染色，与参照实现一致。
-static UIColor *DKGlassTintForStyle(UIUserInterfaceStyle style) {
-    if (style != UIUserInterfaceStyleDark) return nil;
-    return [UIColor colorWithWhite:0.0 alpha:kDKDarkTintAlpha];
-}
+// 染色口径在 DKUtils 的 DKGlassTintForStyle：浅色不染色、深色黑 30%，与悬浮底栏共用一处定义。
 
 // 当前该用的外观：抖音把 window override 钉死为浅色，UIWindowScene 那一层它盖不住，取它即得系统真值。
 static UIUserInterfaceStyle gGlassStyle = UIUserInterfaceStyleUnspecified;

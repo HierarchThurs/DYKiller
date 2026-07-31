@@ -23,6 +23,10 @@ UIViewController *DKChildControllerNamed(UIViewController *controller, NSString 
 /// 该颜色是否为不透明纯黑（识别抖音铺的黑色垫层用）。
 BOOL DKColorIsOpaqueBlack(UIColor *color);
 
+/// Clear 液态玻璃在该外观下应有的染色：浅色档不染色，深色档黑 30%。
+/// Clear 对 overrideUserInterfaceStyle 不敏感，深色只能靠染色。悬浮底栏与评论面板共用此口径。
+UIColor *DKGlassTintForStyle(UIUserInterfaceStyle style);
+
 /// 从 view 自身起向上找所在 Cell 的 contentView；不在 Cell 内返回 nil。
 UIView *DKCellContentView(UIView *view);
 

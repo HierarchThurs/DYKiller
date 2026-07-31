@@ -47,6 +47,17 @@ BOOL DKColorIsOpaqueBlack(UIColor *color) {
     return NO;
 }
 
+#pragma mark - 液态玻璃染色
+
+// 深色档的黑色染色强度：实测评论面板亮度比 0.90、底栏 platter 中位亮度 136.6 → 99.8，
+// 两处都明确是深色玻璃且背后细节完整。
+static const CGFloat kDKGlassDarkTintAlpha = 0.30;
+
+UIColor *DKGlassTintForStyle(UIUserInterfaceStyle style) {
+    if (style != UIUserInterfaceStyleDark) return nil;
+    return [UIColor colorWithWhite:0.0 alpha:kDKGlassDarkTintAlpha];
+}
+
 #pragma mark - Cell 几何
 
 UIView *DKCellContentView(UIView *view) {

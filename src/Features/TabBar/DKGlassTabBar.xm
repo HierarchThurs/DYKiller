@@ -23,6 +23,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 #import <objc/message.h>
+#import <objc/runtime.h>
 
 // 依赖的抖音/UIKit 私有符号集中在此，抖音改名时只改这里。
 static NSString *const kDKBadgeContainerClass = @"AWENormalModeTabBarBadgeContainerView";
@@ -106,6 +107,108 @@ static UITabBarController *DKGlassControllerForView(UIView *view) {
     return nil;
 }
 
+#pragma mark - 材质
+
+// 胶囊与拍摄圆键共用。档位跟「清透玻璃」开关走：关＝系统默认磨砂，开＝Clear。
+//
+// 深色档两种材质认的不是同一条：Clear 对 overrideUserInterfaceStyle 不敏感、只认染色
+// （实测中位亮度 136.6 → 99.8；改用 override 是 157.9，等于没压暗），Regular 归 override 管，
+// 再叠一层染色会压暗两次。所以染色只给 Clear。
+static UIGlassEffect *DKGlassMakeGlassEffect(UIUserInterfaceStyle style, BOOL interactive)
+    API_AVAILABLE(ios(26.0)) {
+    BOOL clear = DKPrefBool(DKKeyGlassTabBarClear);
+    UIGlassEffect *effect = [UIGlassEffect effectWithStyle:
+        clear ? UIGlassEffectStyleClear : UIGlassEffectStyleRegular];
+    if (clear) effect.tintColor = DKGlassTintForStyle(style);
+    effect.interactive = interactive;
+    return effect;
+}
+
+// 悬浮胶囊的材质由 _UITabBarItemPlatterView 自己持有的 glassEffect 决定——
+// UITabBarAppearance.backgroundEffect 是悬浮布局之前的旧 API，floating provider 根本不读它
+// （实测出厂态 / Regular / Clear 三者渲染逐像素相同，均为 9.x% 细节保留）。改写这个属性才
+// 拿得到清透，且原生透镜、长按拖动、角标完全不受影响：细节保留 5.9% → 26.8%，
+// 与自建 Clear（31.4%）、Apple 的 clearGlassButtonConfiguration（29.8%）同档。
+//
+// 两条纪律：
+// · glassEffect 是 UIKit 内部属性，iOS 大版本可能改名。首次读不到就永久放弃，此后整段不进入
+//   （逐帧路径上反复 @try/@catch 既慢又吵），底栏保持系统默认磨砂，功能不受影响。
+// · 只还原自己改过的：首次接管前把原厂那只存在 platter 上，关开关时原样放回。
+static NSString *const kDKPlatterGlassKey = @"glassEffect";
+static char kDKPlatterOriginalGlassKey;
+static BOOL gPlatterGlassProbed = NO;
+static BOOL gPlatterGlassSupported = NO;
+// glassEffect 是 copy 属性（实测回读指针 != 写入指针），所以记的是 platter 存下的那只【副本】。
+// 弱引用：platter 换掉它、或 platter 本身销毁，这里都会变，正好当作「需要重装」的信号。
+static __weak id gPlatterGlassInstalled = nil;
+static UIUserInterfaceStyle gPlatterGlassStyle = UIUserInterfaceStyleUnspecified;
+
+static void DKGlassApplyPlatterGlass(UIView *platter, UIUserInterfaceStyle style)
+    API_AVAILABLE(ios(26.0)) {
+    if (!platter || (gPlatterGlassProbed && !gPlatterGlassSupported)) return;
+
+    id current = nil;
+    @try {
+        current = [platter valueForKey:kDKPlatterGlassKey];
+    } @catch (__unused NSException *exception) {
+        gPlatterGlassProbed = YES;      // 属性不在，永久放弃
+        gPlatterGlassSupported = NO;
+        return;
+    }
+    gPlatterGlassProbed = YES;
+    gPlatterGlassSupported = YES;
+
+    BOOL patched = current && current == gPlatterGlassInstalled;
+
+    if (!DKPrefBool(DKKeyGlassTabBarClear)) {
+        if (!patched) return;                       // 没接管过，无需还原
+        id original = objc_getAssociatedObject(platter, &kDKPlatterOriginalGlassKey);
+        @try {
+            [platter setValue:(original == NSNull.null ? nil : original)
+                       forKey:kDKPlatterGlassKey];
+        } @catch (__unused NSException *exception) {}
+        gPlatterGlassInstalled = nil;
+        gPlatterGlassStyle = UIUserInterfaceStyleUnspecified;
+        [platter setNeedsLayout];
+        return;
+    }
+
+    // 装的还是我们那只、档位也没变，就什么都不做。逐帧无脑重写会打断系统的呈现过渡。
+    if (patched && style == gPlatterGlassStyle) return;
+
+    if (!objc_getAssociatedObject(platter, &kDKPlatterOriginalGlassKey)) {
+        objc_setAssociatedObject(platter, &kDKPlatterOriginalGlassKey, current ?: NSNull.null,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    // interactive 照抄现有那只。UIKit 给 platter 的原厂配置就是 interactive=YES，整块胶囊的
+    // 按压/触摸/高亮动效全从它来；写死 NO 会把这些动效一并抹掉（beta23 踩过）。
+    BOOL interactive = [current isKindOfClass:UIGlassEffect.class]
+        ? ((UIGlassEffect *)current).interactive : YES;
+    @try {
+        [platter setValue:DKGlassMakeGlassEffect(style, interactive) forKey:kDKPlatterGlassKey];
+        gPlatterGlassInstalled = [platter valueForKey:kDKPlatterGlassKey];
+    } @catch (__unused NSException *exception) {
+        gPlatterGlassSupported = NO;
+        return;
+    }
+    gPlatterGlassStyle = style;
+    [platter setNeedsLayout];
+}
+
+NSString *DKGlassPlatterGlassStatus(void) {
+    if (!gPlatterGlassProbed) return @"未尝试（功能关闭或 platter 尚未建立）";
+    if (!gPlatterGlassSupported) return @"属性不存在，已放弃——保持系统默认磨砂";
+    if (!DKPrefBool(DKKeyGlassTabBarClear)) return @"清透开关关闭 · 系统默认磨砂";
+    id installed = gPlatterGlassInstalled;
+    if (!installed) return @"清透开关开启但尚未装上，下一次布局补";
+    UIColor *tint = DKGlassTintForStyle(gPlatterGlassStyle);
+    BOOL interactive = [installed isKindOfClass:UIGlassEffect.class]
+        && ((UIGlassEffect *)installed).interactive;
+    return [NSString stringWithFormat:@"已改写 · Clear · interactive=%@ · 染色 %@",
+            interactive ? @"YES" : @"NO", tint ? tint.description : @"(nil，浅色档)"];
+}
+
 #pragma mark - 深浅色
 
 // 深浅色是唯一不能靠继承拿到的东西：抖音把 window.overrideUserInterfaceStyle 钉死为浅色
@@ -116,12 +219,23 @@ static UITabBarController *DKGlassControllerForView(UIView *view) {
 // UIView / UIViewController / UIWindow 上——抖音没有 API 能盖住场景那一层，取它即得真值。
 //
 // 评论面板的玻璃同源，见 DKCommentGlass.xm 的 DKApplyGlassStyle。
-static void DKGlassApplyStyle(UIUserInterfaceStyle style) {
-    if (style == UIUserInterfaceStyleUnspecified) return;
-    if (gBar && gBar.overrideUserInterfaceStyle != style) gBar.overrideUserInterfaceStyle = style;
-    if (gPlusKey && gPlusKey.overrideUserInterfaceStyle != style) {
+//
+// override 与染色分工明确：override 只管内容着色（标题模板图、拍摄图标靠 trait 取色），
+// 玻璃材质归染色管——Clear 对 override 不敏感，实测给 platter 加 override 深色后中位亮度
+// 157.9，等于没压暗；换成染色黑 30% 才是 99.8。
+static UIUserInterfaceStyle gGlassStyle = UIUserInterfaceStyleUnspecified;
+
+static void DKGlassApplyStyle(UIUserInterfaceStyle style) API_AVAILABLE(ios(26.0)) {
+    if (style == UIUserInterfaceStyleUnspecified || style == gGlassStyle) return;
+    gGlassStyle = style;
+
+    if (gBar) gBar.overrideUserInterfaceStyle = style;
+    if (gPlusKey) {
         gPlusKey.overrideUserInterfaceStyle = style;
+        gPlusKey.effect = DKGlassMakeGlassEffect(style, YES);
     }
+    // platter 的玻璃在下一次布局里跟着重写；trait 变化未必伴随布局，主动踢一次。
+    [gDouyinBar setNeedsLayout];
 }
 
 // 挂在场景上监听，系统一切深浅色即刻改；否则只能等抖音下次布局，就是 beta3 那种「切一下页才变」。
@@ -264,20 +378,6 @@ static void DKGlassSyncPlusIcon(UIView *button) {
 
 @end
 
-#pragma mark - 材质
-
-// UITabBar 的出厂 appearance 是 iOS 13 时代的 SystemChromeMaterial 毛玻璃——「不碰
-// appearance 即得液态玻璃」是错的，必须显式装 UIGlassEffect。它是 UIVisualEffect 的另一支、
-// 不是 UIBlurEffect，而 backgroundEffect 声明为 UIBlurEffect *，故需强转。
-static void DKGlassApplyMaterial(UITabBar *bar) API_AVAILABLE(ios(26.0)) {
-    UITabBarAppearance *appearance = [[UITabBarAppearance alloc] init];
-    [appearance configureWithDefaultBackground];
-    appearance.backgroundEffect =
-        (UIBlurEffect *)[UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
-    bar.standardAppearance = appearance;
-    bar.scrollEdgeAppearance = appearance;
-}
-
 #pragma mark - 未读角标镜像
 
 // 读抖音按钮当前的角标。走子视图扫描而不是 badge / badgeContainerView 属性：那两个 getter
@@ -416,10 +516,11 @@ static void DKGlassScheduleMirror(void) {
 // interactive 是 iOS 26 玻璃自带的触摸反馈（按压形变），不需要我们画任何东西；
 // capsuleConfiguration 作用在正方形 frame 上即为正圆。
 // 触发用铺满的透明 UIButton：touchUpInside 同时满足「轻点触发」与「长按后松手仍触发」。
+// 材质与胶囊同为 Clear（见 DKGlassMakeGlassEffect）——胶囊清透了圆键必须跟上，
+// 否则又是「胶囊清透、圆键磨砂」的割裂。
 static UIVisualEffectView *DKGlassMakePlusKey(id target) API_AVAILABLE(ios(26.0)) {
-    UIGlassEffect *effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
-    effect.interactive = YES;
-    UIVisualEffectView *key = [[UIVisualEffectView alloc] initWithEffect:effect];
+    UIVisualEffectView *key =
+        [[UIVisualEffectView alloc] initWithEffect:DKGlassMakeGlassEffect(gGlassStyle, YES)];
     key.cornerConfiguration = [UICornerConfiguration capsuleConfiguration];
 
     gPlusIcon = [[UIImageView alloc] init];
@@ -446,8 +547,12 @@ static UIView *DKGlassFindPlatter(UIView *root) {
 // 胶囊让出右侧一块，圆键补上。几何全部从 platter 实测：直径取它的高、纵向与它对齐、
 // 右边距取它自己的左内缩，这样胶囊与圆键的外边距对称。
 // platter 首帧还不存在时用兜底值，次帧即被真实值取代；写入先比较，不会形成布局环。
-static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar) {
+static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0)) {
     UIView *platterView = DKGlassFindPlatter(gBar);
+    // 找到 platter 就顺手把它的玻璃换成 Clear。放在所有提前 return 之前：
+    // 拍摄按钮被其他插件移除时下面会早退，但胶囊材质照样要生效。
+    DKGlassApplyPlatterGlass(platterView, gGlassStyle);
+
     CGRect platter = platterView ? [platterView convertRect:platterView.bounds toView:gBar] : CGRectZero;
     BOOL measured = CGRectGetHeight(platter) > 0.0;
     CGFloat diameter = measured ? CGRectGetHeight(platter) : kDKPlatterFallbackHeight;
@@ -529,6 +634,10 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
         gItemKinds = nil;
         gItemButtons = nil;
         gSignature = nil;
+        // 重新开启时材质与 platter 玻璃都要能重新装上；探测结果不复位，那是设备能力，一次为准。
+        gGlassStyle = UIUserInterfaceStyleUnspecified;
+        gPlatterGlassStyle = UIUserInterfaceStyleUnspecified;
+        gPlatterGlassInstalled = nil;
         return;
     }
     // 场景监听不撤：handler 只在 gBar 存在时才动手，重新开启开关后照旧生效。
@@ -538,8 +647,9 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
 
     if (!gBar) {
         gProxy = [[DKGlassTabBarProxy alloc] init];
+        // 不碰 appearance：实测出厂态与装了 Regular backgroundEffect 渲染逐像素相同，
+        // 悬浮 provider 不读这个旧 API。材质统一由 DKGlassApplyPlatterGlass 决定。
         gBar = [[UITabBar alloc] initWithFrame:douyinBar.bounds];
-        DKGlassApplyMaterial(gBar);
         gBar.delegate = gProxy;
         gPlusKey = DKGlassMakePlusKey(gProxy);
     }
@@ -625,6 +735,28 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
             AWENormalModeTabBar *bar = gDouyinBar;
             if (@available(iOS 26.0, *)) {
                 if (bar) DKGlassUpdate(bar);
+            }
+        };
+        return item;
+    });
+
+    // 同分区按注册顺序排列，注册在后即显示在「悬浮玻璃底栏」下方。
+    DKSettingsRegisterItem(@"底栏", ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeSwitch(
+            DKKeyGlassTabBarClear,
+            @"清透玻璃",
+            @"把悬浮底栏换成清透液态玻璃，背后视频细节可辨；关闭则用系统默认的磨砂材质"
+        );
+        void (^origBlock)(void) = [item.switchChangedBlock copy];
+        item.switchChangedBlock = ^{
+            if (origBlock) origBlock();
+            AWENormalModeTabBar *bar = gDouyinBar;
+            if (@available(iOS 26.0, *)) {
+                if (!bar) return;
+                // 材质变了但深浅色没变，DKGlassApplyStyle 会因档位相同而空转；
+                // 复位它，让拍摄圆键的 effect 也跟着重建。
+                gGlassStyle = UIUserInterfaceStyleUnspecified;
+                DKGlassUpdate(bar);
             }
         };
         return item;

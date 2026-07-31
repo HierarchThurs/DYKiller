@@ -25,7 +25,8 @@ static NSString *const DKKeyCommentGlass         = @"DYKillerCommentGlass";
 
 #pragma mark - 功能组：底栏
 
-static NSString *const DKKeyGlassTabBar = @"DYKillerGlassTabBar";
+static NSString *const DKKeyGlassTabBar      = @"DYKillerGlassTabBar";
+static NSString *const DKKeyGlassTabBarClear = @"DYKillerGlassTabBarClear";
 
 #pragma mark - 功能组：播放体验
 
