@@ -341,11 +341,11 @@ static void DKApplyDetailInputBackgroundState(AWECommentInputBackgroundView *bac
     }
 }
 
-static void DKRefreshDetailInputBackgroundsInWindow(UIWindow *window) {
+// 不按窗口过滤：每条底栏本来就各自按自己的 window 判定，而收摊时评论面板的 view 已经离开层级、
+// 取不到窗口。在场的底栏只有个位数，全遍历一遍反而更准。
+static void DKRefreshDetailInputBackgrounds(void) {
     for (AWECommentInputBackgroundView *backgroundView in gDetailInputBackgroundViews.allObjects) {
-        if (backgroundView.window == window) {
-            DKApplyDetailInputBackgroundState(backgroundView);
-        }
+        DKApplyDetailInputBackgroundState(backgroundView);
     }
 }
 
@@ -370,7 +370,7 @@ static void DKApplyCommentControllerState(AWECommentContainerViewController *con
 
     DKRefreshCommentListsInView(controller.view, !enabled);
     DKApplyCommentEdgeEffectState(controller, suppress);
-    DKRefreshDetailInputBackgroundsInWindow(controller.view.window);
+    DKRefreshDetailInputBackgrounds();
 }
 
 static void DKRestoreCommentControllerState(AWECommentContainerViewController *controller) {
@@ -408,19 +408,18 @@ static void DKSetCommentEditing(AWECommentContainerViewController *controller, B
     DKApplyCommentControllerState(self);
 }
 
-- (void)viewWillDisappear:(BOOL)animated {
-    UIWindow *window = self.view.window;
+// 缩放到全屏是把**同一个**控制器从视频页搬进 AWECommentFullScreenContainerViewController
+// （beta15 导出实证：半屏挂在 AFDContainerViewController 下，全屏挂在全屏容器下），搬家会走一遍
+// 消失回调。此处若照常收摊，底栏就会在整个转场里显形，直到落到新父控制器上才压回去。
+// 判据取「view 还在不在窗口里」：搬家时它立刻回到层级，真关闭时才为 nil。
+- (void)viewDidDisappear:(BOOL)animated {
     %orig;
+    if (self.viewIfLoaded.window) return;
+
     objc_setAssociatedObject(self, &kCommentVisibleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(self, &kCommentEditingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     DKRestoreCommentControllerState(self);
-    DKRefreshDetailInputBackgroundsInWindow(window);
-}
-
-- (void)viewDidDisappear:(BOOL)animated {
-    %orig;
-    objc_setAssociatedObject(self, &kCommentVisibleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, &kCommentEditingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    DKRefreshDetailInputBackgrounds();
 }
 
 %end
