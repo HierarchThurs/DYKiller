@@ -4,8 +4,10 @@
 //
 //  视频全屏与评论态冻结的共享契约。
 //
-//  对 UIView 的 frame 写入只能有一个拦截点（同一方法挂两层钩子会互相覆盖），
-//  统一在 DKVideoGeometry.xm，按写入方的归属控制器分派：
+//  对 UIView 的 frame 写入只留一个拦截点，统一在 DKVideoGeometry.xm，按写入方的归属控制器分派。
+//  理由不是钩子会互相覆盖（多层 %hook 会正常串联，本项目就有三对同名方法分挂在两个文件里、
+//  六个功能同时正常），而是：setFrame: 是 UIKit 最热的方法，第二个全局钩子会让全 App 每一次
+//  frame 写入都多付一次代价；且两个各自改值的拦截器会争夺同一个返回值，谁最后写谁赢。
 //    · AWEDPlayerViewController_Merge  → 视频容器，规则统一，不分页；
 //    · AWEPlayInteractionViewController → HUD，只有撑高过的表需要钉位，其余一律放行。
 //
@@ -45,6 +47,10 @@ NSString *DKCommentPiPGateStats(void);
 
 /// 全屏评论容器此刻在不在屏。实现在 Comment/DKCommentFullBackdrop.xm。
 BOOL DKCommentFullPanelOnScreen(void);
+
+/// 全屏评论区里主播放器播完后的补播情况：命中数、期间的 pause 次数、最近一次的闸门读数。
+/// 实现在 Comment/DKCommentFullBackdrop.xm。
+NSString *DKCommentLoopResumeStats(void);
 
 /// 把弹幕切回当前状态该有的可见性；全屏评论区进出时调用。
 /// 实现在 Comment/DKCommentDanmaku.xm，只动接管过的那一层，不做树遍历。

@@ -39,11 +39,19 @@
 @property (nonatomic, copy) NSString *referString;                  // 页面来源，用于限定搜索详情页
 - (BOOL)isInLandscapeFeedStatus;
 - (void)videoDidShrink;
+- (BOOL)isPlaying;
+- (void)play;                                                       // 真正的播放入口，经 videoShouldPlay
+- (void)pause;
+- (BOOL)shouldPreventPlay;                                          // videoShouldPlay 的第一条判据
+- (BOOL)videoShouldPlay;                                            // 播放前的总闸门
 @end
 
 // 视频播放控制器。抖音把横屏智能背景色画在 playerBackgroundView 上（插入其 view 的最底层）。
+// playerWillLoopPlaying: 是播放引擎的循环回调，本类自己实现（发 OnPlayerWillLoopPlayingEvent、
+// 写 loopTimes、finishLogIfNeeded），播完一遍必到；它是 Merge 的子控制器。
 @interface AWEPlayVideoViewController : UIViewController
 @property (nonatomic, strong) UIView *playerBackgroundView;
+- (void)playerWillLoopPlaying:(id)player;
 @end
 
 @interface AWEDPlayerProgressContainerView : UIView                // 进度条容器；底边压着一条纯黑细条
