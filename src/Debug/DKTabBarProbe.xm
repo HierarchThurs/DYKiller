@@ -175,6 +175,9 @@ static void DKProbeAppendGlassBar(NSMutableString *out, UITabBarController *cont
     UIView *platter = DKProbeFindSubview(bar, @"_UITabBarItemPlatterView");
     [out appendFormat:@"  platter            = %@  frame=%@\n",
      DKProbeDesc(platter), platter ? NSStringFromCGRect(platter.frame) : @"-"];
+    // 胶囊清透与否只看这一行：appearance.backgroundEffect 是旧 API，悬浮 provider 不读，
+    // 真正渲染胶囊的是 platter 自己的 glassEffect。
+    [out appendFormat:@"  platter 玻璃       = %@\n", DKGlassPlatterGlassStatus()];
     for (UIView *button in DKProbeFindSubviews(platter, @"_UITabButton")) {
         UIView *image = DKProbeFindSubview(button, @"ImageView");
         UIView *label = DKProbeFindSubview(button, @"Label");
