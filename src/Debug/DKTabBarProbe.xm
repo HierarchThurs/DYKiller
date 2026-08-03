@@ -9,7 +9,10 @@
 #import "DKTabBarProbe.h"
 #import "DouyinHeaders.h"
 #import "DKCommentGlass.h"
+#import "DKGlassFlexView.h"
 #import "DKGlassTabBar.h"
+#import "DKKeys.h"
+#import "DKUtils.h"
 #import "DKVideoFeedTable.h"
 #import "DKVideoFullscreen.h"
 #import "DKDebugCapture.h"
@@ -254,9 +257,14 @@ static void DKProbeAppendWindows(NSMutableString *out) {
     [out appendFormat:@"%@\n", DKCommentLoopResumeStats()];
 }
 
-// 评论面板玻璃：验收 Clear 材质、alpha、场景 trait 与有效圆角。
+// 评论面板玻璃：验收配置目标、公开属性、flex 交互、场景 trait 与有效圆角。
 // 只检查槽位现有子树，不访问 glass.contentView。
 static void DKProbeAppendCommentGlass(NSMutableString *out) {
+    BOOL enabled = DKPrefBool(DKKeyCommentGlass);
+    BOOL clear = DKPrefBool(DKKeyCommentGlassClear);
+    [out appendFormat:@"总开关               = %@  配置目标=%@  interactive=固定 YES\n",
+     enabled ? @"开" : @"关", clear ? @"Clear" : @"Regular"];
+
     UIView *slot = DKCommentGlassCurrentSlot();
     [out appendFormat:@"面板槽位             = %@\n", DKProbeDesc(slot)];
     if (!slot) {
@@ -288,13 +296,17 @@ static void DKProbeAppendCommentGlass(NSMutableString *out) {
     [out appendFormat:@"玻璃层               = %@\n", DKProbeDesc(glass)];
     [out appendFormat:@"  frame=%@  alpha=%.3f  hidden=%@\n",
      NSStringFromCGRect(glass.frame), glass.alpha, glass.isHidden ? @"YES" : @"NO"];
-    // style 属性由 _style ivar 支持，但 +effectWithStyle: 不写它（模拟器实测 Clear 建出来的
-    // effect 回读仍是 0），所以只打真正决定材质的 _UIViewGlass 描述。
     [out appendFormat:@"  effect             = %@  interactive=%@  tintColor=%@\n",
      effect ? NSStringFromClass(effect.class) : @"(nil)",
      [DKProbeValue(effect, @"interactive") boolValue] ? @"YES" : @"NO",
      DKProbeColorDesc(DKProbeValue(effect, @"tintColor"))];
-    [out appendFormat:@"  glass              = %@\n", DKProbeValue(effect, @"glass") ?: @"(读不到)"];
+    // iOS 27 的私有描述可能把公开 Clear 构造也打成 regular，只作原始诊断、不作档位判据。
+    [out appendFormat:@"  UIKit 私有诊断    = %@\n", DKProbeValue(effect, @"glass") ?: @"(读不到)"];
+    // interactive 是否真的落地，看两条：effect 上写没写、系统有没有据此挂上 flex 交互。
+    // 「重定向目标」为 nil 或指回玻璃自己，说明 -_flexInteractionGestureView 的重写没被 UIKit 读到。
+    [out appendFormat:@"  flex 交互已挂      = %@  重定向目标=%@\n",
+     DKGlassFlexInstalled(glass) ? @"是" : @"否",
+     DKProbeDesc(DKGlassFlexResolvedSource(glass))];
     [out appendFormat:@"  界面风格           = %@（override=%@）\n",
      DKProbeStyleName(glass.traitCollection.userInterfaceStyle),
      DKProbeStyleName(glass.overrideUserInterfaceStyle)];
@@ -306,15 +318,29 @@ static void DKProbeAppendCommentGlass(NSMutableString *out) {
          [glass effectiveRadiusForCorner:UIRectCornerBottomRight]];
     }
 
-    // 输入框那枚胶囊：抖音在常驻态（36pt）与回复态（60pt）之间反复改它的尺寸，玻璃必须跟上。
-    // 「尺寸跟随 = 否」就是 beta15 那两个观感 bug——常驻底栏被高出来的一截挡住、回复框缩成细长条。
+    // 输入框胶囊会在常驻态与回复态之间改变尺寸，探针直接核对玻璃是否仍与槽位等大。
     UIView *field = DKCommentGlassCurrentField();
     if (!field) return;
     UIView *fieldGlass = field.subviews.firstObject;
+    UIVisualEffect *fieldEffect = [fieldGlass isKindOfClass:UIVisualEffectView.class]
+        ? ((UIVisualEffectView *)fieldGlass).effect : nil;
     [out appendFormat:@"输入框槽位           = %@  frame=%@\n",
      DKProbeDesc(field), NSStringFromCGRect(field.frame)];
     [out appendFormat:@"  玻璃层             = %@  frame=%@\n",
      DKProbeDesc(fieldGlass), NSStringFromCGRect(fieldGlass.frame)];
+    [out appendFormat:@"  effect             = %@  interactive=%@  tintColor=%@\n",
+     fieldEffect ? NSStringFromClass(fieldEffect.class) : @"(nil)",
+     [DKProbeValue(fieldEffect, @"interactive") boolValue] ? @"YES" : @"NO",
+     DKProbeColorDesc(DKProbeValue(fieldEffect, @"tintColor"))];
+    [out appendFormat:@"  flex 交互已挂      = %@  重定向目标=%@\n",
+     DKGlassFlexInstalled(fieldGlass) ? @"是" : @"否",
+     DKProbeDesc(DKGlassFlexResolvedSource(fieldGlass))];
+    if ([fieldGlass isKindOfClass:UIVisualEffectView.class]) {
+        UIVisualEffectView *fieldEffectView = (UIVisualEffectView *)fieldGlass;
+        [out appendFormat:@"  界面风格           = %@（override=%@）\n",
+         DKProbeStyleName(fieldEffectView.traitCollection.userInterfaceStyle),
+         DKProbeStyleName(fieldEffectView.overrideUserInterfaceStyle)];
+    }
     [out appendFormat:@"  尺寸跟随           = %@\n",
      [fieldGlass isKindOfClass:UIVisualEffectView.class]
          && CGSizeEqualToSize(fieldGlass.bounds.size, field.bounds.size) ? @"是" : @"否"];

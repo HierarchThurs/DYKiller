@@ -1,39 +1,34 @@
 //
 //  DKCommentGlass.xm
-//  把抖音原生评论面板换成系统 Clear 液态玻璃：主面板、输入栏底色与输入框胶囊各一层
-//  UIGlassEffectStyleClear。深浅色、材质、染色全部交给系统；本文件不压 alpha、不加 tint、
-//  不做自绘模糊 / 压暗 / 调色。
+//  用 iOS 26 系统液态玻璃替换评论面板与输入框的不透明底色。
+//  默认使用自适应的 Regular，用户可切换为 Clear；两种材质都不接管文字渲染。
 //
-//  实现约束（beta6）：
+//  实现约束：
 //
-//  · 槽位判据仍是「子树里唯一不透明的背景色」——面板在 CommentContainerInnerViewController.view，
+//  · 槽位判据是「子树里唯一不透明的背景色」——面板在 CommentContainerInnerViewController.view，
 //    输入栏与输入框各一处。不写死 frame / 层级；其他形态找不到槽位时自动不生效。
 //
-//  · 大尺寸媒体背景必须用 Clear：Regular 会主动模糊并增强不透明度，面板越大越厚。
-//    Apple Materials / WWDC25 UIKit 明确把 Clear 留给媒体背景。
-//
-//  · Clear 不随深浅色变化：iOS 26.5 实测，场景浅色 / 场景深色 / override 浅色 / override 深色
-//    四种组合逐像素相同（亮度比同为 1.21，面板尺寸复测 1.17 / 1.15）。所以深色玻璃不能靠
-//    overrideUserInterfaceStyle，只能用原生 UIGlassEffect.tintColor 染色——它在保留折射与
-//    视频细节的前提下把玻璃压暗（黑 15% / 30% / 50% 对应 1.04 / 0.90 / 0.71）。
+//  · Regular 不叠加任何 tint，通过玻璃视图的 overrideUserInterfaceStyle 跟随真实场景外观。
+//    Clear 浅色不染色，深色沿用 DKGlassTintForStyle 的黑色 30% 染色。
 //
 //  · 玻璃自身必须有有效圆角，宿主 masksToBounds 只是硬裁、不会给玻璃折射与高光。
 //    顶部半径取槽位实时 layer.cornerRadius 作为同心圆角下限；输入框用 capsule。
 //
-//  · 新建时 effect=nil 挂载，再在现有呈现过渡中写入 effect，走系统 materialize；
+//  · 新建时 effect=nil 挂载，再在转场协调器或短动画中写入 effect，走系统 materialize；
 //    禁止用 alpha 淡入（UIVisualEffectView 文档：alpha < 1 会失真甚至不显示）。
 //
 //  · 主面板玻璃恒为槽位满幅。输入栏容器是面板槽位的兄弟且落在它的矩形之内，所以铺满就已经
-//    盖住输入区——输入栏底色槽只清成透明让它透上来，不再单独挂一块玻璃。beta2 给底色槽也挂
-//    玻璃、主面板则截到输入栏顶边让位，空评论态下底色槽认不出来，那 82pt 就两块玻璃都没有。
+//    盖住输入区——输入栏底色槽只清成透明让它透上来，不再单独挂一块玻璃。
 //    输入框保持独立胶囊，不使用 UIGlassContainerEffect（嵌套会被合并成同一形状）。
 //
 //  · 深浅色从 UIWindowScene 的 trait 取：抖音把 window override 钉死为浅色。
+//  · interactive 恒为 YES；玻璃不参与 hit-test，触摸源重定向到对应槽位及其子树。
 //  · 主面板若已有其他插件的 effect view，整项让行，只移除自身创建的视图。
 //
 
 #import "DouyinHeaders.h"
 #import "DKCommentGlass.h"
+#import "DKGlassFlexView.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKUtils.h"
@@ -52,11 +47,16 @@ static NSString *const kDKInputContainerClass =
 static const CGFloat kDKSlotSizeTolerance = 0.5;
 // 槽位尚未写入圆角时的顶部半径下限，保证玻璃有效半径 > 0。
 static const CGFloat kDKTopRadiusFloor = 8.0;
+// 没有可复用的页面转场时，材质更换使用这个短动画。
+static const NSTimeInterval kDKGlassAnimationDuration = 0.25;
 
 #pragma mark - 状态（全部挂在被改动的视图上，多个评论面板并存也互不干扰）
 
 static char kSlotOriginalColorKey;     // 槽位：抖音写的底色
 static char kSlotGlassKey;             // 槽位：我们插的玻璃层
+static char kGlassClearModeKey;         // 玻璃：当前 effect 是否按 Clear 构造
+static char kGlassStyleKey;             // 玻璃：当前 effect 对应的场景外观
+static char kGlassMaterializingKey;     // 玻璃：已排入 materialize，防止重复排队
 
 // 本次会话是否接管过槽位。开关一直关着的用户不必为每帧的查找与还原付出代价。
 static BOOL gEverAttached = NO;
@@ -86,31 +86,116 @@ static BOOL DKViewIsVisible(UIView *view) {
     return view && !view.hidden && view.alpha >= 0.01;
 }
 
-#pragma mark - 深浅色
+#pragma mark - 材质与外观
 
-// 染色口径在 DKUtils 的 DKGlassTintForStyle：浅色不染色、深色黑 30%，与悬浮底栏共用一处定义。
-
-// 当前该用的外观：抖音把 window override 钉死为浅色，UIWindowScene 那一层它盖不住，取它即得系统真值。
+// 抖音的 window override 恒为浅色，真实系统外观从 UIWindowScene 取。
 static UIUserInterfaceStyle gGlassStyle = UIUserInterfaceStyleUnspecified;
 
-// Clear 对 overrideUserInterfaceStyle 完全不敏感，只能整只 effect 换掉。
-// effect 尚未 materialize（仍为 nil）的玻璃跳过，等它自己那一轮补上。
-static void DKApplyGlassStyle(UIUserInterfaceStyle style) API_AVAILABLE(ios(26.0)) {
+static BOOL DKColorsEqual(UIColor *lhs, UIColor *rhs) {
+    return lhs == rhs || [lhs isEqual:rhs];
+}
+
+static UIUserInterfaceStyle DKGlassStyleForView(UIView *view) {
+    UIUserInterfaceStyle style = view.window.windowScene.traitCollection.userInterfaceStyle;
+    if (style == UIUserInterfaceStyleUnspecified) style = gGlassStyle;
+    if (style == UIUserInterfaceStyleUnspecified) style = view.traitCollection.userInterfaceStyle;
+    return style == UIUserInterfaceStyleUnspecified ? UIUserInterfaceStyleLight : style;
+}
+
+static BOOL DKCommentGlassUsesClearMaterial(void) {
+    return DKPrefBool(DKKeyCommentGlassClear);
+}
+
+static UIUserInterfaceStyle DKGlassOverrideStyle(BOOL clear, UIUserInterfaceStyle style) {
+    return clear ? UIUserInterfaceStyleUnspecified : style;
+}
+
+static UIColor *DKCommentGlassTint(BOOL clear, UIUserInterfaceStyle style) {
+    return clear ? DKGlassTintForStyle(style) : nil;
+}
+
+static UIGlassEffect *DKMakeCommentGlassEffect(BOOL clear, UIUserInterfaceStyle style)
+    API_AVAILABLE(ios(26.0)) {
+    UIGlassEffect *effect = [UIGlassEffect effectWithStyle:
+        clear ? UIGlassEffectStyleClear : UIGlassEffectStyleRegular];
+    effect.tintColor = DKCommentGlassTint(clear, style);
+    effect.interactive = YES;
+    return effect;
+}
+
+static void DKRunGlassAnimation(UIViewController *controller, BOOL animated, void (^changes)(void)) {
+    if (!changes) return;
+    if (!animated || UIAccessibilityIsReduceMotionEnabled()) {
+        [UIView performWithoutAnimation:changes];
+        return;
+    }
+
+    id<UIViewControllerTransitionCoordinator> coordinator = controller.transitionCoordinator;
+    if (coordinator && coordinator.isAnimated) {
+        BOOL accepted = [coordinator
+            animateAlongsideTransition:^(__unused id<UIViewControllerTransitionCoordinatorContext> context) {
+                changes();
+            }
+            completion:nil];
+        if (accepted) return;
+    }
+
+    [UIView animateWithDuration:kDKGlassAnimationDuration
+                          delay:0.0
+                        options:UIViewAnimationOptionBeginFromCurrentState
+                              | UIViewAnimationOptionAllowUserInteraction
+                              | UIViewAnimationOptionCurveEaseInOut
+                     animations:changes
+                     completion:nil];
+}
+
+static void DKInstallGlassEffect(UIVisualEffectView *glass, UIGlassEffect *effect,
+                                 BOOL clear, UIUserInterfaceStyle style)
+    API_AVAILABLE(ios(26.0)) {
+    glass.effect = effect;
+    objc_setAssociatedObject(glass, &kGlassClearModeKey, @(clear), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(glass, &kGlassStyleKey, @(style), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static BOOL DKGlassNeedsAppearance(UIVisualEffectView *glass, BOOL clear, UIUserInterfaceStyle style)
+    API_AVAILABLE(ios(26.0)) {
+    if (glass.overrideUserInterfaceStyle != DKGlassOverrideStyle(clear, style)) return YES;
+
+    UIGlassEffect *current = [glass.effect isKindOfClass:UIGlassEffect.class]
+        ? (UIGlassEffect *)glass.effect : nil;
+    if (!current) return glass.effect != nil;
+
+    NSNumber *installedClear = objc_getAssociatedObject(glass, &kGlassClearModeKey);
+    NSNumber *installedStyle = objc_getAssociatedObject(glass, &kGlassStyleKey);
+    if (!installedClear || installedClear.boolValue != clear) return YES;
+    if (!installedStyle || installedStyle.integerValue != style) return YES;
+    if (!current.interactive) return YES;
+    return !DKColorsEqual(current.tintColor, DKCommentGlassTint(clear, style));
+}
+
+// 外观、Regular/Clear 档位或 tint 不变时不重建 effect，避免布局回调打断动画。
+static void DKApplyGlassStyle(UIUserInterfaceStyle style, BOOL animated) API_AVAILABLE(ios(26.0)) {
     if (style == UIUserInterfaceStyleUnspecified) return;
     gGlassStyle = style;
 
-    UIColor *tint = DKGlassTintForStyle(style);
-    for (UIVisualEffectView *glass in gGlassCarriers.allObjects) {
-        UIGlassEffect *current = (UIGlassEffect *)glass.effect;
-        if (!current) continue;
-        // tintColor 相同就不重建：每帧换 effect 会打断系统的呈现过渡。
-        UIColor *existing = [current isKindOfClass:UIGlassEffect.class] ? current.tintColor : nil;
-        if (existing == tint || [existing isEqual:tint]) continue;
-
-        UIGlassEffect *effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleClear];
-        effect.tintColor = tint;
-        glass.effect = effect;
+    BOOL clear = DKCommentGlassUsesClearMaterial();
+    NSArray<UIVisualEffectView *> *carriers = gGlassCarriers.allObjects;
+    BOOL needsUpdate = NO;
+    for (UIVisualEffectView *glass in carriers) {
+        if (DKGlassNeedsAppearance(glass, clear, style)) {
+            needsUpdate = YES;
+            break;
+        }
     }
+    if (!needsUpdate) return;
+
+    DKRunGlassAnimation(nil, animated, ^{
+        for (UIVisualEffectView *glass in carriers) {
+            glass.overrideUserInterfaceStyle = DKGlassOverrideStyle(clear, style);
+            if (!glass.effect || !DKGlassNeedsAppearance(glass, clear, style)) continue;
+            DKInstallGlassEffect(glass, DKMakeCommentGlassEffect(clear, style), clear, style);
+        }
+    });
 }
 
 // 挂在场景上监听，系统一切深浅色即刻改；否则只能等抖音下次布局。
@@ -120,7 +205,7 @@ static void DKObserveGlassStyle(UIView *host) API_AVAILABLE(ios(26.0)) {
     gObservedScene = scene;
     [scene registerForTraitChanges:@[ UITraitUserInterfaceStyle.class ]
                        withHandler:^(UIWindowScene *changed, __unused UITraitCollection *previous) {
-        DKApplyGlassStyle(changed.traitCollection.userInterfaceStyle);
+        DKApplyGlassStyle(changed.traitCollection.userInterfaceStyle, YES);
     }];
 }
 
@@ -140,10 +225,7 @@ static void DKCollectSlotCandidates(UIView *view, NSUInteger depth, NSMutableArr
     }
 }
 
-// 宿主按 UIViewController 收：放大到全屏时抖音把**同一个** AWECommentContainerViewController
-// 实例接管进全屏容器（beta11 导出实证：容器与 inner VC 地址在半屏 / 全屏完全一致，只是 inner
-// 的 frame 从 {0,296.32,428,629.68} 变成 {0,47,428,879}），所以上面那个钩子在两种状态下都会跑，
-// 不需要再给全屏容器挂一层。槽位判据是结构不是类名，认不出就什么都不做。
+// 半屏与全屏复用同一个评论控制器；槽位按结构解析，认不出时不接管。
 static UIView *DKPanelSlot(UIViewController *controller) {
     UIViewController *inner = DKChildControllerNamed(controller, kDKInnerControllerClass);
     return inner.isViewLoaded ? inner.view : nil;
@@ -195,20 +277,18 @@ typedef NS_ENUM(NSUInteger, DKGlassShape) {
     DKGlassShapeCapsule,
 };
 
-// 先以 nil effect 建好视图；Clear 在挂上视图树后由 DKMaterializeGlass 写入，走系统 materialize。
+// 先以 nil effect 建好视图；挂上视图树并完成几何后再走系统 materialize。
+// 用 DKGlassFlexView 而不是裸 UIVisualEffectView：它多一条触摸源重定向，除此之外行为一致。
 static UIVisualEffectView *DKMakeGlassShell(void) API_AVAILABLE(ios(26.0)) {
-    UIVisualEffectView *glass = [[UIVisualEffectView alloc] initWithEffect:nil];
+    DKGlassFlexView *glass = [[DKGlassFlexView alloc] initWithEffect:nil];
     glass.userInteractionEnabled = NO;
     glass.alpha = 1.0;
-    // 槽位尺寸是抖音自己改的（输入框在 36pt 常驻态与 60pt 回复态之间来回切），而同步只挂在评论
-    // 容器的布局回调上，槽位单独改尺寸时同步不到，玻璃就停在上一次的大小（beta15 实测：常驻态
-    // 槽位 404×36、玻璃仍是 404×60；回复态槽位 404×60、玻璃仍是 341×36）。交给 UIKit 跟随，
-    // 挂上那一刻的 frame 是基线，之后每次尺寸变化都自动等于槽位 bounds。
+    // 输入框会在常驻态与回复态之间改变尺寸；交给 UIKit 按槽位 bounds 自动跟随。
     glass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     return glass;
 }
 
-// 顶部：同心圆角 + 槽位实时半径作下限，避免 beta4 解析成 0 而失去折射/高光。
+// 顶部：同心圆角 + 槽位实时半径作下限，保证折射与高光所需的有效圆角。
 // 胶囊：系统 capsuleConfiguration，正方形/扁矩形上都保证有效圆角 > 0。
 static void DKApplyGlassShape(UIVisualEffectView *glass, UIView *slot, DKGlassShape shape)
     API_AVAILABLE(ios(26.0)) {
@@ -226,12 +306,25 @@ static void DKApplyGlassShape(UIVisualEffectView *glass, UIView *slot, DKGlassSh
                                                bottomRightRadius:nil];
 }
 
-// 仅在 effect 仍为 nil 时写入，让系统 materialize 动画跑一次；后续换档走 DKApplyGlassStyle。
-static void DKMaterializeGlass(UIVisualEffectView *glass) API_AVAILABLE(ios(26.0)) {
-    if (glass.effect) return;
-    UIGlassEffect *effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleClear];
-    effect.tintColor = DKGlassTintForStyle(gGlassStyle);
-    glass.effect = effect;
+// 仅在 effect 仍为 nil 时写入，让系统 materialize 动画跑一次。
+static void DKMaterializeGlass(UIVisualEffectView *glass, UIViewController *controller)
+    API_AVAILABLE(ios(26.0)) {
+    if (!glass || glass.effect || [objc_getAssociatedObject(glass, &kGlassMaterializingKey) boolValue]) return;
+    objc_setAssociatedObject(glass, &kGlassMaterializingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    DKRunGlassAnimation(controller, YES, ^{
+        if (!glass.superview || !DKPrefBool(DKKeyCommentGlass)) {
+            objc_setAssociatedObject(glass, &kGlassMaterializingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            return;
+        }
+
+        UIUserInterfaceStyle style = gGlassStyle;
+        if (style == UIUserInterfaceStyleUnspecified) style = DKGlassStyleForView(glass);
+        BOOL clear = DKCommentGlassUsesClearMaterial();
+        glass.overrideUserInterfaceStyle = DKGlassOverrideStyle(clear, style);
+        DKInstallGlassEffect(glass, DKMakeCommentGlassEffect(clear, style), clear, style);
+        objc_setAssociatedObject(glass, &kGlassMaterializingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    });
 }
 
 // 记下并清掉槽位的不透明底色。返回 NO 表示这个槽位不该接管——它本来就没有底色。
@@ -264,6 +357,8 @@ static UIView *DKAttachGlass(UIView *slot, DKGlassShape shape) API_AVAILABLE(ios
         gEverAttached = YES;
     }
 
+    // 槽位作为触摸源时包含它的整棵子树，面板列表与输入控件都不必单独枚举。
+    ((DKGlassFlexView *)glass).flexSourceView = slot;
     DKApplyGlassShape((UIVisualEffectView *)glass, slot, shape);
     return glass;
 }
@@ -285,8 +380,6 @@ static void DKDetachGlass(UIView *slot) {
 // DKCommentBottomBar，这里只读不写。只挂壳与几何，effect 由调用方在 CATransaction 外 materialize。
 //
 // 底色槽只清成透明，让主面板玻璃透上来；只有输入框那枚胶囊有自己的玻璃。
-// beta2 给底色槽也挂一块玻璃，主面板玻璃就得截到输入栏顶边让位，而空评论态下抖音换了另一套
-// 输入区结构、底色槽认不出来，那 82pt 于是两块玻璃都没有，直接露出原始视频。
 static void DKSyncInputGlass(UIView *container) API_AVAILABLE(ios(26.0)) {
     if (!DKViewIsVisible(container)) return;
 
@@ -305,10 +398,10 @@ static void DKSyncInputGlass(UIView *container) API_AVAILABLE(ios(26.0)) {
     DKEnsureBackmost(field, glass);
 }
 
-static void DKMaterializeSlotGlass(UIView *slot) API_AVAILABLE(ios(26.0)) {
+static void DKMaterializeSlotGlass(UIView *slot, UIViewController *controller) API_AVAILABLE(ios(26.0)) {
     if (!slot) return;
     UIVisualEffectView *glass = objc_getAssociatedObject(slot, &kSlotGlassKey);
-    if (glass) DKMaterializeGlass(glass);
+    if (glass) DKMaterializeGlass(glass, controller);
 }
 
 static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(26.0)) {
@@ -331,8 +424,11 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
         return;
     }
 
+    DKObserveGlassStyle(panel);
+    UIUserInterfaceStyle style = DKGlassStyleForView(panel);
+
     // 本函数可能落在抖音的布局或键盘动画里，隐式动画会让玻璃几何拖在内容后面。
-    // materialize 单独在 disable 之外写 effect，保留系统呈现过渡。
+    // materialize 在几何就位后单独执行，不受这个 CATransaction 影响。
     UIVisualEffectView *panelGlass = nil;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -340,9 +436,6 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
     panelGlass = (UIVisualEffectView *)DKAttachGlass(panel, DKGlassShapeTopRounded);
     if (panelGlass) {
         gLastPanelSlot = panel;
-        DKObserveGlassStyle(panel);
-        // 监听之外再逐帧比对一次：冷启动首帧与刚挂上时都没有 trait 变化事件可等。
-        DKApplyGlassStyle(panel.window.windowScene.traitCollection.userInterfaceStyle);
 
         // 恒为槽位满幅：输入栏容器是本槽位的兄弟且落在它的矩形之内，铺满就已经盖住输入区，
         // 不需要给它让位，也就没有「让了位却没人盖」的时序窗口。
@@ -354,14 +447,15 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
 
     [CATransaction commit];
 
-    // 几何就位后再 materialize：系统 Clear 从 nil → effect 的过渡不走 alpha。
+    // 几何就位后统一更新已存在的材质，再让新玻璃从 nil → effect materialize。
     if (panelGlass) {
-        DKMaterializeGlass(panelGlass);
+        DKApplyGlassStyle(style, YES);
+        DKMaterializeGlass(panelGlass, controller);
         if (DKViewIsVisible(inputContainer)) {
             UIView *backdrop = nil;
             UIView *field = nil;
             DKResolveInputSlots(inputContainer, &backdrop, &field);
-            DKMaterializeSlotGlass(field);
+            DKMaterializeSlotGlass(field, controller);
         }
     }
 }
@@ -393,8 +487,29 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
         return DKMakeSwitch(
             DKKeyCommentGlass,
             @"评论区液态玻璃",
-            @"把评论面板与输入栏换成 iOS 26 系统 Clear 液态玻璃；面板已被其他插件接管时自动让行"
+            @"把评论面板与输入框换成 iOS 26 系统液态玻璃；默认使用 Regular 自适应材质"
         );
     });
 
+    DKSettingsRegisterItem(@"评论区", ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeSwitch(
+            DKKeyCommentGlassClear,
+            @"清透玻璃",
+            @"显示更多背后视频细节；关闭则使用系统 Regular 自适应材质"
+        );
+        void (^originalBlock)(void) = [item.switchChangedBlock copy];
+        item.switchChangedBlock = ^{
+            if (originalBlock) originalBlock();
+            void (^refresh)(void) = ^{
+                UIView *slot = gLastPanelSlot;
+                UIUserInterfaceStyle current = gGlassStyle;
+                if (slot.window.windowScene) current = DKGlassStyleForView(slot);
+                else if (current == UIUserInterfaceStyleUnspecified && slot) current = DKGlassStyleForView(slot);
+                if (@available(iOS 26.0, *)) DKApplyGlassStyle(current, YES);
+            };
+            if ([NSThread isMainThread]) refresh();
+            else dispatch_async(dispatch_get_main_queue(), refresh);
+        };
+        return item;
+    });
 }
