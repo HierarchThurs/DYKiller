@@ -20,6 +20,9 @@ UITabBar *DKGlassTabBarCurrent(void);
 /// 当前挂载中的拍摄圆键；功能关闭时为 nil。
 UIVisualEffectView *DKGlassPlusKeyCurrent(void);
 
+/// 悬浮胶囊本体（_UITabBarItemPlatterView）。音频可视化的环绕轮廓以它为准。
+UIView *DKGlassPlatterCurrent(void);
+
 /// 悬浮胶囊玻璃改写的状态，一句话自述。胶囊材质由 platter 自己的 glassEffect 决定，
 /// 而非 UITabBarAppearance.backgroundEffect；这行是唯一能证明改写成没成的读数。
 NSString *DKGlassPlatterGlassStatus(void);

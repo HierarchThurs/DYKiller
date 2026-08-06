@@ -32,8 +32,8 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = DYKiller
 DYKiller_FILES = $(shell find src -type f \( -name '*.m' -o -name '*.mm' -o -name '*.x' -o -name '*.xm' -o -name '*.c' -o -name '*.cc' -o -name '*.cpp' \) | sort)
 DYKiller_INCLUDE_DIRS = $(shell find src -type d | sort)
-DYKiller_CFLAGS = -fobjc-arc -w $(addprefix -I,$(DYKiller_INCLUDE_DIRS)) -DDK_VERSION=@\"$(DK_VERSION)\"
-DYKiller_FRAMEWORKS = UIKit Foundation QuartzCore CoreGraphics
+DYKiller_CFLAGS = -fobjc-arc -w -fmodules-cache-path=$(CURDIR)/debug/details/module-cache $(addprefix -I,$(DYKiller_INCLUDE_DIRS)) -DDK_VERSION=@\"$(DK_VERSION)\"
+DYKiller_FRAMEWORKS = UIKit Foundation QuartzCore CoreGraphics AudioToolbox AVFAudio AVFoundation CoreMedia MediaToolbox Accelerate
 DYKiller_LDFLAGS += -lz
 DYKiller_LOGOS_DEFAULT_GENERATOR = internal
 

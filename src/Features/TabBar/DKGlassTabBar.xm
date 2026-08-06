@@ -15,6 +15,7 @@
 //
 
 #import "DKGlassTabBar.h"
+#import "DKAudioVisualizer.h"
 #import "DouyinHeaders.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
@@ -75,6 +76,13 @@ UITabBar *DKGlassTabBarCurrent(void) {
 
 UIVisualEffectView *DKGlassPlusKeyCurrent(void) {
     return gPlusKey;
+}
+
+// 每次布局由 DKGlassLayoutGlass 刷新。弱引用：UIKit 换掉 platter 时这里自动变 nil。
+static __weak UIView *gPlatter = nil;
+
+UIView *DKGlassPlatterCurrent(void) {
+    return gPlatter;
 }
 
 #pragma mark - 小工具
@@ -549,6 +557,7 @@ static UIView *DKGlassFindPlatter(UIView *root) {
 // platter 首帧还不存在时用兜底值，次帧即被真实值取代；写入先比较，不会形成布局环。
 static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0)) {
     UIView *platterView = DKGlassFindPlatter(gBar);
+    gPlatter = platterView;
     // 找到 platter 就顺手把它的玻璃换成 Clear。放在所有提前 return 之前：
     // 拍摄按钮被其他插件移除时下面会早退，但胶囊材质照样要生效。
     DKGlassApplyPlatterGlass(platterView, gGlassStyle);
@@ -638,6 +647,8 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
         gGlassStyle = UIUserInterfaceStyleUnspecified;
         gPlatterGlassStyle = UIUserInterfaceStyleUnspecified;
         gPlatterGlassInstalled = nil;
+        // 玻璃底栏是可视化的落位基准，它一撤可视化必须跟着撤，否则会留下一层孤儿视图。
+        DKAudioVisualizerLayout(douyinBar);
         return;
     }
     // 场景监听不撤：handler 只在 gBar 存在时才动手，重新开启开关后照旧生效。
@@ -669,6 +680,8 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
     DKGlassSyncItems(controller, buttons);
     DKGlassLayoutGlass(douyinBar);
     DKGlassSetDouyinContentVisible(douyinBar, buttons, NO);
+    // 放在最后：可视化的环绕轮廓要用 DKGlassLayoutGlass 刚算完的胶囊与圆键几何。
+    DKAudioVisualizerLayout(douyinBar);
 }
 
 #pragma mark - Hook

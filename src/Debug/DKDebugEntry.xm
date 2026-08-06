@@ -6,6 +6,7 @@
 //
 
 #import "DKDebugInspector.h"
+#import "DKAudioProbe.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
 
@@ -18,6 +19,7 @@ static AWESettingItemModel *DKMakeDebugSwitch(void) {
     void (^origBlock)(void) = [item.switchChangedBlock copy];
     item.switchChangedBlock = ^{
         if (origBlock) origBlock();
+        DKAudioProbePreferenceDidChange();
         DKDebugInspectorRefreshOverlay();
     };
     return item;
@@ -43,6 +45,7 @@ static AWESettingItemModel *DKMakeDebugSwitch(void) {
 %end
 
 %ctor {
+    DKAudioProbeInstallIfEnabled(YES);
     DKSettingsRegisterItem(@"调试", ^AWESettingItemModel *{
         return DKMakeDebugSwitch();
     });

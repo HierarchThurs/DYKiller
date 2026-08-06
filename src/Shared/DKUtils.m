@@ -11,6 +11,10 @@ BOOL DKPrefBool(NSString *key) {
     return [[NSUserDefaults standardUserDefaults] boolForKey:key];
 }
 
+NSInteger DKPrefInteger(NSString *key) {
+    return [[NSUserDefaults standardUserDefaults] integerForKey:key];
+}
+
 #pragma mark - 控制器查找
 
 static UIViewController *DKSearchChildController(UIViewController *controller, NSString *className, NSUInteger depth) {

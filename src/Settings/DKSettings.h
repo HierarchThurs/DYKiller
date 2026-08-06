@@ -23,6 +23,10 @@ void DKSettingsRegisterItem(NSString *sectionHeader, DKSettingItemBuilder builde
 /// 生成一个开关型设置项（identifier 即 NSUserDefaults 键）。
 AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *detail);
 
+/// 生成一个单选型设置项：点击弹对话框，选中项的下标写进 NSUserDefaults（整数）。
+/// options[0] 对应 0。当前选中项显示在 detail 上。
+AWESettingItemModel *DKMakeChoice(NSString *key, NSString *title, NSArray<NSString *> *options);
+
 #ifdef __cplusplus
 }
 #endif

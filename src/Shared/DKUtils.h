@@ -16,6 +16,9 @@ extern "C" {
 /// 读取某开关（NSUserDefaults BOOL）。
 BOOL DKPrefBool(NSString *key);
 
+/// 读取某单选项（NSUserDefaults NSInteger）。未设置时为 0。
+NSInteger DKPrefInteger(NSString *key);
+
 /// 沿 childViewControllers 递归找指定类名的子控制器。
 /// 抖音的面板类多是 Swift 类，类名带点，Logos 的 %hook 用不了，只能按名字取。
 UIViewController *DKChildControllerNamed(UIViewController *controller, NSString *className);

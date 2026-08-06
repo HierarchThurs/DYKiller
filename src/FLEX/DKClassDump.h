@@ -2,8 +2,7 @@
 //  DKClassDump.h
 //  DYKiller
 //
-//  把 ObjC 运行时元数据生成类头文件文本，并按镜像列出
-//  应用自有类。内置安全内省检查。
+//  把 ObjC 运行时元数据生成类头文件文本。内置安全内省检查。
 //
 
 #ifndef DKClassDump_h
@@ -23,12 +22,8 @@ BOOL DKClassIsSafe(Class cls);
 BOOL DKClassNameIsRuntimeGenerated(NSString *name);
 
 /// 生成单个类的头文件文本。
-/// 内含安全内省检查 + @try 兜底；不安全 / Swift / nil 一律返回 nil。
+/// 内含安全内省检查 + @try 兜底；不安全 / nil 一律返回 nil。
 NSString *DKClassDumpHeaderForClass(Class cls);
-
-/// 应用自有类（跳过 /System、/usr/lib 与 Swift），按镜像分组。
-/// 每个元素：@{ @"imageName": NSString, @"imagePath": NSString, @"classes": NSArray<NSString *> }
-NSArray<NSDictionary *> *DKClassDumpAppImages(void);
 
 #ifdef __cplusplus
 }

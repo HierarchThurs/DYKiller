@@ -3,14 +3,14 @@
 //  DYKiller
 //
 //  调试导出使用的最小 ZIP 写入器。
-//  以不压缩方式写入文件，并使用 zlib 计算 CRC32。
+//  以不压缩方式写入文件，使用 zlib 计算 CRC32，并支持 ZIP64 条目计数。
 //
 
 #ifndef DKZipWriter_h
 #define DKZipWriter_h
 
 #import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
+#import <CoreGraphics/CoreGraphics.h>
 
 NS_ASSUME_NONNULL_BEGIN
 

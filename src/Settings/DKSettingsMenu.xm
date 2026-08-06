@@ -50,12 +50,68 @@ AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *deta
     return item;
 }
 
+#pragma mark - 单选项工厂
+
+// 当前正在显示的设置页，供单选项弹对话框与选完刷新那一行。
+static __weak UIViewController *gSettingsPresenter = nil;
+
+static UITableView *DKFindTableView(UIView *root) {
+    if ([root isKindOfClass:UITableView.class]) return (UITableView *)root;
+    for (UIView *sub in root.subviews) {
+        UITableView *found = DKFindTableView(sub);
+        if (found) return found;
+    }
+    return nil;
+}
+
+AWESettingItemModel *DKMakeChoice(NSString *key, NSString *title, NSArray<NSString *> *options) {
+    AWESettingItemModel *item = [[%c(AWESettingItemModel) alloc] init];
+    NSInteger current = [[NSUserDefaults standardUserDefaults] integerForKey:key];
+    if (current < 0 || current >= (NSInteger)options.count) current = 0;
+
+    item.identifier = key;
+    item.title = title;
+    item.detail = options[current];
+    item.type = 0;
+    item.cellType = 26;                // 与 DYKiller 入口同型：可点击、右侧显示 detail
+    item.colorStyle = 0;
+    item.isEnable = YES;
+
+    __weak AWESettingItemModel *weakItem = item;
+    item.cellTappedBlock = ^{
+        UIViewController *presenter = gSettingsPresenter;
+        if (!presenter) return;
+        UIAlertController *sheet =
+            [UIAlertController alertControllerWithTitle:title message:nil
+                                         preferredStyle:UIAlertControllerStyleActionSheet];
+        [options enumerateObjectsUsingBlock:^(NSString *name, NSUInteger index, __unused BOOL *stop) {
+            [sheet addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault
+                                                   handler:^(__unused UIAlertAction *action) {
+                [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)index forKey:key];
+                [NSUserDefaults.standardUserDefaults synchronize];
+                // 这一行显示的就是所选值，不跟着变等于界面在说谎。改完就地刷新一次；
+                // 找不到表格也只是要重进页面才更新，写入本身已经生效。
+                weakItem.detail = name;
+                [DKFindTableView(presenter.view) reloadData];
+            }]];
+        }];
+        [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+        // iPad 上 actionSheet 必须给锚点，否则直接抛异常。
+        sheet.popoverPresentationController.sourceView = presenter.view;
+        sheet.popoverPresentationController.sourceRect =
+            CGRectMake(CGRectGetMidX(presenter.view.bounds), CGRectGetMidY(presenter.view.bounds), 1, 1);
+        [presenter presentViewController:sheet animated:YES completion:nil];
+    };
+    return item;
+}
+
 #pragma mark - 设置页构建
 
 static void DKShowSettings(UIViewController *rootVC) {
     if (!rootVC) return;
 
     AWESettingBaseViewController *vc = [[%c(AWESettingBaseViewController) alloc] init];
+    gSettingsPresenter = vc;
 
     dispatch_async(dispatch_get_main_queue(), ^{
         for (UIView *sub in vc.view.subviews) {

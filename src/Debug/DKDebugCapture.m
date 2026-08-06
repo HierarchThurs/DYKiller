@@ -337,13 +337,16 @@ static void DKAppendVCText(UIViewController *vc, NSUInteger depth, NSMutableStri
     [seen addObject:vc];
     NSMutableString *indent = [NSMutableString string];
     for (NSUInteger i = 0; i < depth; i++) [indent appendString:@"  "];
-    [out appendFormat:@"%@%@ %@ view=%@ %@ frame=%@\n",
+    BOOL loaded = vc.isViewLoaded;
+    UIView *view = loaded ? vc.view : nil;
+    [out appendFormat:@"%@%@ %@ viewLoaded=%@ view=%@ %@ frame=%@\n",
      indent,
      DKClassName(vc),
      DKStringFromPointer((__bridge const void *)vc),
-     DKClassName(vc.view),
-     vc.view ? DKStringFromPointer((__bridge const void *)vc.view) : @"",
-     vc.view ? NSStringFromCGRect(vc.view.frame) : @"null"];
+     loaded ? @"YES" : @"NO",
+     DKClassName(view),
+     view ? DKStringFromPointer((__bridge const void *)view) : @"",
+     view ? NSStringFromCGRect(view.frame) : @"null"];
 
     if ([vc isKindOfClass:[UINavigationController class]]) {
         UINavigationController *nav = (UINavigationController *)vc;
@@ -413,6 +416,34 @@ static void DKCollectPageClassesFromVC(UIViewController *vc, NSMutableSet<NSStri
     if (vc.presentedViewController) DKCollectPageClassesFromVC(vc.presentedViewController, names, seen);
 }
 
+static NSDictionary *DKDebugMetadata(UIWindow *targetWindow, CGPoint point) {
+    return @{
+        @"generatedAt": DKObjectDesc(NSDate.date),
+        @"dykillerVersion": DK_VERSION,
+        @"bundleIdentifier": NSBundle.mainBundle.bundleIdentifier ?: @"",
+        @"bundleName": NSBundle.mainBundle.infoDictionary[@"CFBundleName"] ?: @"",
+        @"appVersion": NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"",
+        @"buildVersion": NSBundle.mainBundle.infoDictionary[(NSString *)kCFBundleVersionKey] ?: @"",
+        @"systemName": UIDevice.currentDevice.systemName ?: @"",
+        @"systemVersion": UIDevice.currentDevice.systemVersion ?: @"",
+        @"deviceModel": UIDevice.currentDevice.model ?: @"",
+        @"screenBounds": DKRectDict(UIScreen.mainScreen.bounds),
+        @"tapPointInTargetWindow": DKPointDict(point),
+        @"targetWindow": targetWindow ? DKWindowJSON(targetWindow) : @{}
+    };
+}
+
+// 音频专项导出只用得上元信息和截图。整棵 view tree 有几 MB，
+// 采到再丢等于让主线程白跑一趟，所以单开这条轻量路径。
+DKDebugExportContext *DKDebugCaptureMetadataContext(UIWindow *targetWindow) {
+    DKDebugExportContext *context = [DKDebugExportContext new];
+    context.metadata = DKDebugMetadata(targetWindow, CGPointZero);
+    context.screenshotPNG = DKScreenshotPNG(targetWindow);
+    context.sourceView = targetWindow;
+    context.presenter = DKDebugTopPresenter(targetWindow);
+    return context;
+}
+
 DKDebugExportContext *DKDebugCaptureContext(UIWindow *targetWindow, CGPoint point, UIView *selectedView) {
     DKDebugExportContext *context = [DKDebugExportContext new];
     NSArray<UIWindow *> *windows = DKDebugActiveWindows();
@@ -448,21 +479,6 @@ DKDebugExportContext *DKDebugCaptureContext(UIWindow *targetWindow, CGPoint poin
         @"ancestorChain": selectedView ? DKAncestorChain(selectedView) : @[]
     };
 
-    NSDictionary *metadata = @{
-        @"generatedAt": DKObjectDesc(NSDate.date),
-        @"dykillerVersion": DK_VERSION,
-        @"bundleIdentifier": NSBundle.mainBundle.bundleIdentifier ?: @"",
-        @"bundleName": NSBundle.mainBundle.infoDictionary[@"CFBundleName"] ?: @"",
-        @"appVersion": NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"",
-        @"buildVersion": NSBundle.mainBundle.infoDictionary[(NSString *)kCFBundleVersionKey] ?: @"",
-        @"systemName": UIDevice.currentDevice.systemName ?: @"",
-        @"systemVersion": UIDevice.currentDevice.systemVersion ?: @"",
-        @"deviceModel": UIDevice.currentDevice.model ?: @"",
-        @"screenBounds": DKRectDict(UIScreen.mainScreen.bounds),
-        @"tapPointInTargetWindow": DKPointDict(point),
-        @"targetWindow": targetWindow ? DKWindowJSON(targetWindow) : @{}
-    };
-
     NSString *summary = [NSString stringWithFormat:
                          @"Hit: %@ %@\nFrame: %@\nBounds: %@\nNearest VC: %@ %@\nWindows: %lu\nSubviews: %lu",
                          DKClassName(selectedView),
@@ -474,7 +490,7 @@ DKDebugExportContext *DKDebugCaptureContext(UIWindow *targetWindow, CGPoint poin
                          (unsigned long)windows.count,
                          (unsigned long)selectedView.subviews.count];
 
-    context.metadata = metadata;
+    context.metadata = DKDebugMetadata(targetWindow, point);
     context.windowsJSON = windowsJSON;
     context.viewTreeJSON = treeJSON;
     context.viewTreeText = treeText;

@@ -11,6 +11,8 @@
 
 #import <UIKit/UIKit.h>
 
+@class DKAudioProbeCapture;
+
 /// 一次页面快照的产物（纯数据；序列化由 DKDebugExport 负责）。
 @interface DKDebugExportContext : NSObject
 @property (nonatomic, strong) NSDictionary *metadata;
@@ -25,6 +27,8 @@
 @property (nonatomic, strong) NSArray<NSString *> *pageClassNames;
 /// 主线程生成的探针文本（probe/tabbar.txt）；后台导出只落盘，不再读 UIKit。
 @property (nonatomic, copy) NSString *probeText;
+/// 音频专项模式的五秒采样产物；普通页面/全类导出时为 nil。
+@property (nonatomic, strong) DKAudioProbeCapture *audioCapture;
 @property (nonatomic, weak) UIView *sourceView;
 @property (nonatomic, weak) UIViewController *presenter;
 @end
@@ -46,6 +50,9 @@ UIViewController *DKDebugTopPresenter(UIWindow *window);
 
 /// 抓取一次页面快照。
 DKDebugExportContext *DKDebugCaptureContext(UIWindow *targetWindow, CGPoint point, UIView *selectedView);
+
+/// 只采元信息与截图，不遍历 view tree；音频专项导出用。
+DKDebugExportContext *DKDebugCaptureMetadataContext(UIWindow *targetWindow);
 
 #ifdef __cplusplus
 }

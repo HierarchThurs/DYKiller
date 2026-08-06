@@ -4,12 +4,23 @@
 //
 //  基于 ObjC 运行时生成类头文件文本。
 //  DKClassIsSafe 用于限制可内省类集合。
-//  DKClassDumpAppImages 按镜像分组列出应用自有类。
 //
 
 #import "DKClassDump.h"
-#import <mach-o/dyld.h>
 #import <CoreFoundation/CoreFoundation.h>
+
+static NSString *DKCString(const char *value) {
+    if (!value) return @"";
+    NSString *utf8 = [NSString stringWithUTF8String:value];
+    if (utf8) return utf8;
+    size_t length = strnlen(value, 4096);
+    NSString *latin = [[NSString alloc] initWithBytes:value length:length encoding:NSISOLatin1StringEncoding];
+    if (latin) return latin;
+    NSMutableString *hex = [NSMutableString stringWithString:@"<bytes:"];
+    for (size_t i = 0; i < MIN(length, (size_t)64); i++) [hex appendFormat:@"%02x", (unsigned char)value[i]];
+    [hex appendString:@">"];
+    return hex;
+}
 
 #pragma mark - 安全内省检查
 
@@ -74,29 +85,11 @@ BOOL DKClassNameIsRuntimeGenerated(NSString *name) {
     return NO;
 }
 
-// 只保留应用自身及其 Frameworks/PlugIns/Extensions 目录下的镜像，丢掉系统库。
-static BOOL DKShouldSkipImage(NSString *imagePath) {
-    if (imagePath.length == 0) return YES;
-    if ([imagePath hasPrefix:@"/System/"]) return YES;
-    if ([imagePath hasPrefix:@"/usr/lib/"]) return YES;
-
-    NSString *bundlePath = NSBundle.mainBundle.bundlePath ?: @"";
-    NSString *container = [bundlePath stringByDeletingLastPathComponent];
-
-    if ([imagePath hasPrefix:bundlePath]) return NO;
-    if ([imagePath hasPrefix:container] && ([imagePath containsString:@"/Frameworks/"] ||
-                                            [imagePath containsString:@"/PlugIns/"] ||
-                                            [imagePath containsString:@"/Extensions/"])) {
-        return NO;
-    }
-    return YES;
-}
-
 #pragma mark - 类型编码 → 可读类型
 
 static NSString *DKTypeFromEncoding(const char *encoding) {
     if (!encoding) return @"id";
-    NSString *e = [NSString stringWithUTF8String:encoding];
+    NSString *e = DKCString(encoding);
     if (e.length == 0) return @"id";
 
     if ([e hasPrefix:@"@\""]) {
@@ -139,11 +132,11 @@ static NSString *DKTypeFromEncoding(const char *encoding) {
 static NSString *DKPropertyLine(objc_property_t property) {
     const char *n = property_getName(property);
     if (!n) return nil;
-    NSString *name = [NSString stringWithUTF8String:n];
+    NSString *name = DKCString(n);
 
     NSString *attrs = @"";
     const char *a = property_getAttributes(property);
-    if (a) attrs = [NSString stringWithUTF8String:a];
+    if (a) attrs = DKCString(a);
 
     NSString *type = @"id";
     BOOL readonly = [attrs containsString:@",R"];
@@ -207,7 +200,11 @@ static NSString *DKHeaderForClass(Class cls, NSString *imageName) {
     @try {
         NSString *className = NSStringFromClass(cls);
         if (className.length == 0) return nil;
-        if (DKIsLikelySwiftName(className)) return nil;
+        if (DKIsLikelySwiftName(className)) {
+            return [NSString stringWithFormat:
+                    @"// Runtime class: %@\n// Image: %@\n// 该名称不是有效的 Objective-C 标识符，无法生成头文件。\n",
+                    className, imageName ?: @"Unknown"];
+        }
 
         Class superCls = class_getSuperclass(cls);
         NSString *superName = superCls ? NSStringFromClass(superCls) : @"NSObject";
@@ -226,7 +223,7 @@ static NSString *DKHeaderForClass(Class cls, NSString *imageName) {
         NSMutableArray *protocolNames = [NSMutableArray array];
         for (unsigned int i = 0; i < protocolCount; i++) {
             const char *pn = protocol_getName(protocols[i]);
-            if (pn) [protocolNames addObject:[NSString stringWithUTF8String:pn]];
+            if (pn) [protocolNames addObject:DKCString(pn)];
         }
         if (protocols) free(protocols);
 
@@ -242,7 +239,7 @@ static NSString *DKHeaderForClass(Class cls, NSString *imageName) {
         for (unsigned int i = 0; i < ivarCount; i++) {
             const char *in = ivar_getName(ivars[i]);
             const char *it = ivar_getTypeEncoding(ivars[i]);
-            if (in) [h appendFormat:@"    %@ %s;\n", DKTypeFromEncoding(it), in];
+            if (in) [h appendFormat:@"    %@ %@;\n", DKTypeFromEncoding(it), DKCString(in)];
         }
         if (ivarCount > 0) [h appendString:@"}\n\n"];
         if (ivars) free(ivars);
@@ -288,47 +285,6 @@ NSString *DKClassDumpHeaderForClass(Class cls) {
     if (!DKClassIsSafe(cls)) return nil;
     NSString *imageName = @"Unknown";
     const char *img = class_getImageName(cls);
-    if (img) imageName = [[NSString stringWithUTF8String:img] lastPathComponent] ?: @"Unknown";
+    if (img) imageName = [DKCString(img) lastPathComponent] ?: @"Unknown";
     return DKHeaderForClass(cls, imageName);
-}
-
-NSArray<NSDictionary *> *DKClassDumpAppImages(void) {
-    NSMutableArray<NSDictionary *> *result = [NSMutableArray array];
-    uint32_t imageCount = _dyld_image_count();
-    for (uint32_t i = 0; i < imageCount; i++) {
-        const char *cpath = _dyld_get_image_name(i);
-        if (!cpath) continue;
-
-        NSString *imagePath = [NSString stringWithUTF8String:cpath];
-        if (DKShouldSkipImage(imagePath)) continue;
-
-        unsigned int classCount = 0;
-        const char **names = objc_copyClassNamesForImage(cpath, &classCount);
-        if (!names || classCount == 0) {
-            if (names) free(names);
-            continue;
-        }
-
-        NSMutableArray<NSString *> *safeNames = [NSMutableArray array];
-        NSMutableSet<NSString *> *seen = [NSMutableSet set];
-        for (unsigned int j = 0; j < classCount; j++) {
-            const char *cn = names[j];
-            if (!cn) continue;
-            NSString *name = [NSString stringWithUTF8String:cn];
-            if (DKIsLikelySwiftName(name) || DKClassNameIsRuntimeGenerated(name)) continue;
-            if ([seen containsObject:name]) continue;   // 去重：同镜像内重名 → 避免 zip 同名条目
-            [seen addObject:name];
-            [safeNames addObject:name];
-        }
-        free(names);
-
-        if (safeNames.count > 0) {
-            [result addObject:@{
-                @"imagePath": imagePath,
-                @"imageName": imagePath.lastPathComponent ?: @"Image",
-                @"classes": safeNames
-            }];
-        }
-    }
-    return result;
 }

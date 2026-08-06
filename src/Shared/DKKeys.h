@@ -30,6 +30,14 @@ static NSString *const DKKeyCommentGlassClear    = @"DYKillerCommentGlassClear";
 static NSString *const DKKeyGlassTabBar      = @"DYKillerGlassTabBar";
 static NSString *const DKKeyGlassTabBarClear = @"DYKillerGlassTabBarClear";
 
+#pragma mark - 功能组：音频可视化
+
+// 两项都是单选，用对话框选，故存整数而非 BOOL。
+// 位置：0 关闭 / 1 胶囊上方水平 / 2 胶囊整栏环绕 / 3 拍摄圆键环绕
+static NSString *const DKKeyAudioVizPosition = @"DYKillerAudioVizPosition";
+// 形态：0 离散条 / 1 连续流体
+static NSString *const DKKeyAudioVizStyle = @"DYKillerAudioVizStyle";
+
 #pragma mark - 功能组：播放体验
 
 static NSString *const DKKeyDetailHideBottomBar = @"DYKillerHideChatVideoBottomBar";

@@ -2,193 +2,364 @@
 //  DKDebugExport.m
 //  DYKiller
 //
-//  只负责序列化：把上下文写成分类文件（page/、runtime/、ui/），再交 DKZipWriter 打包。
+//  只处理不可变采集结果的序列化、类元数据导出与 ZIP 打包。
+//
+//  两条硬规矩：
+//  · 收集到的文件数有上限，超了就截断并在 manifest 标记，不把失败留给打包那一步。
+//  · 打包失败时保留工作目录并把路径回传，错误信息里带上 underlying —— 唯一能
+//    解释失败原因的东西不能跟着失败一起消失。
 //
 
 #import "DKDebugExport.h"
+#import "DKAudioProbe.h"
+#import "DKClassDump.h"
 #import "DKKeys.h"
 #import "DKZipWriter.h"
-#import "DKClassDump.h"
-#import <mach-o/dyld.h>
-#import <objc/runtime.h>
+
+NSString *const DKDebugExportWorkingDirectoryKey = @"DKDebugExportWorkingDirectory";
+
+static NSString *const DKExportErrorDomain = @"com.dykiller.debug-export";
+
+// 单个导出包的文件数上限。页面导出约 200 个、音频导出约 15 个，
+// 这道闸门只用来防止将来某处再写出失控的循环。
+static const NSUInteger kDKMaxExportFiles = 8000;
+
+@implementation DKDebugExportResult
+@end
+
+#pragma mark - 写入汇集器
+
+// 把「文件清单 + 错误清单 + 关键失败标记 + 截断计数」收在一起，
+// 免得每个写入函数都拖着四个 out 参数。
+@interface DKExportSink : NSObject
+@property (nonatomic, copy) NSString *rootDir;
+@property (nonatomic, strong) NSMutableArray<NSString *> *files;
+@property (nonatomic, strong) NSMutableArray<NSDictionary *> *errors;
+@property (nonatomic, assign) BOOL criticalFailed;
+@property (nonatomic, assign) NSUInteger droppedFiles;
+@end
+
+@implementation DKExportSink
+
+- (instancetype)initWithRootDir:(NSString *)rootDir {
+    if ((self = [super init])) {
+        _rootDir = [rootDir copy];
+        _files = [NSMutableArray array];
+        _errors = [NSMutableArray array];
+    }
+    return self;
+}
+
+@end
 
 #pragma mark - 文件工具
+
+static NSError *DKMakeExportError(NSInteger code, NSString *message, NSError *underlying) {
+    NSMutableDictionary *info = [NSMutableDictionary dictionaryWithObject:message ?: @"导出失败"
+                                                                   forKey:NSLocalizedDescriptionKey];
+    if (underlying) info[NSUnderlyingErrorKey] = underlying;
+    return [NSError errorWithDomain:DKExportErrorDomain code:code userInfo:info];
+}
 
 static NSString *DKSafeFileName(NSString *name) {
     if (!name.length) return @"Unknown";
     NSCharacterSet *bad = [NSCharacterSet characterSetWithCharactersInString:@"/\\?%*|\"<>:"];
-    NSArray *parts = [name componentsSeparatedByCharactersInSet:bad];
-    NSString *safe = [parts componentsJoinedByString:@"_"];
+    NSString *safe = [[name componentsSeparatedByCharactersInSet:bad] componentsJoinedByString:@"_"];
     return safe.length ? safe : @"Unknown";
 }
 
-static BOOL DKEnsureDir(NSString *path, NSError **error) {
-    return [NSFileManager.defaultManager createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:error];
-}
-
-static BOOL DKWriteData(NSString *path, NSData *data, NSMutableArray<NSString *> *files, NSError **error) {
-    NSString *dir = path.stringByDeletingLastPathComponent;
-    if (dir.length && !DKEnsureDir(dir, error)) return NO;
-    BOOL ok = [data writeToFile:path options:NSDataWritingAtomic error:error];
-    if (ok) [files addObject:path];
-    return ok;
-}
-
-static BOOL DKWriteString(NSString *path, NSString *string, NSMutableArray<NSString *> *files, NSError **error) {
-    return DKWriteData(path, [string dataUsingEncoding:NSUTF8StringEncoding] ?: NSData.data, files, error);
-}
-
-static BOOL DKWriteJSON(NSString *path, id object, NSMutableArray<NSString *> *files, NSError **error) {
-    NSData *data = [NSJSONSerialization dataWithJSONObject:object options:NSJSONWritingPrettyPrinted error:error];
-    if (!data) return NO;
-    return DKWriteData(path, data, files, error);
-}
-
-static NSString *DKReadme(DKDebugExportContext *context, BOOL includeAppClasses) {
-    NSMutableString *readme = [NSMutableString string];
-    [readme appendString:@"DYKiller Debug Export\n"];
-    [readme appendFormat:@"Generated: %@\n", context.metadata[@"generatedAt"]];
-    [readme appendFormat:@"DYKiller: %@\n", DK_VERSION];
-    [readme appendFormat:@"Bundle: %@\n", context.metadata[@"bundleIdentifier"]];
-    [readme appendFormat:@"App: %@ %@ (%@)\n", context.metadata[@"bundleName"], context.metadata[@"appVersion"], context.metadata[@"buildVersion"]];
-    [readme appendFormat:@"System: %@ %@\n", context.metadata[@"systemName"], context.metadata[@"systemVersion"]];
-    [readme appendFormat:@"Tap: %@\n", context.metadata[@"tapPointInTargetWindow"][@"string"]];
-    [readme appendFormat:@"Windows: %lu\n", (unsigned long)context.windowsJSON.count];
-    [readme appendFormat:@"Mode: %@\n\n", includeAppClasses ? @"page + full app class-dump" : @"page only"];
-    [readme appendString:@"Contents:\n"];
-    [readme appendString:@"- page/: current UI windows, view tree, selected view, controllers, layers\n"];
-    [readme appendString:@"- page/classes/: class-dump .h of every class on this page (incl. superclass chains)\n"];
-    [readme appendString:@"- ui/: screenshot of the target key window\n"];
-    if (includeAppClasses) {
-        [readme appendString:@"- runtime/images.txt, runtime/classes-by-image/: class-dump .h of all app-owned classes\n"];
+static NSString *DKUniqueFileStem(NSString *name) {
+    NSString *safe = DKSafeFileName(name);
+    if (safe.length > 160) {
+        NSRange range = [safe rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, 160)];
+        safe = [safe substringWithRange:range];
     }
-    return readme;
+    NSData *utf8 = [(name ?: @"") dataUsingEncoding:NSUTF8StringEncoding] ?: NSData.data;
+    uint64_t hash = 1469598103934665603ULL;
+    const uint8_t *bytes = utf8.bytes;
+    for (NSUInteger i = 0; i < utf8.length; i++) {
+        hash ^= bytes[i];
+        hash *= 1099511628211ULL;
+    }
+    return [NSString stringWithFormat:@"%@-%08llx", safe, (unsigned long long)(hash & 0xffffffffULL)];
 }
 
-#pragma mark - 类头文件导出
+static void DKRecordError(DKExportSink *sink,
+                          NSString *relativePath,
+                          NSString *stage,
+                          NSError *error,
+                          BOOL critical) {
+    [sink.errors addObject:@{
+        @"path": relativePath ?: @"",
+        @"stage": stage ?: @"write",
+        @"critical": @(critical),
+        @"domain": error.domain ?: @"",
+        @"code": @(error.code),
+        @"message": error.localizedDescription ?: @"unknown error",
+    }];
+}
 
-// 本页出现的类（含继承链）→ 每类一个头文件文本。
-static void DKWritePageClasses(NSString *rootDir,
-                               NSArray<NSString *> *classNames,
-                               NSMutableArray<NSString *> *files,
-                               NSError **error) {
-    NSString *dir = [rootDir stringByAppendingPathComponent:@"page/classes"];
+static BOOL DKWriteData(DKExportSink *sink, NSString *relativePath, NSData *data, BOOL critical) {
+    if (sink.files.count >= kDKMaxExportFiles) {
+        sink.droppedFiles++;
+        return NO;
+    }
+
+    NSString *path = [sink.rootDir stringByAppendingPathComponent:relativePath];
+    NSError *writeError = nil;
+    NSString *directory = path.stringByDeletingLastPathComponent;
+    BOOL ok = data && [NSFileManager.defaultManager createDirectoryAtPath:directory
+                                              withIntermediateDirectories:YES
+                                                               attributes:nil
+                                                                    error:&writeError];
+    if (ok) ok = [data writeToFile:path options:NSDataWritingAtomic error:&writeError];
+    if (ok) {
+        [sink.files addObject:path];
+        return YES;
+    }
+    if (!writeError) writeError = DKMakeExportError(10, @"没有可写入的数据", nil);
+    DKRecordError(sink, relativePath, @"write", writeError, critical);
+    if (critical) sink.criticalFailed = YES;
+    return NO;
+}
+
+static BOOL DKWriteString(DKExportSink *sink, NSString *relativePath, NSString *string, BOOL critical) {
+    return DKWriteData(sink, relativePath, [(string ?: @"") dataUsingEncoding:NSUTF8StringEncoding], critical);
+}
+
+static BOOL DKWriteJSON(DKExportSink *sink, NSString *relativePath, id object, BOOL critical) {
+    NSError *jsonError = nil;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:object ?: @{}
+                                                   options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys
+                                                     error:&jsonError];
+    if (!data) {
+        DKRecordError(sink, relativePath, @"json",
+                      jsonError ?: DKMakeExportError(11, @"JSON 序列化失败", nil), critical);
+        if (critical) sink.criticalFailed = YES;
+        return NO;
+    }
+    return DKWriteData(sink, relativePath, data, critical);
+}
+
+static NSString *DKModeName(DKDebugExportMode mode) {
+    return mode == DKDebugExportModeAudio ? @"audio" : @"page";
+}
+
+#pragma mark - README
+
+static NSString *DKReadme(DKDebugExportContext *context, DKDebugExportMode mode) {
+    NSMutableString *text = [NSMutableString string];
+    [text appendString:@"DYKiller Debug Export\n"];
+    [text appendFormat:@"Generated: %@\n", context.metadata[@"generatedAt"] ?: @""];
+    [text appendFormat:@"DYKiller: %@\n", DK_VERSION];
+    [text appendFormat:@"Bundle: %@\n", context.metadata[@"bundleIdentifier"] ?: @""];
+    [text appendFormat:@"App: %@ %@ (%@)\n",
+     context.metadata[@"bundleName"] ?: @"", context.metadata[@"appVersion"] ?: @"",
+     context.metadata[@"buildVersion"] ?: @""];
+    [text appendFormat:@"System: %@ %@\n", context.metadata[@"systemName"] ?: @"",
+     context.metadata[@"systemVersion"] ?: @""];
+    [text appendFormat:@"Mode: %@\n\n", DKModeName(mode)];
+
+    if (mode == DKDebugExportModeAudio) {
+        DKAudioProbeCapture *capture = context.audioCapture;
+        [text appendString:@"Contents:\n"];
+        [text appendString:@"- audio/session.json        采样前后的 AVAudioSession 快照\n"];
+        [text appendString:@"- audio/backends.json       输出单元/队列登记表与只读旁路状态\n"];
+        [text appendString:@"- audio/timeline.jsonl      实时层与 AVFoundation 事件时间线\n"];
+        [text appendString:@"- audio/signal.jsonl        30 Hz 的 RMS/峰值/频谱带时间序列\n"];
+        [text appendString:@"- audio/media-snapshots.json 0/2.5/5 秒的播放状态\n"];
+        [text appendString:@"- audio/glass-target.json   玻璃底栏几何\n"];
+        [text appendString:@"- audio/diagnostics.json    符号覆盖、丢帧与自检结果\n"];
+        [text appendString:@"- audio/pcm/                单声道 Float32 WAV 与各自的格式统计\n"];
+        [text appendString:@"- probe/tabbar.txt          底栏现场\n- ui/screenshot.png\n\n"];
+        [text appendFormat:@"采样阶段固定为 %.0f 秒稳定、%.0f 秒 PCM、%.0f 秒收尾。探针不会改变播放状态。\n",
+         DKAudioProbeWarmupSeconds, DKAudioProbeRecordSeconds,
+         DKAudioProbeTotalSeconds - DKAudioProbeWarmupSeconds - DKAudioProbeRecordSeconds];
+        [text appendFormat:@"用户标记: %@\n实际推断: %@\n", capture.declaredState ?: @"unknown",
+         capture.actualState ?: @"unknown"];
+    } else {
+        [text appendString:@"Contents:\n- page/: UI 主线程快照与本页类\n"];
+        [text appendString:@"- probe/tabbar.txt: 液态玻璃底栏现场\n- ui/: 目标窗口截图\n"];
+    }
+    return text;
+}
+
+#pragma mark - 页面内容
+
+static void DKWritePageClasses(DKExportSink *sink, NSArray<NSString *> *classNames) {
     for (NSString *name in [classNames sortedArrayUsingSelector:@selector(compare:)]) {
         @autoreleasepool {
-            Class cls = NSClassFromString(name);
-            NSString *header = cls ? DKClassDumpHeaderForClass(cls) : nil;  // 内含安全内省检查 + @try
-            if (!header.length) continue;
-            NSString *path = [dir stringByAppendingPathComponent:[DKSafeFileName(name) stringByAppendingString:@".h"]];
-            DKWriteString(path, header, files, error);
-        }
-    }
-}
-
-static void DKWriteRuntimeImages(NSString *rootDir, NSMutableArray<NSString *> *files, NSError **error) {
-    NSMutableString *out = [NSMutableString string];
-    uint32_t imageCount = _dyld_image_count();
-    for (uint32_t i = 0; i < imageCount; i++) {
-        const char *image = _dyld_get_image_name(i);
-        unsigned int classCount = 0;
-        const char **classNames = image ? objc_copyClassNamesForImage(image, &classCount) : NULL;
-        [out appendFormat:@"%u\t%u\t%s\n", i, classCount, image ?: ""];
-        if (classNames) free(classNames);
-    }
-    DKWriteString([rootDir stringByAppendingPathComponent:@"runtime/images.txt"], out, files, error);
-}
-
-// 应用自有类（跳过系统/Swift/运行时子类）导出到 runtime 下的镜像分组目录。
-static void DKWriteAppClasses(NSString *rootDir,
-                              NSMutableArray<NSString *> *files,
-                              NSError **error,
-                              void (^progress)(NSString *text)) {
-    NSArray<NSDictionary *> *images = DKClassDumpAppImages();
-    NSString *baseDir = [rootDir stringByAppendingPathComponent:@"runtime/classes-by-image"];
-
-    NSUInteger total = 0;
-    for (NSDictionary *image in images) total += [image[@"classes"] count];
-
-    NSUInteger index = 0;
-    for (NSDictionary *image in images) {
-        NSString *imageName = image[@"imageName"] ?: @"Image";
-        NSString *dir = [baseDir stringByAppendingPathComponent:DKSafeFileName([imageName stringByDeletingPathExtension])];
-        for (NSString *className in image[@"classes"]) {
-            @autoreleasepool {
-                index++;
-                if (progress && (index == 1 || index % 200 == 0 || index == total)) {
-                    progress([NSString stringWithFormat:@"导出 App 类 %lu/%lu\n%@",
-                              (unsigned long)index, (unsigned long)total, className]);
-                }
-                Class cls = NSClassFromString(className);
-                NSString *header = cls ? DKClassDumpHeaderForClass(cls) : nil;  // 内含安全内省检查 + @try
+            @try {
+                Class cls = NSClassFromString(name);
+                NSString *header = cls ? DKClassDumpHeaderForClass(cls) : nil;
                 if (!header.length) continue;
-                NSString *path = [dir stringByAppendingPathComponent:[DKSafeFileName(className) stringByAppendingString:@".h"]];
-                DKWriteString(path, header, files, error);
+                NSString *relative = [@"page/classes" stringByAppendingPathComponent:
+                                      [DKUniqueFileStem(name) stringByAppendingString:@".h"]];
+                DKWriteString(sink, relative, header, NO);
+            } @catch (NSException *exception) {
+                DKRecordError(sink, name, @"page-class",
+                              DKMakeExportError(20, exception.reason ?: @"类头文件导出异常", nil), NO);
             }
         }
     }
 }
 
-#pragma mark - ZIP 生成流程
+static void DKWritePageFiles(DKExportSink *sink,
+                             DKDebugExportContext *context,
+                             void (^progress)(NSString *text)) {
+    if (progress) progress(@"写入页面结构...");
+    DKWriteJSON(sink, @"page/windows.json", context.windowsJSON ?: @[], NO);
+    DKWriteString(sink, @"page/view-tree.txt", context.viewTreeText, NO);
+    DKWriteJSON(sink, @"page/view-tree.json", context.viewTreeJSON ?: @[], NO);
+    DKWriteJSON(sink, @"page/selected-view.json", context.selectedViewJSON ?: @{}, NO);
+    DKWriteString(sink, @"page/view-controllers.txt", context.viewControllersText, NO);
+    DKWriteJSON(sink, @"page/layers.json", context.layersJSON ?: @[], NO);
+    if (progress) progress(@"导出本页类头文件...");
+    DKWritePageClasses(sink, context.pageClassNames ?: @[]);
+}
 
-NSURL *DKDebugCreateExportZip(DKDebugExportContext *context,
-                              BOOL includeAppClasses,
+#pragma mark - 音频内容
+
+static void DKWriteAudioFiles(DKExportSink *sink,
+                              DKAudioProbeCapture *capture,
                               void (^progress)(NSString *text)) {
-    NSString *rootName = [NSString stringWithFormat:@"DYKiller-Debug-%@-%@-%lld",
-                          includeAppClasses ? @"full" : @"page",
-                          NSBundle.mainBundle.bundleIdentifier ?: @"Aweme",
+    if (progress) progress(@"写入音频采集结果...");
+    // 这九项是音频导出的全部意义所在，任何一项写不出去都该让导出失败，
+    // 而不是交出一个看起来成功、其实缺内容的包。
+    DKWriteString(sink, @"probe/audio-summary.txt", capture.summaryText, YES);
+    DKWriteJSON(sink, @"audio/session.json", capture.sessionJSON ?: @{}, YES);
+    DKWriteJSON(sink, @"audio/backends.json", capture.backendsJSON ?: @[], YES);
+    DKWriteString(sink, @"audio/timeline.jsonl", capture.timelineJSONL, YES);
+    DKWriteString(sink, @"audio/signal.jsonl", capture.signalJSONL, YES);
+    DKWriteJSON(sink, @"audio/media-snapshots.json", capture.mediaSnapshotsJSON ?: @[], YES);
+    DKWriteJSON(sink, @"audio/glass-target.json", capture.glassTargetJSON ?: @{}, YES);
+    DKWriteJSON(sink, @"audio/diagnostics.json", capture.diagnosticsJSON ?: @{}, YES);
+
+    for (NSDictionary *pcm in capture.pcmFiles ?: @[]) {
+        NSString *fileName = DKSafeFileName([pcm[@"fileName"] description]);
+        NSData *data = [pcm[@"data"] isKindOfClass:NSData.class] ? pcm[@"data"] : nil;
+        NSDictionary *metadata = [pcm[@"metadata"] isKindOfClass:NSDictionary.class] ? pcm[@"metadata"] : @{};
+        DKWriteData(sink, [@"audio/pcm" stringByAppendingPathComponent:fileName], data, NO);
+        NSString *jsonName = [[fileName stringByDeletingPathExtension] stringByAppendingPathExtension:@"json"];
+        DKWriteJSON(sink, [@"audio/pcm" stringByAppendingPathComponent:jsonName], metadata, NO);
+    }
+}
+
+#pragma mark - 导出入口
+
+DKDebugExportResult *DKDebugCreateExport(DKDebugExportContext *context,
+                                         DKDebugExportMode mode,
+                                         void (^progress)(NSString *text),
+                                         NSError **error) {
+    if (!context || (mode == DKDebugExportModeAudio && !context.audioCapture)) {
+        if (error) *error = DKMakeExportError(1, @"导出上下文不完整", nil);
+        return nil;
+    }
+
+    NSString *state = mode == DKDebugExportModeAudio ? (context.audioCapture.declaredState ?: @"unknown") : @"";
+    NSString *suffix = state.length ? [NSString stringWithFormat:@"-%@", DKSafeFileName(state)] : @"";
+    NSString *rootName = [NSString stringWithFormat:@"DYKiller-Debug-%@%@-%@-%lld",
+                          DKModeName(mode), suffix, NSBundle.mainBundle.bundleIdentifier ?: @"Aweme",
                           (long long)NSDate.date.timeIntervalSince1970];
-    NSString *rootDir = [NSTemporaryDirectory() stringByAppendingPathComponent:rootName];
-    NSString *zipPath = [NSTemporaryDirectory() stringByAppendingPathComponent:[rootName stringByAppendingString:@".zip"]];
+    NSString *temporary = NSTemporaryDirectory();
+    NSString *rootDir = [temporary stringByAppendingPathComponent:rootName];
+    NSString *zipPath = [temporary stringByAppendingPathComponent:[rootName stringByAppendingString:@".zip"]];
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm removeItemAtPath:rootDir error:nil];
     [fm removeItemAtPath:zipPath error:nil];
 
-    NSError *error = nil;
-    NSMutableArray<NSString *> *files = [NSMutableArray array];
-    DKEnsureDir(rootDir, &error);
-
-    progress(@"写入页面结构...");
-    DKWriteString([rootDir stringByAppendingPathComponent:@"README.txt"], DKReadme(context, includeAppClasses), files, &error);
-    DKWriteJSON([rootDir stringByAppendingPathComponent:@"page/windows.json"], context.windowsJSON ?: @[], files, &error);
-    DKWriteString([rootDir stringByAppendingPathComponent:@"page/view-tree.txt"], context.viewTreeText ?: @"", files, &error);
-    DKWriteJSON([rootDir stringByAppendingPathComponent:@"page/view-tree.json"], context.viewTreeJSON ?: @[], files, &error);
-    DKWriteJSON([rootDir stringByAppendingPathComponent:@"page/selected-view.json"], context.selectedViewJSON ?: @{}, files, &error);
-    DKWriteString([rootDir stringByAppendingPathComponent:@"page/view-controllers.txt"], context.viewControllersText ?: @"", files, &error);
-    DKWriteJSON([rootDir stringByAppendingPathComponent:@"page/layers.json"], context.layersJSON ?: @[], files, &error);
-    if (context.screenshotPNG.length) {
-        DKWriteData([rootDir stringByAppendingPathComponent:@"ui/screenshot.png"], context.screenshotPNG, files, &error);
+    NSError *directoryError = nil;
+    if (![fm createDirectoryAtPath:rootDir withIntermediateDirectories:YES attributes:nil error:&directoryError]) {
+        if (error) *error = DKMakeExportError(2, @"无法创建导出目录", directoryError);
+        return nil;
     }
 
-    progress(@"导出本页类头文件...");
-    DKWritePageClasses(rootDir, context.pageClassNames ?: @[], files, &error);
+    DKExportSink *sink = [[DKExportSink alloc] initWithRootDir:rootDir];
+    DKWriteString(sink, @"README.txt", DKReadme(context, mode), mode == DKDebugExportModeAudio);
+    DKWriteData(sink, @"ui/screenshot.png", context.screenshotPNG, NO);
+    DKWriteString(sink, @"probe/tabbar.txt", context.probeText, NO);
 
-    // 探针文本必须在主线程已写入 context.probeText；后台只序列化，禁止再读 UIKit。
-    progress(@"写入探针...");
-    DKWriteString([rootDir stringByAppendingPathComponent:@"probe/tabbar.txt"],
-                  context.probeText ?: @"", files, &error);
-
-    if (includeAppClasses) {
-        progress(@"导出 runtime image 索引...");
-        DKWriteRuntimeImages(rootDir, files, &error);
-        progress(@"导出全 App 类头文件...");
-        DKWriteAppClasses(rootDir, files, &error, progress);
+    if (mode == DKDebugExportModeAudio) {
+        DKWriteAudioFiles(sink, context.audioCapture, progress);
+    } else {
+        DKWritePageFiles(sink, context, progress);
     }
 
-    if (error) {
-        NSString *msg = error.localizedDescription ?: @"Unknown export error";
-        DKWriteString([rootDir stringByAppendingPathComponent:@"EXPORT_ERROR.txt"], msg, files, nil);
+    NSDictionary *manifest = @{
+        @"schemaVersion": mode == DKDebugExportModeAudio ? @"dykiller.audio-probe.v2" : @"dykiller.debug.v2",
+        @"mode": DKModeName(mode),
+        @"dykillerVersion": DK_VERSION,
+        @"device": context.metadata ?: @{},
+        @"declaredState": context.audioCapture.declaredState ?: @"not-applicable",
+        @"actualState": context.audioCapture.actualState ?: @"not-applicable",
+        @"sampling": mode == DKDebugExportModeAudio ? @{
+            @"totalSeconds": @(DKAudioProbeTotalSeconds),
+            @"warmupSeconds": @(DKAudioProbeWarmupSeconds),
+            @"recordSeconds": @(DKAudioProbeRecordSeconds),
+            @"snapshotsAtSeconds": @[ @0, @2.5, @5 ],
+        } : @{},
+        @"integrity": @{
+            @"complete": @(!sink.criticalFailed && sink.droppedFiles == 0),
+            @"status": sink.criticalFailed ? @"critical-failure"
+                     : (sink.droppedFiles ? @"truncated"
+                     : (sink.errors.count ? @"complete-with-recoverable-errors" : @"complete")),
+            @"fileCount": @(sink.files.count),
+            @"fileLimit": @(kDKMaxExportFiles),
+            @"truncated": @(sink.droppedFiles > 0),
+            @"droppedFiles": @(sink.droppedFiles),
+            @"errorCount": @(sink.errors.count),
+            @"errors": sink.errors,
+        },
+    };
+    DKWriteJSON(sink, @"manifest.json", manifest, mode == DKDebugExportModeAudio);
+
+    if (sink.criticalFailed) {
+        if (error) {
+            *error = [NSError errorWithDomain:DKExportErrorDomain code:3 userInfo:@{
+                NSLocalizedDescriptionKey: @"关键文件写入失败，工作目录已保留",
+                DKDebugExportWorkingDirectoryKey: rootDir,
+            }];
+        }
+        return nil;
     }
 
-    progress(@"压缩 zip...");
+    if (progress) progress(@"压缩 zip...");
     NSError *zipError = nil;
-    BOOL ok = [DKZipWriter createZipAtPath:zipPath rootDir:rootDir files:files progress:nil error:&zipError];
-    if (!ok || zipError) {
-        DKWriteString([rootDir stringByAppendingPathComponent:@"ZIP_ERROR.txt"],
-                      zipError.localizedDescription ?: @"ZIP failed",
-                      files,
-                      nil);
-        [DKZipWriter createZipAtPath:zipPath rootDir:rootDir files:files progress:nil error:nil];
+    BOOL zipped = sink.files.count > 0 && [DKZipWriter createZipAtPath:zipPath
+                                                              rootDir:rootDir
+                                                                files:sink.files
+                                                             progress:nil
+                                                                error:&zipError];
+    NSError *attributeError = nil;
+    NSDictionary *attributes = zipped ? [fm attributesOfItemAtPath:zipPath error:&attributeError] : nil;
+    NSNumber *zipSize = attributes[NSFileSize];
+    if (!zipped || zipError || attributeError || zipSize.unsignedLongLongValue <= 22) {
+        NSError *underlying = zipError ?: attributeError;
+        NSString *message = underlying
+            ? [NSString stringWithFormat:@"ZIP 生成失败（%lu 个待打包文件）：%@",
+               (unsigned long)sink.files.count, underlying.localizedDescription]
+            : [NSString stringWithFormat:@"ZIP 未生成或内容为空（%lu 个待打包文件）",
+               (unsigned long)sink.files.count];
+        [fm removeItemAtPath:zipPath error:nil];
+        // 工作目录留着：它是唯一能解释这次失败的现场。
+        NSMutableDictionary *info = [NSMutableDictionary dictionaryWithDictionary:@{
+            NSLocalizedDescriptionKey: message,
+            DKDebugExportWorkingDirectoryKey: rootDir,
+        }];
+        if (underlying) info[NSUnderlyingErrorKey] = underlying;
+        if (error) *error = [NSError errorWithDomain:DKExportErrorDomain code:4 userInfo:info];
+        return nil;
     }
-    return [NSURL fileURLWithPath:zipPath];
+
+    DKDebugExportResult *result = [DKDebugExportResult new];
+    result.zipURL = [NSURL fileURLWithPath:zipPath];
+    result.workingDirectoryURL = [NSURL fileURLWithPath:rootDir isDirectory:YES];
+    return result;
+}
+
+void DKDebugCleanupExport(DKDebugExportResult *result) {
+    if (!result) return;
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (result.workingDirectoryURL.isFileURL) [fm removeItemAtURL:result.workingDirectoryURL error:nil];
+    if (result.zipURL.isFileURL) [fm removeItemAtURL:result.zipURL error:nil];
 }
