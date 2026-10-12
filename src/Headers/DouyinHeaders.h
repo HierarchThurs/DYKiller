@@ -92,6 +92,11 @@
 @interface AWEFeedTableView : AWEFeedDataSafeTableView              // 首页 / 朋友页
 @end
 
+// 视频表控制器。40.7.0 中表可能先在未挂入父视图时完成 setFrame:，在控制器布局完成后补一次子表修正。
+@interface AWEFeedTableViewController : UIViewController
+@property (nonatomic, strong) AWEFeedTableView *tableView;
+@end
+
 // 直播预览的四层容器（背景 / 画面 / 内容 / 控件）。画面与背景按窗口尺寸排，chrome 挂在容器高度上：
 // 表被撑高后容器跟着变高，贴底的那套元素就整体下移一个底栏高，需要叠 transform 抬回去。
 // 具名槽位除 bottomDarkWatermark 外均为调试探针采集用。

@@ -13,6 +13,7 @@
 #import "DKGlassFlexView.h"
 #import "DKGlassTabBar.h"
 #import "DKKeys.h"
+#import "DKShareSelectionHooks.h"
 #import "DKUtils.h"
 #import "DKVideoFeedTable.h"
 #import "DKVideoFullscreen.h"
@@ -728,6 +729,7 @@ static void DKProbeAppendGlassLine(NSMutableString *out, NSString *label, UIView
 }
 
 static void DKProbeAppendShareInput(NSMutableString *out) {
+    [out appendFormat:@"%@\n", DKShareSelectionDiagnostics()];
     Class overlayCls = NSClassFromString(@"AWEIMShareImpl.ShareAdditionTextView");
     Class toolbarCls = NSClassFromString(@"AWEIMShareInputEmoticonToolBarView");
     UIView *overlay = nil;
@@ -766,13 +768,22 @@ static void DKProbeAppendShareInput(NSMutableString *out) {
         while (stack.count > 0) {
             UIView *node = stack.lastObject;
             [stack removeLastObject];
-            if ([node isKindOfClass:UIButton.class]
-                && CGRectGetHeight(node.bounds) >= 36.0) {
+            NSString *className = NSStringFromClass(node.class);
+            BOOL semanticSendButton = [className containsString:@"ShareAdditionTextButton"];
+            BOOL titleSendButton = [node isKindOfClass:UIControl.class]
+                && CGRectGetHeight(node.bounds) >= 36.0;
+            if (semanticSendButton || titleSendButton) {
                 NSString *title = DKProbeValue(node, @"currentTitle")
                     ?: node.accessibilityLabel ?: @"";
-                if ([title containsString:@"发送"]) {
+                if (semanticSendButton || [title containsString:@"发送"]) {
+                    NSString *label = title.length ? title : @"ShareAdditionTextButton";
                     DKProbeAppendGlassLine(out,
-                        [NSString stringWithFormat:@"  按钮「%@」     ", title], node);
+                        [NSString stringWithFormat:@"  按钮「%@」     ", label], node);
+                    [out appendFormat:@"    frame=%@  UIButton=%@  currentTitle=%@  bg=%@\n",
+                        NSStringFromCGRect(node.frame),
+                        [node isKindOfClass:UIButton.class] ? @"YES" : @"NO",
+                        DKProbeValue(node, @"currentTitle") ?: @"(nil)",
+                        DKProbeColorDesc(node.backgroundColor)];
                 }
             }
             [stack addObjectsFromArray:node.subviews];

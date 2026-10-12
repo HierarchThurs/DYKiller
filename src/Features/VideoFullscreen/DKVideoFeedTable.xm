@@ -46,10 +46,17 @@ static NSHashTable<UITableView *> *gStretchedTables = nil;
 // 是「写入时拦截不能砍成事后纠正」的直接依据。
 static NSUInteger gHitSetFrame = 0;
 static NSUInteger gHitFallback = 0;
+// 40.7.0 的旧表写入入口。与新版控制器布局补正分开统计，用于后续判断旧逻辑是否仍有贡献。
+static NSUInteger gHitTableSetFrame = 0;
+// 40.7.0 的表先写 frame、后入树；控制器布局完成后补正这条时序缺口。
+static NSUInteger gHitTableLayout = 0;
 
 NSString *DKVideoFeedTableStats(void) {
-    return [NSString stringWithFormat:@"HUD setFrame=%lu  HUD 布局后兜底=%lu",
-            (unsigned long)gHitSetFrame, (unsigned long)gHitFallback];
+    return [NSString stringWithFormat:@"HUD setFrame=%lu  HUD 布局后兜底=%lu  表 setFrame补正=%lu  表控制器布局补正=%lu",
+            (unsigned long)gHitSetFrame,
+            (unsigned long)gHitFallback,
+            (unsigned long)gHitTableSetFrame,
+            (unsigned long)gHitTableLayout];
 }
 
 #pragma mark - 目标判定
@@ -124,6 +131,7 @@ CGRect DKVideoFeedTableAdjustFrame(UITableView *table, CGRect frame) {
         %orig;
         return;
     }
+    gHitTableSetFrame++;
     %orig(adjusted);
 }
 
@@ -137,7 +145,27 @@ CGRect DKVideoFeedTableAdjustFrame(UITableView *table, CGRect frame) {
         %orig;
         return;
     }
+    gHitTableSetFrame++;
     %orig(adjusted);
+}
+
+%end
+
+// 40.7.0 的首页与朋友页可能在表尚未挂入父视图时完成 setFrame:，当时无法读取父容器高度。
+// 控制器完成布局后表已进入视图树，调整子表视图可以补上这次时序缺口；不会修改控制器自身 frame。
+%hook AWEFeedTableViewController
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+
+    AWEFeedTableView *table = self.tableView;
+    if (!table) return;
+
+    CGRect adjusted = DKVideoFeedTableAdjustFrame(table, table.frame);
+    if (CGRectIsNull(adjusted)) return;
+
+    table.frame = adjusted;
+    gHitTableLayout++;
 }
 
 %end

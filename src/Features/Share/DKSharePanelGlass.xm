@@ -10,6 +10,7 @@
 #import "DKGlassGuard.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
+#import "DKShareSelectionHooks.h"
 #import "DKUtils.h"
 
 #import <QuartzCore/QuartzCore.h>
@@ -55,6 +56,7 @@ static char kDividerHiddenKey;
 static char kButtonColorKey;
 static char kButtonOpaqueKey;
 static char kButtonGlassKey;
+static char kButtonRadiusKey;
 static char kToolbarColorKey;
 static char kToolbarOpaqueKey;
 static char kToolbarGlassKey;
@@ -72,6 +74,7 @@ static NSHashTable<AWESharePanelContainerViewController *> *gContainers;
 static NSHashTable<AWESharePanelFunctionCell *> *gCells;
 static NSHashTable<UIViewController *> *gCommentSheets;
 static NSHashTable<UICollectionViewCell *> *gCardCells;
+static NSHashTable<UIView *> *gSendButtons;
 static BOOL gEverAttached = NO;
 static __weak UIWindowScene *gObservedScene = nil;
 static UIUserInterfaceStyle gGlassStyle = UIUserInterfaceStyleUnspecified;
@@ -786,23 +789,31 @@ static void DKShareApplyOverlay(UIView *overlay, UIViewController *controller)
     DKShareMaterialize(glass, controller);
 }
 
-static NSString *DKShareButtonTitle(UIButton *button) {
-    return button.currentTitle.length ? button.currentTitle
-        : (button.accessibilityLabel ?: @"");
+static NSString *DKShareButtonTitle(UIView *button) {
+    id object = button;
+    NSString *title = [object respondsToSelector:@selector(currentTitle)]
+        ? [object currentTitle] : nil;
+    if (title.length) return title;
+    return [object respondsToSelector:@selector(accessibilityLabel)]
+        ? ([object accessibilityLabel] ?: @"") : @"";
 }
 
 static BOOL DKShareIsSendButton(UIView *view) {
-    if (![view isKindOfClass:UIButton.class]) return NO;
-    UIButton *button = (UIButton *)view;
-    if (CGRectGetHeight(button.bounds) < 36.0) return NO;
-    return [DKShareButtonTitle(button) containsString:@"发送"];
+    if (!view) return NO;
+    if (CGRectGetHeight(view.bounds) < 36.0) return NO;
+
+    // 覆盖层内先按语义类名识别，再对其他 UIControl 使用标题判定。
+    NSString *className = NSStringFromClass(view.class);
+    if ([className containsString:@"ShareAdditionTextButton"]) return YES;
+    if (![view isKindOfClass:UIControl.class]) return NO;
+    return [DKShareButtonTitle(view) containsString:@"发送"];
 }
 
-static void DKShareCollectSendButtons(UIView *view, NSMutableArray<UIButton *> *output,
+static void DKShareCollectSendButtons(UIView *view, NSMutableArray<UIView *> *output,
                                       NSUInteger depth) {
     if (!view || depth > 8) return;
     if (DKShareIsSendButton(view)) {
-        [output addObject:(UIButton *)view];
+        [output addObject:view];
         return;
     }
     for (UIView *subview in view.subviews) {
@@ -810,13 +821,15 @@ static void DKShareCollectSendButtons(UIView *view, NSMutableArray<UIButton *> *
     }
 }
 
-static void DKShareRestoreSendButton(UIButton *button) {
+static void DKShareRestoreSendButton(UIView *button) {
     if (!button) return;
     DKShareDiscardGlass(button, &kButtonGlassKey);
     DKShareRestoreColor(button, &kButtonColorKey, &kButtonOpaqueKey);
+    objc_setAssociatedObject(button, &kButtonRadiusKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [gSendButtons removeObject:button];
 }
 
-static void DKShareApplySendButton(UIButton *button, UIViewController *controller)
+static void DKShareApplySendButton(UIView *button, UIViewController *controller)
     API_AVAILABLE(ios(26.0)) {
     if (!button) return;
     DKShareRememberColor(button, &kButtonColorKey, &kButtonOpaqueKey);
@@ -830,8 +843,13 @@ static void DKShareApplySendButton(UIButton *button, UIViewController *controlle
     UIVisualEffectView *glass = DKShareEnsureGlass(button, &kButtonGlassKey, button);
     CGFloat radius = button.layer.cornerRadius;
     if (radius <= 0.0) radius = kDKShareSendRadiusFloor;
-    glass.cornerConfiguration =
-        [UICornerConfiguration configurationWithUniformRadius:[UICornerRadius fixedRadius:radius]];
+    NSNumber *installedRadius = objc_getAssociatedObject(button, &kButtonRadiusKey);
+    if (!installedRadius || installedRadius.doubleValue != radius) {
+        glass.cornerConfiguration =
+            [UICornerConfiguration configurationWithUniformRadius:[UICornerRadius fixedRadius:radius]];
+        objc_setAssociatedObject(button, &kButtonRadiusKey, @(radius), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    [gSendButtons addObject:button];
 
     id original = objc_getAssociatedObject(button, &kButtonColorKey);
     NSString *title = DKShareButtonTitle(button);
@@ -851,9 +869,9 @@ static void DKShareApplySendButton(UIButton *button, UIViewController *controlle
 
 static void DKShareApplySendButtons(UIView *overlay, UIViewController *controller)
     API_AVAILABLE(ios(26.0)) {
-    NSMutableArray<UIButton *> *buttons = [NSMutableArray array];
+    NSMutableArray<UIView *> *buttons = [NSMutableArray array];
     DKShareCollectSendButtons(overlay, buttons, 0);
-    for (UIButton *button in buttons) DKShareApplySendButton(button, controller);
+    for (UIView *button in buttons) DKShareApplySendButton(button, controller);
 }
 
 static void DKShareRestoreToolbarFill(UIView *view) {
@@ -949,9 +967,9 @@ static void DKShareRestoreInput(AWESharePanelViewController *content) {
     UIView *toolbar = nil;
     DKShareWalkContent(content, &overlay, &toolbar);
     if (overlay) {
-        NSMutableArray<UIButton *> *buttons = [NSMutableArray array];
+        NSMutableArray<UIView *> *buttons = [NSMutableArray array];
         DKShareCollectSendButtons(overlay, buttons, 0);
-        for (UIButton *button in buttons) DKShareRestoreSendButton(button);
+        for (UIView *button in buttons) DKShareRestoreSendButton(button);
         DKShareRestoreOverlay(overlay);
     }
     if (toolbar) DKShareRestoreToolbar(toolbar);
@@ -1213,9 +1231,9 @@ static void DKShareRestoreCommentSheet(UIViewController *sheet) {
     UIView *toolbar = nil;
     DKShareCommentWalk(list, &overlay, &plate, &toolbar);
     if (overlay) {
-        NSMutableArray<UIButton *> *buttons = [NSMutableArray array];
+        NSMutableArray<UIView *> *buttons = [NSMutableArray array];
         DKShareCollectSendButtons(overlay, buttons, 0);
-        for (UIButton *button in buttons) DKShareRestoreSendButton(button);
+        for (UIView *button in buttons) DKShareRestoreSendButton(button);
         DKShareRestoreOverlay(overlay);
     }
     if (plate) DKShareRestorePlate(plate);
@@ -1293,6 +1311,50 @@ static UIViewController *DKShareCommentSheetForView(UIView *view) {
     return nil;
 }
 
+#pragma mark - 选人状态与发送按钮布局
+
+BOOL DKShareSendButtonDidLayout(UIView *button) {
+    if (!NSThread.isMainThread) return NO;
+    if (!DKShareEnabled()) {
+        if (objc_getAssociatedObject(button, &kButtonGlassKey)) DKShareRestoreSendButton(button);
+        return NO;
+    }
+    UIView *overlay = button.superview;
+    Class overlayClass = DKShareOverlayClass();
+    for (NSUInteger i = 0; overlay && i < 8; i++, overlay = overlay.superview) {
+        if (overlayClass && [overlay isKindOfClass:overlayClass]) break;
+    }
+    if (!overlay || !overlayClass || ![overlay isKindOfClass:overlayClass]) return NO;
+    UIViewController *controller = DKShareControllerForView(overlay);
+    if (!DKShareCommentSheetForView(overlay)
+        && ![controller isKindOfClass:%c(AWESharePanelViewController)]) return NO;
+    if (!DKShareRectUsable(button.bounds)) return NO;
+    BOOL fresh = objc_getAssociatedObject(button, &kButtonGlassKey) == nil;
+    if (@available(iOS 26.0, *)) DKShareApplySendButton(button, controller);
+    return fresh;
+}
+
+BOOL DKShareCommentSelectionChanged(id section, UIView *overlay) {
+    if (!NSThread.isMainThread) return NO;
+    UIViewController *controller = [section respondsToSelector:@selector(viewController)]
+        ? [section viewController] : nil;
+    if (!overlay) {
+        UIView *unusedPlate = nil;
+        UIView *unusedToolbar = nil;
+        DKShareCommentWalk(controller, &overlay, &unusedPlate, &unusedToolbar);
+    }
+    if (!overlay) return NO;
+    UIViewController *sheet = DKShareCommentSheetForView(overlay);
+    if (!sheet) return NO;
+
+    if (@available(iOS 26.0, *)) DKShareCommentSync(sheet);
+    return YES;
+}
+
+NSString *DKShareSelectionDiagnostics(void) {
+    return DKShareSelectionHooksStatus();
+}
+
 #pragma mark - 同步
 
 static void DKShareRestoreController(AWESharePanelContainerViewController *container) {
@@ -1322,6 +1384,7 @@ static void DKShareRestoreAll(void) {
     for (UIViewController *sheet in gCommentSheets.allObjects) DKShareRestoreCommentSheet(sheet);
     for (UICollectionViewCell *cell in gCardCells.allObjects) DKShareRestoreCardCell(cell);
     [gCommentSheets removeAllObjects];
+    for (UIView *button in gSendButtons.allObjects) DKShareRestoreSendButton(button);
 }
 
 static void DKShareSync(AWESharePanelContainerViewController *container) API_AVAILABLE(ios(26.0)) {
@@ -1576,6 +1639,7 @@ static void DKShareRefreshVisible(void) {
     gCells = [NSHashTable weakObjectsHashTable];
     gCommentSheets = [NSHashTable weakObjectsHashTable];
     gCardCells = [NSHashTable weakObjectsHashTable];
+    gSendButtons = [NSHashTable weakObjectsHashTable];
 
     DKSettingsRegisterItem(@"分享", ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeSwitch(

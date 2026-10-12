@@ -24,7 +24,7 @@ UIView *DKFeedTableForView(UIView *view);
 /// 该表撑高前的高度；没被撑高过返回 nil。
 NSNumber *DKVideoFeedTableOriginalHeight(UIView *table);
 
-/// HUD 钉位命中统计的可读文本。
+/// HUD 钉位与视频表修正的命中统计：包含 HUD 写入时修正、HUD 布局后兜底、旧表 setFrame 补正，以及表控制器布局补正。
 NSString *DKVideoFeedTableStats(void);
 
 #ifdef __cplusplus
