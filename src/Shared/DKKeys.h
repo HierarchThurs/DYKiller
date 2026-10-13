@@ -58,9 +58,17 @@ static NSString *const DKKeyAudioVizStyle = @"DYKillerAudioVizStyle";
 
 #pragma mark - 功能组：播放体验
 
+static NSString *const DKKeyDoubleTapOpenComment = @"DYKillerDoubleTapOpenComment";
 static NSString *const DKKeyDetailHideBottomBar = @"DYKillerHideChatVideoBottomBar";
 static NSString *const DKKeyHideFollowButton     = @"DYKillerHideFollowButton";
 static NSString *const DKKeyHideMusicInfo        = @"DYKillerHideMusicInfo";
+
+#pragma mark - 功能组：内容过滤
+
+static NSString *const DKKeyFilterLowLikes = @"DYKillerFilterLowLikes";
+static NSString *const DKKeyMinimumLikes = @"DYKillerMinimumLikes";
+static NSString *const DKKeyRemoveRecommendedLive = @"DYKillerRemoveRecommendedLive";
+static NSString *const DKKeyFilterAds = @"DYKillerFilterAds";
 
 #pragma mark - 功能组：个人主页
 

@@ -11,11 +11,19 @@
 
 #pragma mark - 详情页视频功能组用到的类
 
+@class AWEAwemeDetailTableView;
+
 @interface AWEAwemeDetailTableViewController : UIViewController
+@property (nonatomic, strong) AWEAwemeDetailTableView *tableView;
 @property (nonatomic, copy) NSString *referString;
 - (BOOL)canShowFixedBottomBar;
 - (void)setBottomBarHidden:(BOOL)hidden;
 - (NSString *)realReferString;
+- (void)setupDetailTableView;
+- (double)fixedCellHeight;
+- (double)cellHeightAtIndex:(long long)index;
+- (double)contentOffsetYForCellAtIndex:(long long)index;
+- (void)adjustTableViewHeightForTargetIndex:(long long)index;
 @end
 
 @interface AWEAwemeIMDetailTableViewController : AWEAwemeDetailTableViewController   // 私信「分享视频」详情页专属表控制器（作用域判定用）
@@ -28,7 +36,9 @@
 
 @interface AWEAwemeModel : NSObject                                 // 单条内容模型
 @property (nonatomic, strong) AWEVideoModel *video;
+@property (nonatomic, copy) NSString *itemID;
 @property (nonatomic, assign) long long awemeType;
+- (id)initWithDictionary:(id)raw error:(NSError **)error;
 @end
 
 // 视频+交互合并容器。其 .view 用于视频容器布局调整。
@@ -66,6 +76,12 @@
 @interface AWEPlayInteractionViewController : UIViewController      // HUD 控制器；评论态其 view 顶部会被塞状态栏黑底，全屏时需压掉
 @property (nonatomic, assign) BOOL hideMusicInfo;
 @property (nonatomic, copy) NSString *referString;
+- (void)performCommentAction;
+- (void)onPlayer:(id)player didDoubleClick:(id)event;
+- (void)onVideoPlayerViewDoubleClicked:(id)event;
+@end
+
+@interface AFDStoryPlayInteractionViewController : AWEPlayInteractionViewController
 @end
 
 // 图文整页的背景层，挂在图文列表控制器 view 的直接子层，与内容类型无关。
@@ -92,9 +108,17 @@
 @interface AWEFeedTableView : AWEFeedDataSafeTableView              // 首页 / 朋友页
 @end
 
+@interface AWEAwemeDetailTableView : AWEFeedDataSafeTableView        // 好友聊天 / 搜索 / 用户作品详情
+@end
+
 // 视频表控制器。40.7.0 中表可能先在未挂入父视图时完成 setFrame:，在控制器布局完成后补一次子表修正。
 @interface AWEFeedTableViewController : UIViewController
 @property (nonatomic, strong) AWEFeedTableView *tableView;
+@property (nonatomic, strong) id dataController;
+@property (nonatomic, copy) NSString *referString;
+- (id)initWithType:(long long)type dataController:(id)data;
+- (void)setupFeedContainerWithType:(long long)type dataController:(id)data;
+- (NSString *)currentReferString;
 @end
 
 // 直播预览的四层容器（背景 / 画面 / 内容 / 控件）。画面与背景按窗口尺寸排，chrome 挂在容器高度上：
@@ -253,7 +277,65 @@
 
 #pragma mark - 播放体验功能组用到的类
 
+// 关联视频与同体系中长视频详情的原生双击入口。
+@interface AWERelatedVideoVideoPlayerViewController : UIViewController
+- (void)handleDoubleTap:(id)gesture;
+@end
+
+@interface AWERelatedVideoDetailVideoViewController : UIViewController
+@end
+
+@interface AWERelatedVideoDetailVideoInteractView : UIView
+- (void)handleVideoDoubleTapped;
+- (void)onCommentButtonClicked;
+@end
+
 @interface AWEPlayInteractionFollowPromptView : UIView             // 头像下方「关注(+)」容器；整视图仅含 + 图标
+@end
+
+#pragma mark - 内容过滤用到的类
+
+@interface AWEListDataController : NSObject
+- (void)setDataSource:(id)array;
+- (void)setFilteredDataSource:(id)array;
+@end
+
+@interface AWEHotListDataController : AWEListDataController
+- (id)transferAwemeListIfNeededWithArray:(id)array isInitFetch:(BOOL)initial;
+- (void)p_handleFeedCacheList:(id)array completion:(id)completion;
+@end
+
+@interface AWEFeedMultiQueueDataController : AWEListDataController
+- (id)transferAwemeListIfNeededWithArray:(id)array isInitFetch:(BOOL)initial;
+@end
+
+@interface AWEDCFeedDefaultDataController : AWEListDataController
+- (id)transferAwemeListIfNeededWithArray:(id)array isInitFetch:(BOOL)initial;
+@end
+
+@interface AWEMixVideoListDataController : AWEListDataController
+@end
+@interface AWEMixVideoDetailPlayListDataController : AWEListDataController
+@end
+@interface AWEMixVideoRelatedListDataController : AWEMixVideoListDataController
+@end
+
+@interface AWEGeneralSearchModel : NSObject
+- (id)initWithDictionary:(id)raw error:(NSError **)error;
+@end
+@interface AWEOriginalAdModel : NSObject
+- (id)initWithDictionary:(id)raw error:(NSError **)error;
+@end
+@interface TTAdSplashModel : NSObject
+- (id)initWithDictionary:(id)raw;
+- (id)initWithCoder:(id)coder;
+@end
+@interface AWEAwesomeSplashManager : NSObject
+- (BOOL)shouldShowAwesomeSplash;
+- (BOOL)canShowSplashWithID:(id)identifier ttModel:(id)model;
+@end
+@interface AWEAwesomeSplashFeedCellOldAccessoryView : NSObject
+- (id)ddExtraView;
 @end
 
 #pragma mark - 个人主页功能组用到的类
