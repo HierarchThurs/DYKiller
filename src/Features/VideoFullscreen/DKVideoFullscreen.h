@@ -73,8 +73,8 @@ NSString *DKLiveChromeStats(UIView *container);
 /// 直播预览 HUD 抬升两个同步点各自的首次接管数（容器布局 / 槽位布局）。供探针核对。
 NSString *DKLiveChromeLiftStats(void);
 
-/// 首页/朋友页 HUD 钉位：撑高 feed 表后把 HUD 高度按回撑高前的值。
-/// 不在已撑高的 feed 内（含全部详情页）返回 CGRectNull 放行。
+/// 已撑高视频表内的 HUD 钉位：把高度限制为表撑高前的值，保持底部控件原位。
+/// 不在已撑高的视频表内返回 CGRectNull 放行。
 CGRect DKFeedHUDAdjustFrame(UIView *view, CGRect frame);
 
 /// 同步评论态 HUD 顶部黑遮罩的显隐，每轮布局后调一次。
