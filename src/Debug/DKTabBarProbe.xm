@@ -6,6 +6,8 @@
 //  probe/tabbar.txt。不改变任何状态。功能定型后整文件删除。
 //
 
+#import "DKContentFilter.h"
+#import "DKDoubleTapComment.h"
 #import "DKTabBarProbe.h"
 #import "DKPlusIcon.h"
 #import "DouyinHeaders.h"
@@ -882,7 +884,7 @@ static void DKProbeAppendFrozenMedia(NSMutableString *out) {
              NSStringFromCGRect(node.frame), NSStringFromCGRect(node.superview.bounds)];
             [out appendFormat:@"  钉位目标         = %@\n",
              CGRectIsNull(target) ? @"(不在作用域)" : NSStringFromCGRect(target)];
-            [out appendFormat:@"  达标？           = %@\n",
+            [out appendFormat:@"  容器钉位达标？   = %@\n",
              CGRectIsNull(target) ? @"—"
                 : (DKRectsClose(node.frame, target) ? @"是" : @"否（被缩放或平移）")];
             continue;
@@ -971,22 +973,42 @@ static void DKProbeAppendFeed(NSMutableString *out) {
     Class hudCls = NSClassFromString(@"AWEPlayInteractionViewController");
     for (UITableView *table in tables) {
         CGFloat container = CGRectGetHeight(table.superview.bounds);
+        CGFloat height = CGRectGetHeight(table.frame);
         NSNumber *original = DKVideoFeedTableOriginalHeight(table);
+        NSString *stretchStatus;
+        if (!DKVideoFullscreenOn()) {
+            stretchStatus = original ? @"否（功能关闭，原高标记待清除）" : @"否（功能关闭）";
+        } else if (container <= 0.0) {
+            stretchStatus = @"待判定（父容器尺寸未就绪）";
+        } else if (original) {
+            stretchStatus = fabs(height - container) <= 0.5
+                ? @"是" : @"否（已记录原高，但表高与容器不一致）";
+        } else {
+            stretchStatus = height < container - 0.5
+                ? @"否（容器更高，本该撑高）" : @"否（本就满高，不需要撑）";
+        }
 
         [out appendFormat:@"  %@  frame=%@  clips=%@  superview高=%.1f\n",
          DKProbeDesc(table), NSStringFromCGRect(table.frame),
          table.clipsToBounds ? @"YES" : @"NO", container];
         [out appendFormat:@"  撑高原高=%@  已撑高？= %@\n",
          original ? [NSString stringWithFormat:@"%.1f", original.doubleValue] : @"(未记录)",
-         original ? @"是"
-                  : (CGRectGetHeight(table.frame) < container - 0.5
-                        ? @"否（容器更高，本该撑高）" : @"否（本就满高，不需要撑）")];
+         stretchStatus];
         [out appendFormat:@"  contentOffset=%@  contentSize=%@\n",
          NSStringFromCGPoint(table.contentOffset), NSStringFromCGSize(table.contentSize)];
 
         for (UITableViewCell *cell in table.visibleCells) {
+            NSIndexPath *indexPath = [table indexPathForCell:cell];
+            CGRect rowRect = indexPath ? [table rectForRowAtIndexPath:indexPath] : CGRectNull;
+            CGRect windowRect = [cell convertRect:cell.bounds toView:table.window];
+            BOOL pageSized = fabs(CGRectGetHeight(cell.bounds) - height) <= 0.5;
+            BOOL contentSized = fabs(CGRectGetHeight(cell.contentView.bounds) - height) <= 0.5;
             [out appendFormat:@"  cell frame=%@  contentView高=%.1f\n",
              NSStringFromCGRect(cell.frame), CGRectGetHeight(cell.contentView.bounds)];
+            [out appendFormat:@"    indexPath=%@  原生行矩形=%@  窗口矩形=%@  Cell/内容满高=%@/%@\n",
+             indexPath ?: (id)@"(未绑定)",
+             CGRectIsNull(rowRect) ? @"(未绑定)" : NSStringFromCGRect(rowRect),
+             NSStringFromCGRect(windowRect), pageSized ? @"是" : @"否", contentSized ? @"是" : @"否"];
             NSMutableArray<UIView *> *queue = [NSMutableArray arrayWithArray:cell.subviews];
             while (queue.count > 0) {
                 UIView *node = queue.firstObject;
@@ -1001,6 +1023,7 @@ static void DKProbeAppendFeed(NSMutableString *out) {
         }
     }
     [out appendFormat:@"HUD 钉位命中统计: %@\n", DKVideoFeedTableStats()];
+    [out appendFormat:@"详情行高命中统计: %@\n", DKVideoDetailTableStats()];
 }
 
 // 直播预览的 chrome 挂在 4 层容器的高度上，表被撑高后整体下移一个底栏高，靠 transform 抬回。
@@ -1049,6 +1072,12 @@ NSString *DKTabBarProbeReport(void) {
     // 窗口这一节排在最前：其余各节与导出的 view-tree / 截图都只看主窗口，浮层窗口是盲区。
     [out appendString:@"\n----- 窗口 -----\n"];
     DKProbeAppendWindows(out);
+
+    [out appendString:@"\n----- 内容过滤 -----\n"];
+    [out appendString:DKContentFilterDiagnostics()];
+
+    [out appendString:@"\n----- 双击打开评论区 -----\n"];
+    [out appendString:DKDoubleTapCommentDiagnostics()];
 
     [out appendString:@"\n----- 评论面板玻璃 -----\n"];
     DKProbeAppendCommentGlass(out);
