@@ -35,9 +35,14 @@ static char kDKMediaOriginalContentModeKey;
 static char kDKMediaCollectionExpandedKey;
 static char kDKMediaCollectionSizeKey;
 static char kDKMediaNativeReanchorKey;
+static char kDKMediaPendingReanchorKey;
 
 static NSHashTable<UIView *> *gDKMediaManagedViews;
 static NSHashTable<AWECommentMediaFeedViewController *> *gDKMediaControllers;
+
+// 本功能开启时，大图页 viewDidLayoutSubviews 期间为 YES：抖音的自适应窗口布局会把集合视图 frame
+// 重设回自己的口径并回卷位置，与整窗 frame 互相覆盖。只在主线程读写。
+static BOOL gDKMediaSuppressAdaptiveLayout;
 
 static BOOL DKCommentMediaCleanerEnabled(void) {
     return DKPrefBool(DKKeyCommentMediaCleanBottomBar);
@@ -327,18 +332,20 @@ static BOOL DKMediaRectsClose(CGRect lhs, CGRect rhs) {
         && DKMediaSizesClose(lhs.size, rhs.size);
 }
 
-static void DKMediaReanchorCurrentItem(AWECommentMediaFeedViewController *controller,
+// 目标页还没有数据时返回 NO，由调用方在后续布局里再试。
+static BOOL DKMediaReanchorCurrentItem(AWECommentMediaFeedViewController *controller,
                                        UICollectionView *collection) {
     NSInteger index = (NSInteger)controller.currentIndex;
     if (index < 0 || collection.numberOfSections == 0
         || index >= [collection numberOfItemsInSection:0]) {
-        return;
+        return NO;
     }
 
     NSIndexPath *path = [NSIndexPath indexPathForItem:index inSection:0];
     [collection scrollToItemAtIndexPath:path
                        atScrollPosition:UICollectionViewScrollPositionCenteredVertically
                                animated:NO];
+    return YES;
 }
 
 static void DKMediaResetCollectionState(AWECommentMediaFeedViewController *controller) {
@@ -350,6 +357,8 @@ static void DKMediaResetCollectionState(AWECommentMediaFeedViewController *contr
     objc_setAssociatedObject(collection, &kDKMediaCollectionExpandedKey,
                              nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(collection, &kDKMediaCollectionSizeKey,
+                             nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(controller, &kDKMediaPendingReanchorKey,
                              nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(controller, &kDKMediaNativeReanchorKey,
                              @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -393,13 +402,22 @@ static void DKMediaApplyCollectionState(AWECommentMediaFeedViewController *contr
                              [NSValue valueWithCGSize:targetSize], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(controller, &kDKMediaNativeReanchorKey,
                              nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // 尺寸变化后回卷到 currentIndex；目标页尚无数据时保留标记，下次布局再试，成功即清除。
+    if (sizeChanged) {
+        objc_setAssociatedObject(controller, &kDKMediaPendingReanchorKey,
+                                 @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    BOOL pendingReanchor = [objc_getAssociatedObject(controller, &kDKMediaPendingReanchorKey) boolValue];
 
     [UIView performWithoutAnimation:^{
         if (!DKMediaRectsClose(collection.frame, targetFrame)) collection.frame = targetFrame;
         if (sizeChanged) {
             [collection.collectionViewLayout invalidateLayout];
             [collection layoutIfNeeded];
-            DKMediaReanchorCurrentItem(controller, collection);
+        }
+        if (pendingReanchor && DKMediaReanchorCurrentItem(controller, collection)) {
+            objc_setAssociatedObject(controller, &kDKMediaPendingReanchorKey,
+                                     nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }];
 }
@@ -470,7 +488,10 @@ static void DKMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 }
 
 - (void)viewDidLayoutSubviews {
+    BOOL outerSuppress = gDKMediaSuppressAdaptiveLayout;
+    gDKMediaSuppressAdaptiveLayout = DKCommentMediaCleanerEnabled();
     %orig;
+    gDKMediaSuppressAdaptiveLayout = outerSuppress;
     [gDKMediaControllers addObject:self];
     DKMediaApplyControllerState(self);
 }
@@ -499,11 +520,32 @@ static void DKMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %end
 
+// 只在本功能接管的大图页布局期间关掉自适应窗口布局，其他调用方照常读实验位。
+%group DKMediaAdaptiveLayoutHook
+
+%hook AWECommentABTestSettings
+
++ (BOOL)enableCommentAdaptiveWindowResponsiveLayout {
+    if (gDKMediaSuppressAdaptiveLayout) return NO;
+    return %orig;
+}
+
+%end
+
+%end
+
 #pragma mark - 设置
 
 %ctor {
     gDKMediaManagedViews = [NSHashTable weakObjectsHashTable];
     gDKMediaControllers = [NSHashTable weakObjectsHashTable];
+
+    %init;
+    // 实验位方法不在时不装：内部 generator 对不存在的方法会新增实现，%orig 无处可调。
+    Class abTest = NSClassFromString(@"AWECommentABTestSettings");
+    if ([abTest respondsToSelector:@selector(enableCommentAdaptiveWindowResponsiveLayout)]) {
+        %init(DKMediaAdaptiveLayoutHook);
+    }
 
     DKSettingsRegisterItem(@"评论区", ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeSwitch(
