@@ -99,6 +99,10 @@ void DKDoubleTapCommentStale(void) {
     gDKTapStale++;
 }
 
+void DKDoubleTapCommentDuplicate(void) {
+    gDKTapDuplicates++;
+}
+
 #pragma mark - 页面与评论状态
 
 static BOOL DKTapPageVisible(UIViewController *owner) {
@@ -189,7 +193,7 @@ void DKDoubleTapCommentDispatch(DKDoubleTapCommentEntry entry, id source,
 
 NSString *DKDoubleTapCommentDiagnostics(void) {
     if (!NSThread.isMainThread) return @"诊断需在主线程读取\n";
-    NSArray *names = @[@"默认播放器双击", @"默认交互双击", @"Story 双击", @"关联播放器双击", @"关联交互双击"];
+    NSArray *names = @[@"默认播放器双击", @"默认交互双击", @"Story 双击", @"关联播放器双击", @"关联交互双击", @"听抖音双击"];
     NSMutableString *out = [NSMutableString stringWithFormat:@"开关=%@\n", DKPrefBool(DKKeyDoubleTapOpenComment) ? @"开启" : @"关闭"];
     for (NSUInteger i = 0; i < DKDoubleTapCommentEntryCount; i++) {
         [out appendFormat:@"%@：Hook=%@ 命中=%lu\n", names[i],

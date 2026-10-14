@@ -10,6 +10,7 @@ typedef NS_ENUM(NSUInteger, DKDoubleTapCommentEntry) {
     DKDoubleTapCommentStory,
     DKDoubleTapCommentRelatedPlayer,
     DKDoubleTapCommentRelatedInteraction,
+    DKDoubleTapCommentListenFeed,
     DKDoubleTapCommentEntryCount
 };
 
@@ -23,6 +24,7 @@ BOOL DKDoubleTapCommentModelsMatch(id first, id second);
 void DKDoubleTapCommentInstalled(DKDoubleTapCommentEntry entry);
 void DKDoubleTapCommentMissing(void);
 void DKDoubleTapCommentStale(void);
+void DKDoubleTapCommentDuplicate(void);
 
 // handler 返回 NO 时透传原方法；所有页面判定与原生评论调用均在主线程。
 void DKDoubleTapCommentDispatch(DKDoubleTapCommentEntry entry, id source,

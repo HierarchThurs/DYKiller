@@ -290,6 +290,15 @@
 - (void)onCommentButtonClicked;
 @end
 
+// 听抖音页的原生双击与评论入口。
+@interface AWEListenFeedOptimizedInteractionViewController : UIViewController
+- (void)handleDoubleTap:(id)gesture;
+@end
+
+@interface AWEListenFeedPlayControlView : UIView
+- (void)commentButtonClicked:(id)sender;
+@end
+
 @interface AWEPlayInteractionFollowPromptView : UIView             // 头像下方「关注(+)」容器；整视图仅含 + 图标
 @end
 
