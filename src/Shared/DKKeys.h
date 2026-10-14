@@ -70,6 +70,23 @@ static NSString *const DKKeyMinimumLikes = @"DYKillerMinimumLikes";
 static NSString *const DKKeyRemoveRecommendedLive = @"DYKillerRemoveRecommendedLive";
 static NSString *const DKKeyFilterAds = @"DYKillerFilterAds";
 
+#pragma mark - 功能组：顶部频道
+
+// 每个频道一个 BOOL 键：前缀 + channelID。
+static NSString *const DKKeyTopChannelHidePrefix = @"DYKillerHideTopChannel.";
+// 扫描到的频道目录：NSArray<NSDictionary>，每项含 id/name/title/locked/present。
+static NSString *const DKKeyTopChannelCatalog = @"DYKillerTopChannelCatalog";
+// 设置主页入口的 identifier，NSUserDefaults 里不写值。
+static NSString *const DKKeyTopChannels = @"DYKillerTopChannels";
+
+#pragma mark - 功能组：顶栏入口
+
+// 单选，存整数：0 显示 / 1 隐藏（不显示、仍可点击）/ 2 移除（不显示、不可点击）。
+static NSString *const DKKeyTopBarSideBarMode = @"DYKillerTopBarSideBarMode";
+static NSString *const DKKeyTopBarSearchMode  = @"DYKillerTopBarSearchMode";
+// 屏蔽在最左侧频道右滑展开左侧栏。
+static NSString *const DKKeyBlockSideBarSwipe = @"DYKillerBlockSideBarSwipe";
+
 #pragma mark - 功能组：个人主页
 
 static NSString *const DKKeyProfileHideUGCGuide = @"DYKillerHideProfileUGCGuide";

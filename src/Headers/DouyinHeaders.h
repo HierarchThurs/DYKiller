@@ -186,6 +186,8 @@
 // UIKit 文字视图的 backgroundColor。参数是抖音自己的上下文，本项目不解读。
 @interface AWECommentABTestSettings : NSObject
 + (BOOL)enableCommentRenderingOptimize:(id)context;
+// 打开时评论图片大图页在每次 viewDidLayoutSubviews 里按自己的口径重设集合视图 frame 并回卷到 currentIndex。
++ (BOOL)enableCommentAdaptiveWindowResponsiveLayout;
 @end
 
 @interface AWECommentInputBackgroundView : UIView                   // 详情页底部输入栏，是 AWECommentInputViewController 的根视图
@@ -345,6 +347,46 @@
 @end
 @interface AWEAwesomeSplashFeedCellOldAccessoryView : NSObject
 - (id)ddExtraView;
+@end
+
+#pragma mark - 顶部频道功能组用到的类
+
+@interface AWEHPTabNodeModel : NSObject                            // 服务端下发的顶栏频道模型
+@property (nonatomic, copy) NSString *channelID;
+@property (nonatomic, copy) NSString *title;
+@property (nonatomic, assign) BOOL isMainTab;
+@property (nonatomic, assign) BOOL deletable;
+@end
+
+@interface AWEFeedChannelObject : NSObject
+@property (nonatomic, readonly) NSString *channelID;
+@property (nonatomic, readonly) NSString *channelTitle;          // 顶栏实际文案（同城显示为城市名）
+@end
+
+@interface AWEFeedChannelManager : NSObject                        // 首页顶栏频道管理器
+- (NSArray *)currentChannels;
+- (void)reloadChannelWithChannelModels:(id)models currentChannelIDList:(id)channelIDs
+                            reloadType:(id)reloadType selectedChannelID:(id)selectedChannelID;
+@end
+
+#pragma mark - 顶栏入口功能组用到的类
+
+@interface AWEHPTopBarCTAItemView : UIView                         // 顶栏左右两侧的入口槽位（侧边栏 / 搜索）
+@end
+
+@interface AWELeftSideBarEntranceView : UIView                     // 左侧栏入口（≡）
+@end
+
+@interface AWEHPDiscoverFeedEntranceView : UIView                  // 顶栏搜索入口
+@end
+
+@interface AWELeftSideBarManager : NSObject
+- (BOOL)canShowLeftSideBarWithPanGesture:(id)identification;
+@end
+
+// 顶栏搜索入口的控制器。评论区打开时由它配置一份搜索图标副本（普通 UIView），放在首页根视图上。
+@interface AWEHPTopBarSearchEntranceController : NSObject
+- (void)setupCopyFeedDiscoverEntranceView:(UIView *)view;
 @end
 
 #pragma mark - 个人主页功能组用到的类

@@ -271,17 +271,24 @@ void DKSettingsReloadCurrentPage(void) {
 
 #pragma mark - 设置页构建
 
-static void DKShowSettings(UIViewController *rootVC) {
-    if (!rootVC) return;
+static AWESettingSectionModel *DKMakeSection(NSString *header, NSArray *items) {
+    AWESettingSectionModel *section = [[%c(AWESettingSectionModel) alloc] init];
+    section.sectionHeaderTitle = header;
+    section.sectionHeaderHeight = 40;
+    section.type = 0;
+    section.itemArray = items;
+    return section;
+}
 
+// 手动建一个设置页：设导航标题，把 viewModel 挂在关联对象上供 viewModel getter 回落。
+static AWESettingBaseViewController *DKMakeSettingsPage(NSString *title, NSArray *sections) {
     AWESettingBaseViewController *vc = [[%c(AWESettingBaseViewController) alloc] init];
-    gSettingsPresenter = vc;
 
     dispatch_async(dispatch_get_main_queue(), ^{
         for (UIView *sub in vc.view.subviews) {
             if ([sub isKindOfClass:%c(AWENavigationBar)]) {
                 AWENavigationBar *bar = (AWENavigationBar *)sub;
-                if ([bar respondsToSelector:@selector(titleLabel)]) bar.titleLabel.text = @"DYKiller";
+                if ([bar respondsToSelector:@selector(titleLabel)]) bar.titleLabel.text = title;
                 break;
             }
         }
@@ -289,6 +296,21 @@ static void DKShowSettings(UIViewController *rootVC) {
 
     AWESettingsViewModel *viewModel = [[%c(AWESettingsViewModel) alloc] init];
     viewModel.colorStyle = 0;
+    viewModel.sectionDataArray = sections;
+    objc_setAssociatedObject(vc, &kViewModelKey, viewModel, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return vc;
+}
+
+void DKSettingsPushPage(UIViewController *presenter, NSString *title, NSString *sectionHeader,
+                        NSArray<AWESettingItemModel *> *items) {
+    UINavigationController *nav = presenter.navigationController;
+    if (!nav || items.count == 0) return;
+    AWESettingBaseViewController *vc = DKMakeSettingsPage(title, @[ DKMakeSection(sectionHeader, items) ]);
+    [nav pushViewController:vc animated:YES];
+}
+
+static void DKShowSettings(UIViewController *rootVC) {
+    if (!rootVC) return;
 
     // 遍历注册表，按 header 分组（保持首次出现顺序），每项即时构建以反映当前开关状态
     NSMutableArray<NSString *> *headerOrder = [NSMutableArray array];
@@ -306,16 +328,11 @@ static void DKShowSettings(UIViewController *rootVC) {
 
     NSMutableArray *sections = [NSMutableArray array];
     for (NSString *header in headerOrder) {
-        AWESettingSectionModel *section = [[%c(AWESettingSectionModel) alloc] init];
-        section.sectionHeaderTitle = header;
-        section.sectionHeaderHeight = 40;
-        section.type = 0;
-        section.itemArray = itemsByHeader[header];
-        [sections addObject:section];
+        [sections addObject:DKMakeSection(header, itemsByHeader[header])];
     }
 
-    viewModel.sectionDataArray = sections;
-    objc_setAssociatedObject(vc, &kViewModelKey, viewModel, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    AWESettingBaseViewController *vc = DKMakeSettingsPage(@"DYKiller", sections);
+    gSettingsPresenter = vc;
     [rootVC.navigationController pushViewController:vc animated:YES];
 }
 
@@ -328,6 +345,14 @@ static void DKShowSettings(UIViewController *rootVC) {
     AWESettingBaseViewModel *orig = %orig;
     if (!orig) return objc_getAssociatedObject(self, &kViewModelKey);
     return orig;
+}
+
+// 本插件的页面重新出现时（含从子页面返回）接回弹窗宿主，并刷新各行 detail。
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    if (!objc_getAssociatedObject(self, &kViewModelKey)) return;
+    gSettingsPresenter = self;
+    [DKFindTableView(self.view) reloadData];
 }
 
 %end

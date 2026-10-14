@@ -39,6 +39,11 @@ AWESettingItemModel *DKMakeAction(NSString *key, NSString *title, NSString *deta
 /// 就地刷新当前设置页。改完某项的 detail 后调用，否则这一行要重进页面才更新。
 void DKSettingsReloadCurrentPage(void);
 
+/// 从 presenter 所在导航栈推入一个单分区子设置页。items 为空时不推入。
+/// 返回上一页时，上一页重新接管弹窗并刷新各行 detail。
+void DKSettingsPushPage(UIViewController *presenter, NSString *title, NSString *sectionHeader,
+                        NSArray<AWESettingItemModel *> *items);
+
 #ifdef __cplusplus
 }
 #endif
