@@ -70,6 +70,16 @@ AWESettingItemModel *DKMakeGlassChoice(NSString *key, NSString *clearKey, NSStri
 AWESettingItemModel *DKMakePercentSlider(NSString *key, NSString *title, NSString *message,
                                          NSInteger defaultPercent, void (^onChange)(NSInteger percent));
 
+/// 点击后弹出有界数值滑条。值按 minimum–maximum 保存，详情与读数显示「值 + unit」（如 @" pt"）。
+AWESettingItemModel *DKMakeUnitSlider(NSString *key, NSString *title, NSString *message,
+                                      NSInteger minimum, NSInteger maximum, NSInteger defaultValue,
+                                      NSString *unit, void (^onChange)(NSInteger value));
+
+/// 点击后弹出有界百分比滑条。值按 minimum–maximum 保存，详情显示百分比；用于缩放等非 0–100 的范围。
+AWESettingItemModel *DKMakeRangeSlider(NSString *key, NSString *title, NSString *message,
+                                       NSInteger minimum, NSInteger maximum, NSInteger defaultValue,
+                                       void (^onChange)(NSInteger value));
+
 /// 动作项：点击时把该项与当前设置页交给 onTap，界面由功能自己弹。
 /// 状态不落在 NSUserDefaults 上（key 只作 identifier）的功能用它；须声明值或排除备份。
 AWESettingItemModel *DKMakeAction(NSString *key, NSString *title, NSString *detail,

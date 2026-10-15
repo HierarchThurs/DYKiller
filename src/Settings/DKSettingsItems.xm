@@ -338,63 +338,65 @@ AWESettingItemModel *DKMakeGlassChoice(NSString *key, NSString *clearKey, NSStri
     return DKSettingsOnChange(item, onChange);
 }
 
-#pragma mark - 百分比滑条
+#pragma mark - 有界滑条
 
-static NSString *DKPercentSliderDetail(NSInteger percent) {
-    if (percent <= 0) return @"抖音默认";
-    if (percent >= 100) return @"胶囊";
-    return [NSString stringWithFormat:@"%ld%%", (long)percent];
+typedef NSString * (^DKSliderDetailBlock)(NSInteger value);
+
+static NSInteger DKClampSliderValue(NSInteger value, NSInteger minimum, NSInteger maximum) {
+    return MIN(maximum, MAX(minimum, value));
 }
 
-static NSInteger DKClampPercent(NSInteger value) {
-    return MIN(100, MAX(0, value));
-}
-
-AWESettingItemModel *DKMakePercentSlider(NSString *key, NSString *title, NSString *message,
-                                         NSInteger defaultPercent, void (^onChange)(NSInteger percent)) {
+static AWESettingItemModel *DKMakeBoundedSlider(NSString *key, NSString *title, NSString *message,
+                                                NSInteger minimum, NSInteger maximum, NSInteger defaultValue,
+                                                DKSliderDetailBlock detailBlock,
+                                                void (^onChange)(NSInteger value)) {
+    if (maximum < minimum) maximum = minimum;
+    defaultValue = DKClampSliderValue(defaultValue, minimum, maximum);
     NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:key];
+    NSInteger current = stored ? stored.integerValue : defaultValue;
+    current = DKClampSliderValue(current, minimum, maximum);
+
     AWESettingItemModel *item = DKMakeItem(key, title, 26);
-    item.detail = DKPercentSliderDetail(DKClampPercent(stored ? stored.integerValue : defaultPercent));
+    item.detail = detailBlock(current);
 
     __weak AWESettingItemModel *weakItem = item;
     void (^onChangeCopy)(NSInteger) = [onChange copy];
-    DKSettingsWithValues(item, @[ [DKSettingsValue integerWithKey:key minimum:0 maximum:100] ],
+    DKSettingsWithValues(item, @[ [DKSettingsValue integerWithKey:key minimum:minimum maximum:maximum] ],
         ^NSString *(NSArray *values, __unused BOOL brief) {
-            return DKPercentSliderDetail(values[0] == NSNull.null ? defaultPercent : [values[0] integerValue]);
+            NSInteger value = values[0] == NSNull.null ? defaultValue : [values[0] integerValue];
+            return detailBlock(DKClampSliderValue(value, minimum, maximum));
         });
-    // 拖动途中直接按滑块值回调；恢复写入后按存值回调。
     if (onChangeCopy) {
         DKSettingsOnChange(item, ^{
             NSNumber *now = [NSUserDefaults.standardUserDefaults objectForKey:key];
-            onChangeCopy(DKClampPercent(now ? now.integerValue : defaultPercent));
+            NSInteger value = DKClampSliderValue(now ? now.integerValue : defaultValue, minimum, maximum);
+            onChangeCopy(value);
         });
     }
+
     item.cellTappedBlock = ^{
         UIViewController *presenter = DKSettingsCurrentPage();
         if (!presenter || !weakItem.isEnable) return;
 
         NSNumber *now = [NSUserDefaults.standardUserDefaults objectForKey:key];
-        NSInteger value = DKClampPercent(now ? now.integerValue : defaultPercent);
-
+        NSInteger value = DKClampSliderValue(now ? now.integerValue : defaultValue, minimum, maximum);
         UIAlertController *alert =
             [UIAlertController alertControllerWithTitle:title message:message
                                          preferredStyle:UIAlertControllerStyleAlert];
 
-        // 读数与滑块都用约束定位：box.view 建出来时是整屏宽，之后被 alert 压到自己的
-        // 内容宽度，写死 frame 会在两侧留下不对称的空当。
         UIViewController *box = [[UIViewController alloc] init];
         box.preferredContentSize = CGSizeMake(250.0, 68.0);
 
         UILabel *readout = [[UILabel alloc] init];
-        readout.text = DKPercentSliderDetail(value);
+        readout.text = detailBlock(value);
         readout.textAlignment = NSTextAlignmentCenter;
         readout.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
         readout.translatesAutoresizingMaskIntoConstraints = NO;
         [box.view addSubview:readout];
 
         UISlider *slider = [[UISlider alloc] init];
-        slider.minimumValue = 0.0;
-        slider.maximumValue = 100.0;
+        slider.minimumValue = (float)minimum;
+        slider.maximumValue = (float)maximum;
         slider.value = (float)value;
         slider.continuous = YES;
         slider.translatesAutoresizingMaskIntoConstraints = NO;
@@ -412,14 +414,13 @@ AWESettingItemModel *DKMakePercentSlider(NSString *key, NSString *title, NSStrin
         ]];
         [alert setValue:box forKey:@"contentViewController"];
 
-        // 拖动途中就写入并回调，读数与设置行用同一套文案；点「完成」才刷新设置页。
         void (^applyValue)(float, BOOL) = ^(float raw, BOOL finish) {
-            NSInteger percent = DKClampPercent((NSInteger)lroundf(raw));
-            readout.text = DKPercentSliderDetail(percent);
-            [NSUserDefaults.standardUserDefaults setInteger:percent forKey:key];
-            if (onChangeCopy) onChangeCopy(percent);
+            NSInteger next = DKClampSliderValue((NSInteger)lroundf(raw), minimum, maximum);
+            readout.text = detailBlock(next);
+            [NSUserDefaults.standardUserDefaults setInteger:next forKey:key];
+            if (onChangeCopy) onChangeCopy(next);
             if (!finish) return;
-            weakItem.detail = DKPercentSliderDetail(percent);
+            weakItem.detail = detailBlock(next);
             DKSettingsReloadCurrentPage();
         };
 
@@ -432,9 +433,37 @@ AWESettingItemModel *DKMakePercentSlider(NSString *key, NSString *title, NSStrin
                                                 handler:^(__unused UIAlertAction *action) {
             applyValue(slider.value, YES);
         }]];
-        [presenter presentViewController:alert animated:YES completion:nil];
+        DKPresentFromSettings(presenter, alert, weakItem);
     };
     return item;
+}
+
+static NSString *DKPercentSliderDetail(NSInteger percent) {
+    if (percent <= 0) return @"抖音默认";
+    if (percent >= 100) return @"胶囊";
+    return [NSString stringWithFormat:@"%ld%%", (long)percent];
+}
+
+AWESettingItemModel *DKMakePercentSlider(NSString *key, NSString *title, NSString *message,
+                                         NSInteger defaultPercent, void (^onChange)(NSInteger percent)) {
+    return DKMakeBoundedSlider(key, title, message, 0, 100, defaultPercent,
+                               ^NSString *(NSInteger value) { return DKPercentSliderDetail(value); }, onChange);
+}
+
+AWESettingItemModel *DKMakeUnitSlider(NSString *key, NSString *title, NSString *message,
+                                      NSInteger minimum, NSInteger maximum, NSInteger defaultValue,
+                                      NSString *unit, void (^onChange)(NSInteger value)) {
+    NSString *suffix = [unit copy] ?: @"";
+    return DKMakeBoundedSlider(key, title, message, minimum, maximum, defaultValue,
+                               ^NSString *(NSInteger value) {
+        return [NSString stringWithFormat:@"%ld%@", (long)value, suffix];
+    }, onChange);
+}
+
+AWESettingItemModel *DKMakeRangeSlider(NSString *key, NSString *title, NSString *message,
+                                       NSInteger minimum, NSInteger maximum, NSInteger defaultValue,
+                                       void (^onChange)(NSInteger value)) {
+    return DKMakeUnitSlider(key, title, message, minimum, maximum, defaultValue, @"%", onChange);
 }
 
 #pragma mark - 动作
