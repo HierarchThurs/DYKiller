@@ -496,15 +496,23 @@ void DKAudioVisualizerLayout(UIView *douyinBar) {
 
 #pragma mark - 设置项注册
 
-// 位置与形态都是单选，用对话框选。设置项只负责写 NSUserDefaults：
-// DKAudioVisualizerLayout 每次底栏布局都会重读，位置/形态变了自然会重建，
-// 不需要额外的即时刷新通路。
+// 取样包装已装上时，按设置同步取样开关：关过「调试工具」后包装处于关闭态，
+// 可视化重新开启时要把它打开，关闭可视化时一并关掉。没装上的只能在启动时装
+// （DKAudioProbeInstallIfEnabled），仍需重启抖音。
+static void DKAudioVisualizerPreferenceDidChange(void) {
+    if (DKAudioTapIsInstalled()) DKAudioTapSetEnabled(DKAudioSamplingWanted());
+}
+
+// 位置与形态都是单选，用对话框选。画面不需要额外的即时刷新通路：
+// DKAudioVisualizerLayout 每次底栏布局都会重读，位置/形态变了自然会重建。
 %ctor {
+    // 首次开启要重启抖音才能装上取样，恢复后单独点名。
     DKSettingsRegister(DKKeyAudioVizPosition, ^AWESettingItemModel *{
-        return DKSettingsWithInfo(
-            DKMakeChoice(DKKeyAudioVizPosition, @"可视化位置",
-                         @[ @"关闭", @"胶囊上方水平", @"胶囊整栏环绕", @"拍摄圆键环绕" ]),
-            @"在悬浮玻璃底栏周围画随声音跳动的实时频谱，需开启「悬浮玻璃底栏」；选「关闭」不显示。");
+        AWESettingItemModel *item = DKMakeChoice(DKKeyAudioVizPosition, @"可视化位置",
+                                                 @[ @"关闭", @"胶囊上方水平", @"胶囊整栏环绕", @"拍摄圆键环绕" ]);
+        DKSettingsOnChange(item, ^{ DKAudioVisualizerPreferenceDidChange(); });
+        return DKSettingsNeedsRestart(DKSettingsWithInfo(item,
+            @"在悬浮玻璃底栏周围画随声音跳动的实时频谱，需开启「悬浮玻璃底栏」；选「关闭」不显示。"));
     });
     DKSettingsRegister(DKKeyAudioVizStyle, ^AWESettingItemModel *{
         return DKSettingsWithInfo(DKMakeChoice(DKKeyAudioVizStyle, @"可视化形态", @[ @"离散条", @"连续流体" ]),

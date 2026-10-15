@@ -19,6 +19,9 @@ BOOL DKPrefBool(NSString *key);
 /// 读取某单选项（NSUserDefaults NSInteger）。未设置时为 0。
 NSInteger DKPrefInteger(NSString *key);
 
+/// 音频取样包装该不该开：「调试工具」或「音频可视化」任一开着。安装与开关都按这一条判定。
+BOOL DKAudioSamplingWanted(void);
+
 /// 沿 childViewControllers 递归找指定类名的子控制器。
 /// 抖音的面板类多是 Swift 类，类名带点，Logos 的 %hook 用不了，只能按名字取。
 UIViewController *DKChildControllerNamed(UIViewController *controller, NSString *className);

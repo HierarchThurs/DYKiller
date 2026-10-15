@@ -94,7 +94,7 @@ void DKAudioProbeInstallIfEnabled(BOOL launchPhase) {
 
     // 符号包装是探针与音频可视化共用的，任一开着就装；导出通路仍然只看调试开关。
     // 包装只能在启动期装上，故这两个开关都是"打开后需重启抖音才生效"。
-    if (!enabled && DKPrefInteger(DKKeyAudioVizPosition) == 0) return;
+    if (!DKAudioSamplingWanted()) return;
     DKAudioTapInstall();
     DKAudioTapSetEnabled(YES);
     if (!enabled) return;
@@ -125,7 +125,7 @@ void DKAudioProbePreferenceDidChange(void) {
         return;
     }
     // 关掉调试开关不能顺手把包装器也关了——音频可视化可能正靠它取样。
-    DKAudioTapSetEnabled(enabled || DKPrefInteger(DKKeyAudioVizPosition) != 0);
+    DKAudioTapSetEnabled(DKAudioSamplingWanted());
     if (!enabled) DKLaunchCoverage.store(false, std::memory_order_release);
 }
 

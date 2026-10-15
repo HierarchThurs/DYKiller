@@ -20,6 +20,10 @@ NSInteger DKPrefInteger(NSString *key) {
     return [[NSUserDefaults standardUserDefaults] integerForKey:key];
 }
 
+BOOL DKAudioSamplingWanted(void) {
+    return DKPrefBool(DKKeyDebugInspectorEnabled) || DKPrefInteger(DKKeyAudioVizPosition) != 0;
+}
+
 #pragma mark - 控制器查找
 
 static UIViewController *DKSearchChildController(UIViewController *controller, NSString *className, NSUInteger depth) {
