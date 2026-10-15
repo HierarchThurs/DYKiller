@@ -182,8 +182,10 @@ AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *deta
 #pragma mark - 单选
 
 // 单选行：点击弹出框，选中后交给 apply 写入，再调项上的 onChange。current 越界时按第 0 项显示。
+// confirm 非空时先交给它，它调 commit 才写入；commit 强持有 onChange，页面退出后仍能完成。
 static AWESettingItemModel *DKMakeChoiceItem(NSString *key, NSString *title, NSArray<NSString *> *options,
-                                             NSInteger current, void (^apply)(NSInteger index)) {
+                                             NSInteger current, void (^apply)(NSInteger index),
+                                             void (^confirm)(NSInteger, UIViewController *, dispatch_block_t)) {
     if (current < 0 || current >= (NSInteger)options.count) current = 0;
 
     // cellType 26：可点击、右侧显示 detail 与箭头。
@@ -193,6 +195,7 @@ static AWESettingItemModel *DKMakeChoiceItem(NSString *key, NSString *title, NSA
 
     __weak AWESettingItemModel *weakItem = item;
     void (^applyCopy)(NSInteger) = [apply copy];
+    void (^confirmCopy)(NSInteger, UIViewController *, dispatch_block_t) = [confirm copy];
     item.cellTappedBlock = ^{
         UIViewController *presenter = DKSettingsCurrentPage();
         if (!presenter || !weakItem.isEnable) return;
@@ -202,10 +205,15 @@ static AWESettingItemModel *DKMakeChoiceItem(NSString *key, NSString *title, NSA
         [options enumerateObjectsUsingBlock:^(NSString *name, NSUInteger index, __unused BOOL *stop) {
             [sheet addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault
                                                    handler:^(__unused UIAlertAction *action) {
-                if (applyCopy) applyCopy((NSInteger)index);
-                weakItem.detail = name;
-                DKSettingsReloadCurrentPage();
-                DKRunOnChange(weakItem);
+                dispatch_block_t onChange = DKSettingsItemOnChange(weakItem);
+                dispatch_block_t commit = ^{
+                    if (applyCopy) applyCopy((NSInteger)index);
+                    weakItem.detail = name;
+                    DKSettingsReloadCurrentPage();
+                    if (onChange) onChange();
+                };
+                if (confirmCopy) confirmCopy((NSInteger)index, presenter, commit);
+                else commit();
             }]];
         }];
         [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
@@ -219,17 +227,99 @@ static NSString *DKOptionText(NSArray<NSString *> *options, NSInteger index) {
     return options[index >= 0 && index < (NSInteger)options.count ? index : 0];
 }
 
-AWESettingItemModel *DKMakeChoice(NSString *key, NSString *title, NSArray<NSString *> *options) {
+AWESettingItemModel *DKMakeChoiceConfirm(NSString *key, NSString *title, NSArray<NSString *> *options,
+                                         void (^confirm)(NSInteger index, UIViewController *presenter, dispatch_block_t commit)) {
     NSInteger current = [NSUserDefaults.standardUserDefaults integerForKey:key];
     AWESettingItemModel *item = DKMakeChoiceItem(key, title, options, current, ^(NSInteger index) {
         [NSUserDefaults.standardUserDefaults setInteger:index forKey:key];
-    });
+    }, confirm);
     NSArray<NSString *> *optionsCopy = [options copy];
     return DKSettingsWithValues(item,
         @[ [DKSettingsValue integerWithKey:key minimum:0 maximum:(long long)options.count - 1] ],
         ^NSString *(NSArray *values, __unused BOOL brief) {
             return DKOptionText(optionsCopy, values[0] == NSNull.null ? 0 : [values[0] integerValue]);
         });
+}
+
+AWESettingItemModel *DKMakeChoice(NSString *key, NSString *title, NSArray<NSString *> *options) {
+    return DKMakeChoiceConfirm(key, title, options, nil);
+}
+
+#pragma mark - 文字输入
+
+static NSString *DKTextCurrent(DKSettingsValue *value) {
+    id current = [value currentValueInStore:NSUserDefaults.standardUserDefaults];
+    return [current isKindOfClass:NSString.class] ? current : nil;
+}
+
+static void DKTextCommit(AWESettingItemModel *item, DKSettingsValue *value, id normalized, dispatch_block_t onChange) {
+    [value writeValue:normalized toStore:NSUserDefaults.standardUserDefaults];
+    item.detail = DKTextCurrent(value) ?: @"默认";
+    DKSettingsReloadCurrentPage();
+    if (onChange) onChange();
+}
+
+// 超宽或含换行时保留输入、换上原因重新弹出，不让用户的输入丢掉。
+static void DKPresentTextInput(AWESettingItemModel *item, DKSettingsValue *value, NSString *title,
+                               NSString *placeholder, NSString *draft, NSString *problem) {
+    UIViewController *presenter = DKSettingsCurrentPage();
+    if (!presenter) return;
+    NSUInteger maxWidth = value.maxWidth;
+    NSString *hint = [NSString stringWithFormat:@"最多 %lu 个汉字或 %lu 个字母数字，留空为「%@」。",
+                      (unsigned long)(maxWidth / 2), (unsigned long)maxWidth, placeholder];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
+                                                                   message:problem ? [NSString stringWithFormat:@"%@\n%@", problem, hint] : hint
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    NSString *current = DKTextCurrent(value);
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        field.text = draft ?: current;
+        field.placeholder = placeholder;
+        field.clearButtonMode = UITextFieldViewModeWhileEditing;
+        field.returnKeyType = UIReturnKeyDone;
+    }];
+
+    __weak AWESettingItemModel *weakItem = item;
+    __weak UIAlertController *weakAlert = alert;
+    dispatch_block_t onChange = DKSettingsItemOnChange(item);
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    if (current) {
+        [alert addAction:[UIAlertAction actionWithTitle:@"恢复默认" style:UIAlertActionStyleDestructive
+                                                handler:^(__unused UIAlertAction *action) {
+            DKTextCommit(weakItem, value, NSNull.null, onChange);
+        }]];
+    }
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault
+                                            handler:^(__unused UIAlertAction *action) {
+        NSString *text = weakAlert.textFields.firstObject.text ?: @"";
+        NSString *reason = nil;
+        id normalized = [value normalize:text reason:&reason];
+        if (!normalized) {
+            // 等这个弹窗收完再弹，present 不能压在 dismiss 动画上。
+            dispatch_async(dispatch_get_main_queue(), ^{
+                DKPresentTextInput(weakItem, value, title, placeholder, text,
+                                   [reason isEqualToString:@"文字过长"] ? @"文字超出长度。" : @"不能包含换行或控制字符。");
+            });
+            return;
+        }
+        DKTextCommit(weakItem, value, normalized, onChange);
+    }]];
+    [presenter presentViewController:alert animated:YES completion:nil];
+}
+
+AWESettingItemModel *DKMakeTextInput(NSString *key, NSString *title, NSString *placeholder, NSUInteger maxWidth) {
+    DKSettingsValue *value = [DKSettingsValue stringWithKey:key maxWidth:maxWidth];
+    // cellType 26：可点击、右侧显示 detail 与箭头。
+    AWESettingItemModel *item = DKMakeItem(key, title, 26);
+    item.detail = DKTextCurrent(value) ?: @"默认";
+
+    __weak AWESettingItemModel *weakItem = item;
+    item.cellTappedBlock = ^{
+        if (!weakItem.isEnable) return;
+        DKPresentTextInput(weakItem, value, title, placeholder, nil, nil);
+    };
+    return DKSettingsWithValues(item, @[ value ], ^NSString *(NSArray *values, __unused BOOL brief) {
+        return [values[0] isKindOfClass:NSString.class] ? values[0] : @"默认";
+    });
 }
 
 AWESettingItemModel *DKMakeGlassChoice(NSString *key, NSString *clearKey, NSString *title, void (^onChange)(void)) {
@@ -239,7 +329,7 @@ AWESettingItemModel *DKMakeGlassChoice(NSString *key, NSString *clearKey, NSStri
     AWESettingItemModel *item = DKMakeChoiceItem(key, title, options, current, ^(NSInteger index) {
         [NSUserDefaults.standardUserDefaults setBool:index > 0 forKey:key];
         [NSUserDefaults.standardUserDefaults setBool:index == 2 forKey:clearKey];
-    });
+    }, nil);
     DKSettingsWithValues(item, @[ [DKSettingsValue boolWithKey:key], [DKSettingsValue boolWithKey:clearKey] ],
         ^NSString *(NSArray *values, __unused BOOL brief) {
             BOOL on = [values[0] isEqual:@YES], clear = [values[1] isEqual:@YES];

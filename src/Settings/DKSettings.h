@@ -53,6 +53,15 @@ AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *deta
 /// 当前选中项显示在行右侧。
 AWESettingItemModel *DKMakeChoice(NSString *key, NSString *title, NSArray<NSString *> *options);
 
+/// 单选项：选中某项后先交给 confirm，confirm 调用 commit 才写入、刷新并触发 onChange；不调用即保持原值。
+/// commit 可以异步调用（如先选图，成功后再提交），与页面是否还在无关。
+AWESettingItemModel *DKMakeChoiceConfirm(NSString *key, NSString *title, NSArray<NSString *> *options,
+                                         void (^confirm)(NSInteger index, UIViewController *presenter, dispatch_block_t commit));
+
+/// 单行文字：点击弹输入框（取消 / 恢复默认 / 保存），行右侧显示当前文字或「默认」。
+/// placeholder 是留空时显示的默认文字；maxWidth 按 DKSettingsTextWidth 计。值自动声明为 String，空串即未设置。
+AWESettingItemModel *DKMakeTextInput(NSString *key, NSString *title, NSString *placeholder, NSUInteger maxWidth);
+
 /// 液态玻璃材质单选：关闭 / 模糊玻璃 / 清透玻璃。存成 key（开启）与 clearKey（清透）两个 BOOL，
 /// 前置联动按 key 判定。onChange 在选定并写入后、以及恢复写入后调用，可空。
 AWESettingItemModel *DKMakeGlassChoice(NSString *key, NSString *clearKey, NSString *title, void (^onChange)(void));
