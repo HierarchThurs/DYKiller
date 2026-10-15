@@ -110,6 +110,29 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                 ]),
             ]),
         ]),
+        DKSection(@"视频播放", @[
+            DKPage(@"互动按钮", @"ic_squaresplit_outlined_20", @[
+                DKSection(@"透明度", @[
+                    DKRow(DKKeyInteractionIconAlpha, @"ic_module_outlined_20"),
+                    DKRow(DKKeyInteractionLabelAlpha, @"ic_text_outlined_20"),
+                    DKRow(DKKeyAvatarAlpha, @"ic_user_outlined_20"),
+                    DKRow(DKKeyMusicAlpha, @"ic_quaver_outlined_20"),
+                ]),
+                DKSection(@"缩放", @[
+                    DKRow(DKKeyInteractionScale, @"ic_module_outlined_20"),
+                    DKRow(DKKeyAvatarScale, @"ic_user_outlined_20"),
+                    DKRow(DKKeyMusicScale, @"ic_quaver_outlined_20"),
+                ]),
+                DKSection(@"位置", @[
+                    DKRow(DKKeyInteractionOffset, @"ic_doublearrowup_outlined_20"),
+                ]),
+                DKSection(@"显示方式", @[
+                    DKRow(DKKeyInteractionDisplay, @"ic_module_outlined_20"),
+                    DKRow(DKKeyAvatarDisplay, @"ic_user_outlined_20"),
+                    DKRow(DKKeyMusicDisplay, @"ic_quaver_outlined_20"),
+                ]),
+            ]),
+        ]),
     ]);
 
     DKSettingsPage *glass = [[DKSettingsPage alloc] initWithTitle:@"液态玻璃 (iOS26+)"

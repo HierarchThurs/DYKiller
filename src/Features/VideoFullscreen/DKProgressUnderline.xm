@@ -2,7 +2,7 @@
 //  DKProgressUnderline.xm
 //  清除进度条底边压着的那条纯黑细垫层。视频撑满后它会横在视频与底栏之间形成割裂。
 //
-//  全项目唯一一处 AWEDPlayerProgressContainerView 的 hook：详情页全屏与首页/朋友页全屏
+//  全项目唯一一处 AWEDPlayerProgressContainerView -layoutSubviews 的 hook：详情页全屏与首页/朋友页全屏
 //  面对的是同一条黑边、同一套识别与还原逻辑，只是作用域来源不同，故合并在此。
 //
 
