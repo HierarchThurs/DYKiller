@@ -108,7 +108,10 @@ static void DKDismissCommentPanel(dispatch_block_t then) {
         DKMediaSaveItem *item = DKSelectCommentSticker(dict);
         if (item) { items = @[item]; source = @"评论长按·表情"; }
     }
-    if (!items) { %orig; return; }
+    if (!items) {
+        %orig;
+        return;
+    }
     DKMediaSaveHit(DKMediaSaveEntryCommentElement);
     DKDismissCommentPanel(^{ DKMediaSaveRun(items, source); });
 }

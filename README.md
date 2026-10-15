@@ -13,11 +13,13 @@
 - @pxx917144686
 - @Wtrwx
 - @嘉嘉
+- @VexCove
 
 ### 参考项目
 
 - [github.com/Wtrwx/DYYY](https://github.com/Wtrwx/DYYY)
 - [github.com/huami1314/DYYY](https://github.com/huami1314/DYYY)
+- [github.com/VexCove/DYYY](https://github.com/VexCove/DYYY)
 - pxx917144686 的 DYYY++ 项目
 - pxx917144686 的 FLEX++ 项目
 - DY图层

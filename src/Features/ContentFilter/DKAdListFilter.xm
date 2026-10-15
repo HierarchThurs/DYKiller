@@ -11,7 +11,10 @@ static id DKFilterAdList(id controller, id array, NSString *entry) {
 %group DKFilterAdDataSource
 %hook AWEListDataController
 - (void)setDataSource:(id)array {
-    DKFilterWithBatch(^id { %orig(DKFilterAdList(self, array, @"广告列表写入")); return nil; });
+    DKFilterWithBatch(^id {
+        %orig(DKFilterAdList(self, array, @"广告列表写入"));
+        return nil;
+    });
 }
 %end
 %end
@@ -19,7 +22,10 @@ static id DKFilterAdList(id controller, id array, NSString *entry) {
 %group DKFilterAdFilteredSource
 %hook AWEListDataController
 - (void)setFilteredDataSource:(id)array {
-    DKFilterWithBatch(^id { %orig(DKFilterAdList(self, array, @"广告已筛列表写入")); return nil; });
+    DKFilterWithBatch(^id {
+        %orig(DKFilterAdList(self, array, @"广告已筛列表写入"));
+        return nil;
+    });
 }
 %end
 %end
@@ -27,7 +33,10 @@ static id DKFilterAdList(id controller, id array, NSString *entry) {
 %group DKFilterAdMixList
 %hook AWEMixVideoListDataController
 - (void)setDataSource:(id)array {
-    DKFilterWithBatch(^id { %orig(DKFilterAdList(self, array, @"合集广告列表")); return nil; });
+    DKFilterWithBatch(^id {
+        %orig(DKFilterAdList(self, array, @"合集广告列表"));
+        return nil;
+    });
 }
 %end
 %end
@@ -35,7 +44,10 @@ static id DKFilterAdList(id controller, id array, NSString *entry) {
 %group DKFilterAdMixDetail
 %hook AWEMixVideoDetailPlayListDataController
 - (void)setDataSource:(id)array {
-    DKFilterWithBatch(^id { %orig(DKFilterAdList(self, array, @"合集详情广告列表")); return nil; });
+    DKFilterWithBatch(^id {
+        %orig(DKFilterAdList(self, array, @"合集详情广告列表"));
+        return nil;
+    });
 }
 %end
 %end
@@ -43,7 +55,10 @@ static id DKFilterAdList(id controller, id array, NSString *entry) {
 %group DKFilterAdMixRelated
 %hook AWEMixVideoRelatedListDataController
 - (void)setDataSource:(id)array {
-    DKFilterWithBatch(^id { %orig(DKFilterAdList(self, array, @"关联合集广告列表")); return nil; });
+    DKFilterWithBatch(^id {
+        %orig(DKFilterAdList(self, array, @"关联合集广告列表"));
+        return nil;
+    });
 }
 %end
 %end

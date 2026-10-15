@@ -77,7 +77,9 @@ static BOOL DKTapRelatedComment(id source) {
 %group DKTapRelatedPlayerHooks
 %hook AWERelatedVideoVideoPlayerViewController
 - (void)handleDoubleTap:(id)gesture {
-    DKDoubleTapCommentDispatch(DKDoubleTapCommentRelatedPlayer, self, ^{ %orig; }, ^BOOL{
+    DKDoubleTapCommentDispatch(DKDoubleTapCommentRelatedPlayer, self, ^{
+        %orig;
+    }, ^BOOL{
         return DKTapRelatedComment(self);
     });
 }
@@ -87,7 +89,9 @@ static BOOL DKTapRelatedComment(id source) {
 %group DKTapRelatedInteractionHooks
 %hook AWERelatedVideoDetailVideoInteractView
 - (void)handleVideoDoubleTapped {
-    DKDoubleTapCommentDispatch(DKDoubleTapCommentRelatedInteraction, self, ^{ %orig; }, ^BOOL{
+    DKDoubleTapCommentDispatch(DKDoubleTapCommentRelatedInteraction, self, ^{
+        %orig;
+    }, ^BOOL{
         return DKTapRelatedComment(self);
     });
 }

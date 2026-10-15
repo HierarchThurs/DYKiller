@@ -33,7 +33,9 @@ static BOOL DKTapListenComment(AWEListenFeedOptimizedInteractionViewController *
 %group DKTapListenHooks
 %hook AWEListenFeedOptimizedInteractionViewController
 - (void)handleDoubleTap:(id)gesture {
-    DKDoubleTapCommentDispatch(DKDoubleTapCommentListenFeed, self, ^{ %orig; }, ^BOOL{
+    DKDoubleTapCommentDispatch(DKDoubleTapCommentListenFeed, self, ^{
+        %orig;
+    }, ^BOOL{
         return DKTapListenComment(self);
     });
 }

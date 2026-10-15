@@ -159,7 +159,8 @@ static NSArray *DKFeedPanelData(UIViewController *panel, NSArray *original, DKMe
 %group DKFeedPanelHooks
 %hook AWELongPressPanelTableViewController
 - (NSArray *)dataArray {
-    return DKFeedPanelData(self, %orig, DKMediaSaveEntryFeedPanel);
+    NSArray *original = %orig;
+    return DKFeedPanelData(self, original, DKMediaSaveEntryFeedPanel);
 }
 %end
 %end
@@ -167,7 +168,8 @@ static NSArray *DKFeedPanelData(UIViewController *panel, NSArray *original, DKMe
 %group DKFeedModernPanelHooks
 %hook AWEModernLongPressPanelTableViewController
 - (NSArray *)dataArray {
-    return DKFeedPanelData(self, %orig, DKMediaSaveEntryFeedPanelModern);
+    NSArray *original = %orig;
+    return DKFeedPanelData(self, original, DKMediaSaveEntryFeedPanelModern);
 }
 %end
 %end

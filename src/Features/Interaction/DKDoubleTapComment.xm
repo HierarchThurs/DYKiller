@@ -232,7 +232,9 @@ static BOOL DKTapFeedComment(AWEPlayInteractionViewController *controller, id pl
 %group DKTapFeedPlayerHooks
 %hook AWEPlayInteractionViewController
 - (void)onPlayer:(id)player didDoubleClick:(id)event {
-    DKDoubleTapCommentDispatch(DKDoubleTapCommentFeedPlayer, self, ^{ %orig; }, ^BOOL{
+    DKDoubleTapCommentDispatch(DKDoubleTapCommentFeedPlayer, self, ^{
+        %orig;
+    }, ^BOOL{
         return DKTapFeedComment(self, player);
     });
 }
@@ -242,7 +244,9 @@ static BOOL DKTapFeedComment(AWEPlayInteractionViewController *controller, id pl
 %group DKTapFeedInteractionHooks
 %hook AWEPlayInteractionViewController
 - (void)onVideoPlayerViewDoubleClicked:(id)event {
-    DKDoubleTapCommentDispatch(DKDoubleTapCommentFeedInteraction, self, ^{ %orig; }, ^BOOL{
+    DKDoubleTapCommentDispatch(DKDoubleTapCommentFeedInteraction, self, ^{
+        %orig;
+    }, ^BOOL{
         return DKTapFeedComment(self, nil);
     });
 }
@@ -252,7 +256,9 @@ static BOOL DKTapFeedComment(AWEPlayInteractionViewController *controller, id pl
 %group DKTapStoryHooks
 %hook AFDStoryPlayInteractionViewController
 - (void)onPlayer:(id)player didDoubleClick:(id)event {
-    DKDoubleTapCommentDispatch(DKDoubleTapCommentStory, self, ^{ %orig; }, ^BOOL{
+    DKDoubleTapCommentDispatch(DKDoubleTapCommentStory, self, ^{
+        %orig;
+    }, ^BOOL{
         return DKTapFeedComment(self, player);
     });
 }

@@ -19,7 +19,9 @@ static id DKFilterTransfer(id controller, id array, NSString *entry, id (^native
 %group DKFilterHotTransfer
 %hook AWEHotListDataController
 - (id)transferAwemeListIfNeededWithArray:(id)array isInitFetch:(BOOL)initial {
-    return DKFilterTransfer(self, array, @"HotList 转换", ^id(id input) { return %orig(input, initial); });
+    return DKFilterTransfer(self, array, @"HotList 转换", ^id(id input) {
+        return %orig(input, initial);
+    });
 }
 %end
 %end
@@ -27,7 +29,9 @@ static id DKFilterTransfer(id controller, id array, NSString *entry, id (^native
 %group DKFilterMultiTransfer
 %hook AWEFeedMultiQueueDataController
 - (id)transferAwemeListIfNeededWithArray:(id)array isInitFetch:(BOOL)initial {
-    return DKFilterTransfer(self, array, @"多队列转换", ^id(id input) { return %orig(input, initial); });
+    return DKFilterTransfer(self, array, @"多队列转换", ^id(id input) {
+        return %orig(input, initial);
+    });
 }
 %end
 %end
@@ -35,7 +39,9 @@ static id DKFilterTransfer(id controller, id array, NSString *entry, id (^native
 %group DKFilterDefaultTransfer
 %hook AWEDCFeedDefaultDataController
 - (id)transferAwemeListIfNeededWithArray:(id)array isInitFetch:(BOOL)initial {
-    return DKFilterTransfer(self, array, @"默认数据队列转换", ^id(id input) { return %orig(input, initial); });
+    return DKFilterTransfer(self, array, @"默认数据队列转换", ^id(id input) {
+        return %orig(input, initial);
+    });
 }
 %end
 %end
