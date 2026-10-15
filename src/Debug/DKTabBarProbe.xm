@@ -8,6 +8,7 @@
 
 #import "DKContentFilter.h"
 #import "DKDoubleTapComment.h"
+#import "DKMediaSaveDiagnostics.h"
 #import "DKTabBarProbe.h"
 #import "DKPlusIcon.h"
 #import "DouyinHeaders.h"
@@ -1078,6 +1079,9 @@ NSString *DKTabBarProbeReport(void) {
 
     [out appendString:@"\n----- 双击打开评论区 -----\n"];
     [out appendString:DKDoubleTapCommentDiagnostics()];
+
+    [out appendString:@"\n----- 媒体保存 -----\n"];
+    [out appendString:DKMediaSaveDiagnostics()];
 
     [out appendString:@"\n----- 评论面板玻璃 -----\n"];
     DKProbeAppendCommentGlass(out);

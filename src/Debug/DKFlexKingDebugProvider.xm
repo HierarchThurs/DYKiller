@@ -1,4 +1,5 @@
 #import "DKFlexKingProviderSDK.h"
+#import "DKMediaSaveDiagnostics.h"
 #import "DKTabBarProbe.h"
 #import "DKVideoFeedTable.h"
 #import "DKVideoFullscreen.h"
@@ -10,7 +11,7 @@ static id DKFKProviderObject(NSString *className) {
     Class cls=NSClassFromString(className);return cls?[[cls alloc]init]:nil;
 }
 static NSDictionary *DKFKProviderSnapshot(void) {
-    NSMutableDictionary *result=[@{@"product":@"DYKiller",@"version":DK_VERSION ?: @"unknown",@"build_identifier":@"control-version",@"probe_source":@"DKTabBarProbeReport",@"probe":DKTabBarProbeReport() ?: @"",@"video_table_stats":DKVideoFeedTableStats() ?: @"",@"video_container_pin_stats":DKVideoContainerPinStats() ?: @"",@"video_container_move_stats":DKVideoContainerMoveStats() ?: @"",@"fullscreen_enabled":@(DKVideoFullscreenOn()),@"scope_limit":@"Current IMP plus existing counters/probe only. Historical IMP chain, original-vs-rewritten values, per-instance guard reasons, and hook calls not instrumented by DYKiller are explicitly unavailable in this Provider revision."} mutableCopy];
+    NSMutableDictionary *result=[@{@"product":@"DYKiller",@"version":DK_VERSION ?: @"unknown",@"build_identifier":@"control-version",@"probe_source":@"DKTabBarProbeReport",@"probe":DKTabBarProbeReport() ?: @"",@"video_table_stats":DKVideoFeedTableStats() ?: @"",@"video_container_pin_stats":DKVideoContainerPinStats() ?: @"",@"video_container_move_stats":DKVideoContainerMoveStats() ?: @"",@"fullscreen_enabled":@(DKVideoFullscreenOn()),@"media_save":DKMediaSaveDiagnostics() ?: @"",@"scope_limit":@"Current IMP plus existing counters/probe only. Historical IMP chain, original-vs-rewritten values, per-instance guard reasons, and hook calls not instrumented by DYKiller are explicitly unavailable in this Provider revision."} mutableCopy];
     Class detail=NSClassFromString(@"AWEAwemeDetailTableViewController");SEL selector=NSSelectorFromString(@"viewDidLayoutSubviews");Method method=detail?class_getInstanceMethod(detail,selector):NULL;
     if(method){IMP imp=method_getImplementation(method);Dl_info info={0};dladdr((void *)imp,&info);result[@"detail_layout_hook"]=@{@"class":NSStringFromClass(detail),@"selector":NSStringFromSelector(selector),@"current_imp":[NSString stringWithFormat:@"%p",imp],@"image_path":info.dli_fname?@(info.dli_fname):@"",@"symbol":info.dli_sname?@(info.dli_sname):@"",@"encoding":@(method_getTypeEncoding(method))};}
     else result[@"detail_layout_hook"]=@{@"state":@"method_unavailable"};
