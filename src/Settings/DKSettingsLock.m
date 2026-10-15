@@ -62,6 +62,15 @@ void DKSettingsPrepareItem(AWESettingItemModel *item, NSString *icon) {
     DKGlassLockItemIfNeeded(item);
 }
 
+void DKSettingsSetItemEnabled(AWESettingItemModel *item, BOOL enabled) {
+    if (!item) return;
+    objc_setAssociatedObject(item, &kDKBaseEnableKey, @(enabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    BOOL enable = enabled && !DKKeyLocked(item.identifier, 0);
+    if (item.isEnable == enable) return;
+    item.isEnable = enable;
+    if ([item respondsToSelector:@selector(refreshCell)]) [item refreshCell];
+}
+
 BOOL DKSettingsIsOwnItem(AWESettingItemModel *item) {
     return item && objc_getAssociatedObject(item, &kDKBaseEnableKey) != nil;
 }

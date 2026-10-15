@@ -1,6 +1,7 @@
 //
 //  DKSettingsItems.xm
-//  设置项工厂与项上的标记（ⓘ 说明、单选类型）。
+//  设置项工厂与项上的标记（ⓘ 说明、单选类型、值声明、值变化回调与备份标记）。
+//  标准工厂建项时同时声明落盘值；写入后统一调项上的 onChange，恢复写入后也调同一个。
 //  回调先看 isEnable：灰显项由页面 hook 拦住点击，这里再兜底，锁解除后无需重建回调。
 //
 
@@ -11,6 +12,12 @@
 static char kDKInfoKey;
 static char kDKChoiceKey;
 static char kDKSliderRelayKey;
+static char kDKValuesKey;
+static char kDKDescribeKey;
+static char kDKOnChangeKey;
+static char kDKNoBackupKey;
+static char kDKRestartKey;
+static char kDKDestructiveKey;
 
 @interface _DKSliderRelay : NSObject
 @property (nonatomic, copy) void (^block)(UISlider *slider);
@@ -37,6 +44,70 @@ NSString *DKSettingsItemInfo(AWESettingItemModel *item) {
 
 BOOL DKSettingsItemIsChoice(AWESettingItemModel *item) {
     return item && [objc_getAssociatedObject(item, &kDKChoiceKey) boolValue];
+}
+
+static BOOL DKItemFlag(AWESettingItemModel *item, const void *key) {
+    return item && [objc_getAssociatedObject(item, key) boolValue];
+}
+
+static AWESettingItemModel *DKSetItemFlag(AWESettingItemModel *item, const void *key) {
+    if (item) objc_setAssociatedObject(item, key, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return item;
+}
+
+AWESettingItemModel *DKSettingsWithValues(AWESettingItemModel *item, NSArray<DKSettingsValue *> *values,
+                                          DKSettingsDescribe describe) {
+    if (!item) return item;
+    objc_setAssociatedObject(item, &kDKValuesKey, values, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    objc_setAssociatedObject(item, &kDKDescribeKey, describe, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    return item;
+}
+
+AWESettingItemModel *DKSettingsOnChange(AWESettingItemModel *item, dispatch_block_t onChange) {
+    if (item) objc_setAssociatedObject(item, &kDKOnChangeKey, onChange, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    return item;
+}
+
+AWESettingItemModel *DKSettingsWithoutBackup(AWESettingItemModel *item) {
+    return DKSetItemFlag(item, &kDKNoBackupKey);
+}
+
+AWESettingItemModel *DKSettingsNeedsRestart(AWESettingItemModel *item) {
+    return DKSetItemFlag(item, &kDKRestartKey);
+}
+
+AWESettingItemModel *DKSettingsMarkDestructive(AWESettingItemModel *item) {
+    if (item && [item respondsToSelector:@selector(setTitleColor:)]) item.titleColor = UIColor.systemRedColor;
+    return DKSetItemFlag(item, &kDKDestructiveKey);
+}
+
+NSArray<DKSettingsValue *> *DKSettingsItemValues(AWESettingItemModel *item) {
+    return item ? objc_getAssociatedObject(item, &kDKValuesKey) : nil;
+}
+
+DKSettingsDescribe DKSettingsItemDescribe(AWESettingItemModel *item) {
+    return item ? objc_getAssociatedObject(item, &kDKDescribeKey) : nil;
+}
+
+dispatch_block_t DKSettingsItemOnChange(AWESettingItemModel *item) {
+    return item ? objc_getAssociatedObject(item, &kDKOnChangeKey) : nil;
+}
+
+BOOL DKSettingsItemExcludedFromBackup(AWESettingItemModel *item) {
+    return DKItemFlag(item, &kDKNoBackupKey);
+}
+
+BOOL DKSettingsItemNeedsRestart(AWESettingItemModel *item) {
+    return DKItemFlag(item, &kDKRestartKey);
+}
+
+BOOL DKSettingsItemIsDestructive(AWESettingItemModel *item) {
+    return DKItemFlag(item, &kDKDestructiveKey);
+}
+
+static void DKRunOnChange(AWESettingItemModel *item) {
+    dispatch_block_t onChange = DKSettingsItemOnChange(item);
+    if (onChange) onChange();
 }
 
 static AWESettingItemModel *DKMakeItem(NSString *key, NSString *title, NSInteger cellType) {
@@ -93,6 +164,7 @@ AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *deta
     // cellType 6：开关行。detail 不写进项里，卡片样式下它会显示成副标题。
     AWESettingItemModel *item = DKSettingsWithInfo(DKMakeItem(key, title, 6), detail);
     item.isSwitchOn = [NSUserDefaults.standardUserDefaults boolForKey:key];
+    DKSettingsWithValues(item, @[ [DKSettingsValue boolWithKey:key] ], nil);
 
     __weak AWESettingItemModel *weakItem = item;
     item.switchChangedBlock = ^{
@@ -102,13 +174,14 @@ AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *deta
         it.isSwitchOn = value;
         [NSUserDefaults.standardUserDefaults setBool:value forKey:it.identifier];
         DKSettingsValuesChanged();
+        DKRunOnChange(it);
     };
     return item;
 }
 
 #pragma mark - 单选
 
-// 单选行：点击弹出框，选中后交给 apply 写入。current 越界时按第 0 项显示。
+// 单选行：点击弹出框，选中后交给 apply 写入，再调项上的 onChange。current 越界时按第 0 项显示。
 static AWESettingItemModel *DKMakeChoiceItem(NSString *key, NSString *title, NSArray<NSString *> *options,
                                              NSInteger current, void (^apply)(NSInteger index)) {
     if (current < 0 || current >= (NSInteger)options.count) current = 0;
@@ -132,6 +205,7 @@ static AWESettingItemModel *DKMakeChoiceItem(NSString *key, NSString *title, NSA
                 if (applyCopy) applyCopy((NSInteger)index);
                 weakItem.detail = name;
                 DKSettingsReloadCurrentPage();
+                DKRunOnChange(weakItem);
             }]];
         }];
         [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
@@ -140,22 +214,38 @@ static AWESettingItemModel *DKMakeChoiceItem(NSString *key, NSString *title, NSA
     return item;
 }
 
+// 存值越界或未设置时按第 0 项显示，与 DKMakeChoiceItem 一致。
+static NSString *DKOptionText(NSArray<NSString *> *options, NSInteger index) {
+    return options[index >= 0 && index < (NSInteger)options.count ? index : 0];
+}
+
 AWESettingItemModel *DKMakeChoice(NSString *key, NSString *title, NSArray<NSString *> *options) {
     NSInteger current = [NSUserDefaults.standardUserDefaults integerForKey:key];
-    return DKMakeChoiceItem(key, title, options, current, ^(NSInteger index) {
+    AWESettingItemModel *item = DKMakeChoiceItem(key, title, options, current, ^(NSInteger index) {
         [NSUserDefaults.standardUserDefaults setInteger:index forKey:key];
     });
+    NSArray<NSString *> *optionsCopy = [options copy];
+    return DKSettingsWithValues(item,
+        @[ [DKSettingsValue integerWithKey:key minimum:0 maximum:(long long)options.count - 1] ],
+        ^NSString *(NSArray *values, __unused BOOL brief) {
+            return DKOptionText(optionsCopy, values[0] == NSNull.null ? 0 : [values[0] integerValue]);
+        });
 }
 
 AWESettingItemModel *DKMakeGlassChoice(NSString *key, NSString *clearKey, NSString *title, void (^onChange)(void)) {
+    NSArray<NSString *> *options = @[ @"关闭", @"模糊玻璃", @"清透玻璃" ];
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSInteger current = [defaults boolForKey:key] ? ([defaults boolForKey:clearKey] ? 2 : 1) : 0;
-    void (^onChangeCopy)(void) = [onChange copy];
-    return DKMakeChoiceItem(key, title, @[ @"关闭", @"模糊玻璃", @"清透玻璃" ], current, ^(NSInteger index) {
+    AWESettingItemModel *item = DKMakeChoiceItem(key, title, options, current, ^(NSInteger index) {
         [NSUserDefaults.standardUserDefaults setBool:index > 0 forKey:key];
         [NSUserDefaults.standardUserDefaults setBool:index == 2 forKey:clearKey];
-        if (onChangeCopy) onChangeCopy();
     });
+    DKSettingsWithValues(item, @[ [DKSettingsValue boolWithKey:key], [DKSettingsValue boolWithKey:clearKey] ],
+        ^NSString *(NSArray *values, __unused BOOL brief) {
+            BOOL on = [values[0] isEqual:@YES], clear = [values[1] isEqual:@YES];
+            return options[on ? (clear ? 2 : 1) : 0];
+        });
+    return DKSettingsOnChange(item, onChange);
 }
 
 #pragma mark - 百分比滑条
@@ -178,6 +268,17 @@ AWESettingItemModel *DKMakePercentSlider(NSString *key, NSString *title, NSStrin
 
     __weak AWESettingItemModel *weakItem = item;
     void (^onChangeCopy)(NSInteger) = [onChange copy];
+    DKSettingsWithValues(item, @[ [DKSettingsValue integerWithKey:key minimum:0 maximum:100] ],
+        ^NSString *(NSArray *values, __unused BOOL brief) {
+            return DKPercentSliderDetail(values[0] == NSNull.null ? defaultPercent : [values[0] integerValue]);
+        });
+    // 拖动途中直接按滑块值回调；恢复写入后按存值回调。
+    if (onChangeCopy) {
+        DKSettingsOnChange(item, ^{
+            NSNumber *now = [NSUserDefaults.standardUserDefaults objectForKey:key];
+            onChangeCopy(DKClampPercent(now ? now.integerValue : defaultPercent));
+        });
+    }
     item.cellTappedBlock = ^{
         UIViewController *presenter = DKSettingsCurrentPage();
         if (!presenter || !weakItem.isEnable) return;

@@ -39,6 +39,19 @@ AWESettingItemModel *DKSettingsBuildItem(NSString *key) {
     return builder ? builder() : nil;
 }
 
+NSArray<NSString *> *DKSettingsRegisteredKeys(void) {
+    NSDictionary *registry = DKBuilderRegistry();
+    NSMutableArray<NSString *> *keys = [NSMutableArray arrayWithCapacity:registry.count];
+    for (NSString *key in DKSettingsLayoutOrderedKeys()) {
+        if (registry[key]) [keys addObject:key];
+    }
+    NSSet<NSString *> *placed = DKSettingsLayoutKeys();
+    for (NSString *key in [registry.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+        if (![placed containsObject:key]) [keys addObject:key];
+    }
+    return keys;
+}
+
 #pragma mark - 当前页
 
 // 当前显示的 DYKiller 设置页；子页出现时由 viewWillAppear 接管。
@@ -58,6 +71,15 @@ static UITableView *DKPageTableView(UIViewController *page) {
     return [table isKindOfClass:UITableView.class] ? table : nil;
 }
 
+AWESettingItemModel *DKSettingsFindItem(UIViewController *page, NSString *identifier) {
+    for (AWESettingSectionModel *section in DKPageViewModel(page).sectionDataArray) {
+        for (AWESettingItemModel *item in section.itemArray) {
+            if ([item.identifier isEqualToString:identifier]) return item;
+        }
+    }
+    return nil;
+}
+
 void DKSettingsReloadCurrentPage(void) {
     UIViewController *page = gSettingsPresenter;
     DKSettingsApplyLocks(DKPageViewModel(page).sectionDataArray);
@@ -75,7 +97,7 @@ void DKSettingsValuesChanged(void) {
 
 #pragma mark - 建页
 
-static AWESettingSectionModel *DKMakeSection(NSString *header, NSString *footer, NSArray *items) {
+AWESettingSectionModel *DKSettingsMakeSection(NSString *header, NSString *footer, NSArray<AWESettingItemModel *> *items) {
     AWESettingSectionModel *section = [[%c(AWESettingSectionModel) alloc] init];
     section.sectionHeaderTitle = header;
     section.sectionHeaderHeight = 40;
@@ -192,7 +214,7 @@ static NSArray<AWESettingSectionModel *> *DKBuildSections(NSArray<DKSettingsSect
             DKSettingsPrepareItem(item, icon);
             [items addObject:item];
         }
-        if (items.count) [sections addObject:DKMakeSection(spec.header, spec.footer, items)];
+        if (items.count) [sections addObject:DKSettingsMakeSection(spec.header, spec.footer, items)];
     }
     return sections;
 }
@@ -209,7 +231,7 @@ static AWESettingSectionModel *DKBuildUnplacedSection(void) {
         DKSettingsPrepareItem(item, nil);
         [items addObject:item];
     }
-    return items.count ? DKMakeSection(kDKUnplacedHeader, nil, items) : nil;
+    return items.count ? DKSettingsMakeSection(kDKUnplacedHeader, nil, items) : nil;
 }
 
 static void DKShowSettings(UIViewController *rootVC) {
@@ -223,11 +245,18 @@ static void DKShowSettings(UIViewController *rootVC) {
     DKPushPage(rootVC, page);
 }
 
+void DKSettingsPushSections(UIViewController *presenter, NSString *title, NSArray<AWESettingSectionModel *> *sections) {
+    if (!presenter.navigationController || sections.count == 0) return;
+    for (AWESettingSectionModel *section in sections) {
+        for (AWESettingItemModel *item in section.itemArray) DKSettingsPrepareItem(item, nil);
+    }
+    DKPushPage(presenter, DKMakeSettingsPage(title, sections));
+}
+
 void DKSettingsPushPage(UIViewController *presenter, NSString *title, NSString *sectionHeader,
                         NSArray<AWESettingItemModel *> *items) {
-    if (!presenter.navigationController || items.count == 0) return;
-    for (AWESettingItemModel *item in items) DKSettingsPrepareItem(item, nil);
-    DKPushPage(presenter, DKMakeSettingsPage(title, @[ DKMakeSection(sectionHeader, nil, items) ]));
+    if (items.count == 0) return;
+    DKSettingsPushSections(presenter, title, @[ DKSettingsMakeSection(sectionHeader, nil, items) ]);
 }
 
 #pragma mark - 钩子

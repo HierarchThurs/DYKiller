@@ -49,6 +49,10 @@ static DKSettingsSection *DKSection(NSString *header, NSArray *rows) {
     return [[DKSettingsSection alloc] initWithHeader:header footer:nil rows:rows];
 }
 
+static DKSettingsSection *DKSectionWithFooter(NSString *header, NSString *footer, NSArray *rows) {
+    return [[DKSettingsSection alloc] initWithHeader:header footer:footer rows:rows];
+}
+
 static DKSettingsPage *DKPage(NSString *title, NSString *icon, NSArray *sections) {
     return [[DKSettingsPage alloc] initWithTitle:title icon:icon identifier:nil sections:sections];
 }
@@ -155,7 +159,17 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
         ]),
     ]);
 
-    DKSettingsPage *backup = DKPage(@"备份工具", @"ic_memorycard_outlined_20", @[]);
+    DKSettingsPage *backup = DKPage(@"备份工具", @"ic_memorycard_outlined_20", @[
+        DKSectionWithFooter(@"备份与恢复",
+            @"备份所有设置和自定义拍摄图标。卸载抖音后插件设置会一起清空，请把备份存到「文件」App 或其他设备。", @[
+            DKRow(DKKeyBackupExport, @"ic_phonearrowup_outlined_20"),
+            DKRow(DKKeyBackupRestore, @"ic_circlearrowin_outlined_20"),
+            DKRow(DKKeyBackupUndo, @"ic_arrowcircleleft_outlined_16"),
+        ]),
+        DKSectionWithFooter(@"重置", @"所有设置回到默认，自定义图标一起清除；重置前会自动快照，可以撤销。", @[
+            DKRow(DKKeyBackupReset, @"ic_trash_outlined_20"),
+        ]),
+    ]);
 
     DKSettingsLink *author = [[DKSettingsLink alloc] initWithTitle:@"作者信息"
                                                                icon:@"ic_personcircleclean_outlined_20"
@@ -175,24 +189,74 @@ NSArray<DKSettingsSection *> *DKSettingsLayoutMain(void) {
     return main;
 }
 
-static void DKCollectKeys(NSArray<DKSettingsSection *> *sections, NSMutableSet<NSString *> *keys) {
+// 布局表里的每一行设置：键、所在子页标题、图标，按页面从上到下。
+@interface DKSettingsLayoutEntry : NSObject
+@property (nonatomic, copy) NSString *key;
+@property (nonatomic, copy) NSString *pageTitle;
+@property (nonatomic, copy) NSString *icon;
+@end
+
+@implementation DKSettingsLayoutEntry
+@end
+
+static void DKCollectEntries(NSArray<DKSettingsSection *> *sections, NSString *pageTitle,
+                             NSMutableArray<DKSettingsLayoutEntry *> *entries) {
     for (DKSettingsSection *section in sections) {
         for (id row in section.rows) {
-            if ([row isKindOfClass:DKSettingsRow.class]) [keys addObject:((DKSettingsRow *)row).key];
-            else if ([row isKindOfClass:DKSettingsPage.class]) DKCollectKeys(((DKSettingsPage *)row).sections, keys);
+            if ([row isKindOfClass:DKSettingsRow.class]) {
+                DKSettingsLayoutEntry *entry = [[DKSettingsLayoutEntry alloc] init];
+                entry.key = ((DKSettingsRow *)row).key;
+                entry.pageTitle = pageTitle;
+                entry.icon = ((DKSettingsRow *)row).icon;
+                [entries addObject:entry];
+            } else if ([row isKindOfClass:DKSettingsPage.class]) {
+                DKCollectEntries(((DKSettingsPage *)row).sections, ((DKSettingsPage *)row).title, entries);
+            }
         }
     }
+}
+
+static NSArray<DKSettingsLayoutEntry *> *DKLayoutEntries(void) {
+    static NSArray<DKSettingsLayoutEntry *> *entries;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSMutableArray<DKSettingsLayoutEntry *> *list = [NSMutableArray array];
+        DKCollectEntries(DKSettingsLayoutMain(), @"DYKiller", list);
+        entries = [list copy];
+    });
+    return entries;
+}
+
+static DKSettingsLayoutEntry *DKLayoutEntry(NSString *key) {
+    static NSDictionary<NSString *, DKSettingsLayoutEntry *> *byKey;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSMutableDictionary *map = [NSMutableDictionary dictionary];
+        for (DKSettingsLayoutEntry *entry in DKLayoutEntries()) {
+            if (!map[entry.key]) map[entry.key] = entry;
+        }
+        byKey = [map copy];
+    });
+    return key ? byKey[key] : nil;
+}
+
+NSArray<NSString *> *DKSettingsLayoutOrderedKeys(void) {
+    return [DKLayoutEntries() valueForKey:@"key"];
 }
 
 NSSet<NSString *> *DKSettingsLayoutKeys(void) {
     static NSSet<NSString *> *keys;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        NSMutableSet<NSString *> *set = [NSMutableSet set];
-        DKCollectKeys(DKSettingsLayoutMain(), set);
-        keys = [set copy];
-    });
+    dispatch_once(&once, ^{ keys = [NSSet setWithArray:DKSettingsLayoutOrderedKeys()]; });
     return keys;
+}
+
+NSString *DKSettingsLayoutPageTitle(NSString *key) {
+    return DKLayoutEntry(key).pageTitle;
+}
+
+NSString *DKSettingsLayoutIcon(NSString *key) {
+    return DKLayoutEntry(key).icon;
 }
 
 NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {

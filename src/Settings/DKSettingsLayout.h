@@ -51,6 +51,13 @@ NSArray<DKSettingsSection *> *DKSettingsLayoutMain(void);
 /// 布局表里出现过的全部设置键（含子页内的），用于找出已登记却未排布的键。
 NSSet<NSString *> *DKSettingsLayoutKeys(void);
 
+/// 布局表里的全部设置键，按页面从上到下的顺序。
+NSArray<NSString *> *DKSettingsLayoutOrderedKeys(void);
+
+/// 该键所在子页的标题（一级页上的行为「DYKiller」）与行图标；不在布局表里返回 nil。
+NSString *DKSettingsLayoutPageTitle(NSString *key);
+NSString *DKSettingsLayoutIcon(NSString *key);
+
 /// 该键的前置项：任一前置项未生效时该行灰显。无前置项返回空数组。
 NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key);
 

@@ -114,6 +114,16 @@ static NSString *const DKKeyMediaSaveHaptic        = @"DYKillerMediaSaveHaptic";
 static NSString *const DKKeyMediaSaveGlass         = @"DYKillerMediaSaveGlass";
 static NSString *const DKKeyMediaSaveGlassClear    = @"DYKillerMediaSaveGlassClear";
 
+#pragma mark - 功能组：备份工具
+
+// 备份工具页的四个动作行，只作设置项 identifier，NSUserDefaults 里不写值。
+static NSString *const DKKeyBackupExport  = @"DYKillerBackupExport";
+static NSString *const DKKeyBackupRestore = @"DYKillerBackupRestore";
+static NSString *const DKKeyBackupUndo    = @"DYKillerBackupUndo";
+static NSString *const DKKeyBackupReset   = @"DYKillerBackupReset";
+// 上次导出备份的时间（NSDate）。不属于任何设置项：不进备份，恢复默认也不清。
+static NSString *const DKKeyBackupLastExportDate = @"DYKillerBackupLastExportDate";
+
 #pragma mark - 设置页
 
 // 「液态玻璃 (iOS26+)」子页入口的 identifier，供玻璃守卫在低系统灰显整个入口；不写值。

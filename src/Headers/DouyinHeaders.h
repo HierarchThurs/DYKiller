@@ -491,6 +491,7 @@
 @property (nonatomic, copy) NSString *identifier;
 @property (nonatomic, copy) NSString *title;
 @property (nonatomic, copy) NSString *detail;
+@property (nonatomic, strong) UIColor *titleColor;       // 非空时 updateSubviewsColor 按它给标题着色
 @property (nonatomic, assign) NSInteger type;
 @property (nonatomic, copy) NSString *svgIconImageName;
 @property (nonatomic, assign) NSInteger cellType;
@@ -532,7 +533,9 @@
 @interface AWESettingsTableViewCell : UITableViewCell
 @property (nonatomic, strong, readonly) AWESettingItemModel *itemModel;
 @property (nonatomic, strong, readonly) UILabel *titleLabel;
+@property (nonatomic, strong, readonly) UIImageView *iconImageView;
 - (void)updateSubviewsAfterLayout;
+- (void)updateSubviewsColor;         // 按 item 与深浅色重配标题、图标、开关颜色
 @end
 
 @interface AWENavigationBar : UIView

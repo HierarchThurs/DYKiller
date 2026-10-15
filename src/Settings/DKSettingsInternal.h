@@ -17,6 +17,18 @@ extern "C" {
 /// 用已登记的 builder 新建该键的项；未登记返回 nil。
 AWESettingItemModel *DKSettingsBuildItem(NSString *key);
 
+/// 已登记的全部键：先按布局表从上到下，未写进布局表的按字母序排在后面。
+NSArray<NSString *> *DKSettingsRegisteredKeys(void);
+
+/// page 上 identifier 对应的项；page 不是 DYKiller 设置页或没有该项时返回 nil。
+AWESettingItemModel *DKSettingsFindItem(UIViewController *page, NSString *identifier);
+
+/// 建一个卡片分区；footer 可空。
+AWESettingSectionModel *DKSettingsMakeSection(NSString *header, NSString *footer, NSArray<AWESettingItemModel *> *items);
+
+/// 从 presenter 所在导航栈推入一个多分区子设置页，各项按 DKSettingsPrepareItem 收尾（保留项上已设的图标）。
+void DKSettingsPushSections(UIViewController *presenter, NSString *title, NSArray<AWESettingSectionModel *> *sections);
+
 /// 当前显示的 DYKiller 设置页，弹窗与刷新都以它为宿主。
 UIViewController *DKSettingsCurrentPage(void);
 
@@ -30,6 +42,14 @@ NSString *DKSettingsItemInfo(AWESettingItemModel *item);
 
 /// 是否单选项（联动原因写「需先设置」而非「需先开启」）。
 BOOL DKSettingsItemIsChoice(AWESettingItemModel *item);
+
+/// 项上的值声明；未声明返回 nil。
+NSArray<DKSettingsValue *> *DKSettingsItemValues(AWESettingItemModel *item);
+DKSettingsDescribe DKSettingsItemDescribe(AWESettingItemModel *item);
+dispatch_block_t DKSettingsItemOnChange(AWESettingItemModel *item);
+BOOL DKSettingsItemExcludedFromBackup(AWESettingItemModel *item);
+BOOL DKSettingsItemNeedsRestart(AWESettingItemModel *item);
+BOOL DKSettingsItemIsDestructive(AWESettingItemModel *item);
 
 #pragma mark - 收尾与联动锁（DKSettingsLock.m）
 
