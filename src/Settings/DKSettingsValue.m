@@ -86,6 +86,16 @@ static BOOL DKValidID(id raw) {
     return [text rangeOfCharacterFromSet:invalid].location == NSNotFound;
 }
 
+NSUInteger DKSettingsTextWidth(NSString *text) {
+    __block NSUInteger width = 0;
+    [text enumerateSubstringsInRange:NSMakeRange(0, text.length)
+                             options:NSStringEnumerationByComposedCharacterSequences
+                          usingBlock:^(NSString *piece, __unused NSRange range, __unused NSRange enclosing, __unused BOOL *stop) {
+        width += (piece.length == 1 && [piece characterAtIndex:0] < 0x80) ? 1 : 2;
+    }];
+    return width;
+}
+
 @implementation DKSettingsValue
 
 - (instancetype)initWithKind:(DKSettingsValueKind)kind key:(NSString *)key {
@@ -111,6 +121,12 @@ static BOOL DKValidID(id raw) {
     return [[self alloc] initWithKind:DKSettingsValueKindIDSet key:prefix];
 }
 
++ (instancetype)stringWithKey:(NSString *)key maxWidth:(NSUInteger)maxWidth {
+    DKSettingsValue *value = [[self alloc] initWithKind:DKSettingsValueKindString key:key];
+    value->_maxWidth = maxWidth;
+    return value;
+}
+
 + (instancetype)imageWithName:(NSString *)name path:(NSString *)path types:(NSArray<NSString *> *)types
                      maxBytes:(NSUInteger)maxBytes minSide:(NSUInteger)minSide maxSide:(NSUInteger)maxSide
                        square:(BOOL)square {
@@ -133,8 +149,28 @@ static BOOL DKValidID(id raw) {
         case DKSettingsValueKindInteger: return [self normalizeInteger:raw reason:reason];
         case DKSettingsValueKindIDSet: return [self normalizeIDSet:raw reason:reason];
         case DKSettingsValueKindImage: return [self normalizeImage:raw reason:reason];
+        case DKSettingsValueKindString: return [self normalizeString:raw reason:reason];
     }
     return nil;
+}
+
+- (id)normalizeString:(id)raw reason:(NSString **)reason {
+    if (![raw isKindOfClass:NSString.class]) {
+        DKSetReason(reason, @"类型不符");
+        return nil;
+    }
+    NSString *text = [raw stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (text.length == 0) return NSNull.null;
+    if ([text rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound ||
+        [text rangeOfCharacterFromSet:NSCharacterSet.newlineCharacterSet].location != NSNotFound) {
+        DKSetReason(reason, @"包含换行或控制字符");
+        return nil;
+    }
+    if (DKSettingsTextWidth(text) > self.maxWidth) {
+        DKSetReason(reason, @"文字过长");
+        return nil;
+    }
+    return text;
 }
 
 - (NSNumber *)normalizeBool:(id)raw reason:(NSString **)reason {
@@ -236,6 +272,7 @@ static BOOL DKValidID(id raw) {
     switch (self.kind) {
         case DKSettingsValueKindBool:
         case DKSettingsValueKindInteger:
+        case DKSettingsValueKindString:
             return [self normalize:[store objectForKey:self.key] reason:NULL] ?: NSNull.null;
         case DKSettingsValueKindIDSet: {
             NSMutableArray<NSString *> *ids = [NSMutableArray array];
@@ -259,6 +296,7 @@ static BOOL DKValidID(id raw) {
     switch (self.kind) {
         case DKSettingsValueKindBool:
         case DKSettingsValueKindInteger:
+        case DKSettingsValueKindString:
             if (value == NSNull.null) [store removeObjectForKey:self.key];
             else [store setObject:value forKey:self.key];
             break;

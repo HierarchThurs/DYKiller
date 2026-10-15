@@ -107,7 +107,8 @@ NSData *DKBackupEncode(NSArray<DKBackupEntry *> *entries, id<DKSettingsStore> st
             id current = [value currentValueInStore:store];
             switch (value.kind) {
                 case DKSettingsValueKindBool:
-                case DKSettingsValueKindInteger: settings[value.key] = current; break;
+                case DKSettingsValueKindInteger:
+                case DKSettingsValueKindString: settings[value.key] = current; break;
                 case DKSettingsValueKindIDSet: sets[value.key] = current; break;
                 case DKSettingsValueKindImage:
                     files[value.key] = [current isKindOfClass:NSData.class] ? DKFileRecord(value, current) : NSNull.null;
@@ -280,7 +281,8 @@ DKBackupDocument *DKBackupDefaultsDocument(NSArray<DKBackupEntry *> *entries) {
         for (DKSettingsValue *value in entry.values) {
             switch (value.kind) {
                 case DKSettingsValueKindBool:
-                case DKSettingsValueKindInteger: settings[value.key] = NSNull.null; break;
+                case DKSettingsValueKindInteger:
+                case DKSettingsValueKindString: settings[value.key] = NSNull.null; break;
                 case DKSettingsValueKindIDSet: sets[value.key] = @[]; break;
                 case DKSettingsValueKindImage: files[value.key] = NSNull.null; break;
             }

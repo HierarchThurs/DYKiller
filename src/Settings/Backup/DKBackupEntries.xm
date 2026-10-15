@@ -17,7 +17,8 @@ static NSDictionary *gDKLastOperation = nil;
 static NSString *DKValueSlot(DKSettingsValue *value) {
     switch (value.kind) {
         case DKSettingsValueKindBool:
-        case DKSettingsValueKindInteger: return [@"settings/" stringByAppendingString:value.key];
+        case DKSettingsValueKindInteger:
+        case DKSettingsValueKindString: return [@"settings/" stringByAppendingString:value.key];
         case DKSettingsValueKindIDSet: return [@"sets/" stringByAppendingString:value.key];
         case DKSettingsValueKindImage: return [@"files/" stringByAppendingString:value.key];
     }
