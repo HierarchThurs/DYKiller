@@ -48,6 +48,11 @@ static NSString *const DKKeyGlassTabBarClear = @"DYKillerGlassTabBarClear";
 // 自定义拍摄图标：图片本体存文件（见 DKPlusIcon.xm），这个键只作设置项 identifier，
 // 供液态玻璃守卫认出并在低系统上灰显，NSUserDefaults 里不写值。
 static NSString *const DKKeyPlusIcon         = @"DYKillerPlusIcon";
+// 底栏项目移除：每项一个 BOOL 键，前缀 + 抖音 tabID（见 DKTabBarRemoval.xm）。
+static NSString *const DKKeyBottomBarHidePrefix = @"DYKillerHideBottomBar.";
+static NSString *const DKKeyHidePlusButton      = @"DYKillerHideBottomBar.homepage_publish";
+// 设置主页入口的 identifier，NSUserDefaults 里不写值。
+static NSString *const DKKeyBottomBar           = @"DYKillerBottomBar";
 
 #pragma mark - 功能组：音频可视化
 

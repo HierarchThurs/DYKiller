@@ -512,7 +512,7 @@ static void DKAudioVisualizerPreferenceDidChange(void) {
                                                  @[ @"关闭", @"胶囊上方水平", @"胶囊整栏环绕", @"拍摄圆键环绕" ]);
         DKSettingsOnChange(item, ^{ DKAudioVisualizerPreferenceDidChange(); });
         return DKSettingsNeedsRestart(DKSettingsWithInfo(item,
-            @"在悬浮玻璃底栏周围画随声音跳动的实时频谱，需开启「悬浮玻璃底栏」；选「关闭」不显示。"));
+            @"在悬浮玻璃底栏周围画随声音跳动的实时频谱，需开启「悬浮玻璃底栏」；选「关闭」不显示。移除拍摄按钮后「拍摄圆键环绕」不显示。"));
     });
     DKSettingsRegister(DKKeyAudioVizStyle, ^AWESettingItemModel *{
         return DKSettingsWithInfo(DKMakeChoice(DKKeyAudioVizStyle, @"可视化形态", @[ @"离散条", @"连续流体" ]),

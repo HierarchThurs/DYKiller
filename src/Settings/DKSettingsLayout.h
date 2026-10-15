@@ -1,7 +1,7 @@
 //
 //  DKSettingsLayout.h
 //  设置页结构表：页面、分区、行序、图标与前置关系的唯一来源。
-//  与 docs/settings-preview.html 脚本开头的数据段（MAIN / ICON_OF / REQUIRES）一一对应。
+//  与 docs/settings-preview.html 脚本开头的数据段（MAIN / ICON_OF / REQUIRES / BLOCKED_BY）一一对应。
 //
 
 #ifndef DKSettingsLayout_h
@@ -60,6 +60,9 @@ NSString *DKSettingsLayoutIcon(NSString *key);
 
 /// 该键的前置项：任一前置项未生效时该行灰显。无前置项返回空数组。
 NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key);
+
+/// 该键的阻断项：阻断键 → 灰显原因。任一阻断键为开时该行灰显。无阻断项返回空字典。
+NSDictionary<NSString *, NSString *> *DKSettingsLayoutBlockers(NSString *key);
 
 #ifdef __cplusplus
 }

@@ -72,6 +72,9 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyTopBarSearchMode, @"ic_videosearch_outlined_20"),
             DKRow(DKKeyTopChannels, @"ic_doublearrowup_outlined_20"),
         ]),
+        DKSection(@"底栏", @[
+            DKRow(DKKeyBottomBar, @"ic_module_outlined_20"),
+        ]),
         DKSection(@"视频播放", @[
             DKRow(DKKeyHideFollowButton, @"ic_userplus_outlined_20"),
             DKRow(DKKeyHideMusicInfo, @"ic_quaver_outlined_20"),
@@ -272,4 +275,15 @@ NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {
         };
     });
     return (key ? requires[key] : nil) ?: @[];
+}
+
+NSDictionary<NSString *, NSString *> *DKSettingsLayoutBlockers(NSString *key) {
+    static NSDictionary<NSString *, NSDictionary<NSString *, NSString *> *> *blockers;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        blockers = @{
+            DKKeyPlusIcon: @{ DKKeyHidePlusButton: @"拍摄按钮已在「移除底栏项目」中移除" },
+        };
+    });
+    return (key ? blockers[key] : nil) ?: @{};
 }

@@ -11,6 +11,7 @@
 #import "DKMediaSaveDiagnostics.h"
 #import "DKTabBarProbe.h"
 #import "DKPlusIcon.h"
+#import "DKTabBarRemoval.h"
 #import "DouyinHeaders.h"
 #import "DKCommentGlass.h"
 #import "DKGlassFlexView.h"
@@ -201,6 +202,8 @@ static void DKProbeAppendGlassBar(NSMutableString *out, UITabBarController *cont
     // 胶囊清透与否只看这一行：appearance.backgroundEffect 是旧 API，悬浮 provider 不读，
     // 真正渲染胶囊的是 platter 自己的 glassEffect。
     [out appendFormat:@"  platter 玻璃       = %@\n", DKGlassPlatterGlassStatus()];
+    // 胶囊宽度与整组居中的读数：目标与实测应一致，内缩应为「实测」。
+    [out appendFormat:@"  胶囊几何           = %@\n", DKGlassGeometryStatus()];
     // 内容取色的唯一读数：极性判定、写下去的两个色、判定依据。
     [out appendFormat:@"  内容取色           = %@\n", DKGlassInkStatus()];
     // 悬浮底栏把每个 tab 画两遍：SelectedContentView 那份是选中样子（只在透镜内可见），
@@ -696,11 +699,14 @@ static void DKProbeAppendDouyinBar(NSMutableString *out, UITabBarController *con
         id label = DKProbeValue(DKProbeValue(button, @"innerView"), @"label");
         NSString *title = DKProbeValue(label, @"text");
         // 文字色是内容取色的判据输入：抖音每页重算它，首页白、浅色列表页近黑。
-        [out appendFormat:@"  %@ 文字=%@ 文字色=%@ hidden=%@ type=%@ validIndex=%@\n",
+        // tabID 是「移除底栏项目」认人的依据；「本插件移除」表示 hidden 由该功能写入。
+        [out appendFormat:@"  %@ 文字=%@ 文字色=%@ hidden=%@%@ type=%@ tabID=%@ validIndex=%@ frame=%@\n",
          NSStringFromClass([button class]), title ?: view.accessibilityLabel ?: @"(nil)",
          DKProbeColorDesc(DKProbeValue(label, @"textColor")),
-         view.isHidden ? @"YES" : @"NO",
-         DKProbeValue(button, @"type") ?: @"?", DKProbeValue(button, @"validIndex") ?: @"?"];
+         view.isHidden ? @"YES" : @"NO", DKTabBarRemovalHides(button) ? @"（本插件移除）" : @"",
+         DKProbeValue(button, @"type") ?: @"?", DKTabBarButtonTabID(button) ?: @"(nil)",
+         DKProbeValue(button, @"validIndex") ?: @"?",
+         view ? NSStringFromCGRect(view.frame) : @"-"];
 
         // 角标镜像的源：这里的读数应与上面 items 的 badgeValue 一一对上。
         UIView *badge = DKProbeFindSubview(view, @"DUXBadge");

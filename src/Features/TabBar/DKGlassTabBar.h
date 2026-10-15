@@ -33,6 +33,9 @@ UIView *DKGlassPlatterCurrent(void);
 /// 而非 UITabBarAppearance.backgroundEffect；这行是唯一能证明改写成没成的读数。
 NSString *DKGlassPlatterGlassStatus(void);
 
+/// 胶囊几何的当前读数，一句话自述：项目数与参考数、目标与实测胶囊宽、按钮量与内缩来源。
+NSString *DKGlassGeometryStatus(void);
+
 /// 内容取色（标题与拍摄图标）的当前判定，一句话自述：极性、两个色、依据来源。
 /// 极性跟底色走而非跟深浅色模式走，依据是抖音自绘按钮的文字色。
 NSString *DKGlassInkStatus(void);

@@ -17,6 +17,7 @@
 #import "DKGlassTabBar.h"
 #import "DKAudioVisualizer.h"
 #import "DKPlusIcon.h"
+#import "DKTabBarRemoval.h"
 #import "DouyinHeaders.h"
 #import "DKGlassGuard.h"
 #import "DKKeys.h"
@@ -32,6 +33,7 @@
 static NSString *const kDKBadgeContainerClass = @"AWENormalModeTabBarBadgeContainerView";
 static NSString *const kDKBadgeClass = @"DUXBadge";
 static NSString *const kDKPlatterClass = @"_UITabBarItemPlatterView";
+static NSString *const kDKTabButtonClass = @"_UITabButton";
 static NSString *const kDKPlusClickSelector = @"plusTabBarButtonDidClick:";
 static NSString *const kDKTabClickSelector = @"tabBarButtonDidTouchUpInside:gestureRecognizer:";
 
@@ -46,9 +48,12 @@ static const CGFloat kDKPlusKeyGap = 12.0;
 static const CGFloat kDKPlusIconInset = 14.0;
 // 自定义图标本身就是一枚圆，只留一圈窄边把它嵌进圆键，不需要给字形留呼吸空间。
 static const CGFloat kDKPlusIconCustomInset = 7.0;
-// platter 还没建起来时的兜底几何（beta7 实测值），次帧即被真实值取代。
+// platter 还没建起来时的兜底几何（beta7 实测值），量到真实值后即被取代。
 static const CGFloat kDKPlatterFallbackHeight = 62.0;
 static const CGFloat kDKPlatterFallbackInset = 21.0;
+// 胶囊里每颗 _UITabButton 的宽与首颗距胶囊左缘的距离（0.6.1-beta1 实测值），用法同上。
+static const CGFloat kDKTabButtonFallbackWidth = 94.0;
+static const CGFloat kDKTabButtonFallbackPad = 4.0;
 
 #pragma mark - 状态
 
@@ -727,33 +732,160 @@ static UIView *DKGlassFindPlatter(UIView *root) {
     return nil;
 }
 
-// 胶囊让出右侧一块，圆键补上。几何全部从 platter 实测：直径取它的高、纵向与它对齐、
-// 右边距取它自己的左内缩，这样胶囊与圆键的外边距对称。
-// platter 首帧还不存在时用兜底值，次帧即被真实值取代；写入先比较，不会形成布局环。
-static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0)) {
-    UIView *platterView = DKGlassFindPlatter(gBar);
-    gPlatter = platterView;
-    // 找到 platter 就顺手把它的玻璃换成 Clear。放在所有提前 return 之前：
-    // 拍摄按钮被其他插件移除时下面会早退，但胶囊材质照样要生效。
-    DKGlassApplyPlatterGlass(platterView, gGlassStyle);
+#pragma mark - 几何
 
-    CGRect platter = platterView ? [platterView convertRect:platterView.bounds toView:gBar] : CGRectZero;
-    BOOL measured = CGRectGetHeight(platter) > 0.0;
-    CGFloat diameter = measured ? CGRectGetHeight(platter) : kDKPlatterFallbackHeight;
-    CGFloat inset = measured ? CGRectGetMinX(platter) : kDKPlatterFallbackInset;
-    CGFloat top = measured ? CGRectGetMinY(platter) : 0.0;
+// 悬浮胶囊的几何口径（40.7.0 / iOS 27 实测，见 docs/tab-bar-removal.md）：
+// · 胶囊宽 = min(自然宽, UITabBar 宽 − 2×内缩)，在 UITabBar 内居中。内缩是 UIKit 内部常量，没有 API。
+// · 每颗 _UITabButton 宽 b、首颗距胶囊左缘 pad；自然排布时相邻间距为 b − 2·pad，压缩时间距线性收窄。
+// 这些量都从实物上量，量到之前用兜底值。
+typedef struct {
+    CGFloat buttonWidth;   // b
+    CGFloat buttonPad;     // pad
+    CGFloat height;        // 胶囊高，即圆键直径
+    CGFloat top;           // 胶囊在 UITabBar 内的 y
+    CGFloat inset;         // UITabBar 左右到胶囊的内缩
+} DKGlassMetrics;
 
-    // 拍摄按钮被其他插件移除时圆键一并隐藏，胶囊占回整条宽度。
+static const DKGlassMetrics kDKGlassFallbackMetrics = {
+    kDKTabButtonFallbackWidth, kDKTabButtonFallbackPad, kDKPlatterFallbackHeight, 0.0, kDKPlatterFallbackInset
+};
+static DKGlassMetrics gMetrics = kDKGlassFallbackMetrics;
+// 量这些值时抖音底栏的宽度；宽度变了全部作废，重新量。
+static CGFloat gMetricsBarWidth = 0.0;
+// 最近一次布局的读数，只给探针看。
+static NSUInteger gGeometryCount = 0;
+static NSUInteger gGeometryReference = 0;
+static CGFloat gGeometryTarget = 0.0;
+static CGFloat gGeometryMeasured = 0.0;
+static BOOL gInsetMeasured = NO;
+
+static void DKGlassCollectTabButtons(UIView *root, NSMutableArray<UIView *> *result) {
+    for (UIView *subview in root.subviews) {
+        if ([NSStringFromClass(subview.class) isEqualToString:kDKTabButtonClass]) [result addObject:subview];
+        else DKGlassCollectTabButtons(subview, result);
+    }
+}
+
+static BOOL DKGlassMetricChanged(CGFloat a, CGFloat b) {
+    return fabs(a - b) > 0.5;
+}
+
+// 从 platter 实物量出各项；返回 YES 表示有量变了，需要按新值重算一轮。
+// 胶囊里每颗按钮画两份（选中 / 未选中），frame 相同，取 minX 最小与次小的两个不同值即可。
+// 内缩只在压缩态量：此时胶囊两侧各让出一个内缩；自然态胶囊比可用宽度窄，读数偏大不可信。
+static BOOL DKGlassMeasure(UIView *platter, NSUInteger count) {
+    if (!platter || CGRectGetHeight(platter.bounds) <= 0.0) return NO;
+    CGRect frame = [platter convertRect:platter.bounds toView:gBar];
+    DKGlassMetrics metrics = gMetrics;
+    metrics.height = CGRectGetHeight(frame);
+    metrics.top = CGRectGetMinY(frame);
+
+    NSMutableArray<UIView *> *buttons = [NSMutableArray array];
+    DKGlassCollectTabButtons(platter, buttons);
+    CGFloat first = CGFLOAT_MAX, second = CGFLOAT_MAX, width = 0.0;
+    for (UIView *button in buttons) {
+        CGRect rect = [button convertRect:button.bounds toView:platter];
+        CGFloat x = CGRectGetMinX(rect);
+        if (x < first - 0.5) {
+            if (first < CGFLOAT_MAX) second = first;
+            first = x;
+            width = CGRectGetWidth(rect);
+        } else if (x > first + 0.5 && x < second - 0.5) {
+            second = x;
+        }
+    }
+    if (first < CGFLOAT_MAX && width > 0.0) {
+        metrics.buttonPad = first;
+        metrics.buttonWidth = width;
+    }
+    CGFloat naturalPitch = metrics.buttonWidth - 2.0 * metrics.buttonPad;
+    if (count >= 2 && second < CGFLOAT_MAX && second - first < naturalPitch - 0.5) {
+        metrics.inset = (CGRectGetWidth(gBar.bounds) - CGRectGetWidth(frame)) / 2.0;
+        gInsetMeasured = YES;
+    }
+
+    BOOL changed = DKGlassMetricChanged(metrics.buttonWidth, gMetrics.buttonWidth) ||
+                   DKGlassMetricChanged(metrics.buttonPad, gMetrics.buttonPad) ||
+                   DKGlassMetricChanged(metrics.height, gMetrics.height) ||
+                   DKGlassMetricChanged(metrics.inset, gMetrics.inset);
+    gMetrics = metrics;
+    return changed;
+}
+
+// 胶囊宽度跟着 4+1 参考态走：参考态是 reference 个项目、右侧有拍摄圆键、整组占满底栏两侧内缩之间。
+// 由参考态得出相邻间距，少几项就少几个间距——每项的大小与位置间隔都与参考态相同，不拉长。
+static CGFloat DKGlassCapsuleWidth(NSUInteger count, NSUInteger reference, CGFloat barWidth) {
+    CGFloat single = gMetrics.buttonWidth + 2.0 * gMetrics.buttonPad;
+    CGFloat naturalPitch = MAX(gMetrics.buttonWidth - 2.0 * gMetrics.buttonPad, 0.0);
+    reference = MAX(reference, count);
+    if (count <= 1 || reference <= 1) return single;
+
+    CGFloat available = barWidth - gMetrics.height - kDKPlusKeyGap - 2.0 * gMetrics.inset;
+    CGFloat referenceWidth = MIN(available, single + (reference - 1) * naturalPitch);
+    CGFloat pitch = MIN(MAX((referenceWidth - single) / (reference - 1), 0.0), naturalPitch);
+    return single + (count - 1) * pitch;
+}
+
+NSString *DKGlassGeometryStatus(void) {
+    if (!gBar) return @"未建立（功能关闭或尚未布局）";
+    return [NSString stringWithFormat:
+            @"项目 %lu / 参考 %lu · 胶囊目标 %.1f 实测 %.1f · 按钮宽 %.1f 首距 %.1f 高 %.1f · 内缩 %.1f（%@）",
+            (unsigned long)gGeometryCount, (unsigned long)gGeometryReference, gGeometryTarget, gGeometryMeasured,
+            gMetrics.buttonWidth, gMetrics.buttonPad, gMetrics.height, gMetrics.inset,
+            gInsetMeasured ? @"实测" : @"兜底"];
+}
+
+// 胶囊与拍摄圆键作为一组在抖音底栏内水平居中，项目少了只缩短胶囊、不拉长。
+// UITabBar 宽度按目标胶囊宽 + 两侧内缩写入后立即布局再量；量到的值变了就按新值再来一轮，首帧也一次到位。
+// 定位用实测胶囊宽，靠平移 UITabBar 让胶囊落到位——平移不改宽度，不会再触发重排。
+// 写入先比较，不会形成布局环。
+static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar, NSUInteger reference) API_AVAILABLE(ios(26.0)) {
+    CGSize size = douyinBar.bounds.size;
+    if (DKGlassMetricChanged(size.width, gMetricsBarWidth)) {
+        gMetrics = kDKGlassFallbackMetrics;
+        gMetricsBarWidth = size.width;
+        gInsetMeasured = NO;
+    }
+
+    // 拍摄按钮被移除时圆键一并隐藏。
     BOOL available = gPlusButton != nil;
     if (gPlusKey.isHidden == available) gPlusKey.hidden = !available;
 
-    CGSize size = douyinBar.bounds.size;
-    CGFloat barWidth = available ? size.width - diameter - kDKPlusKeyGap : size.width;
-    CGRect barFrame = CGRectMake(0.0, 0.0, barWidth, size.height);
+    NSUInteger count = gBar.items.count;
+    UIView *platterView = nil;
+    for (NSUInteger pass = 0; pass < 2; pass++) {
+        gGeometryTarget = DKGlassCapsuleWidth(count, reference, size.width);
+        CGFloat barWidth = gGeometryTarget + 2.0 * gMetrics.inset;
+        CGRect frame = gBar.frame;
+        if (fabs(CGRectGetWidth(frame) - barWidth) > 0.01 || CGRectGetHeight(frame) != size.height) {
+            gBar.frame = CGRectMake(CGRectGetMinX(frame), 0.0, barWidth, size.height);
+        }
+        [gBar layoutIfNeeded];
+        platterView = DKGlassFindPlatter(gBar);
+        if (!DKGlassMeasure(platterView, count)) break;
+    }
+    gGeometryCount = count;
+    gGeometryReference = reference;
+    gPlatter = platterView;
+    // 找到 platter 就顺手把它的玻璃换成 Clear。放在所有提前 return 之前：
+    // 拍摄按钮被移除时下面会早退，但胶囊材质照样要生效。
+    DKGlassApplyPlatterGlass(platterView, gGlassStyle);
+
+    CGRect platter = platterView ? [platterView convertRect:platterView.bounds toView:gBar] : CGRectZero;
+    BOOL measured = CGRectGetWidth(platter) > 0.0;
+    CGFloat capsule = measured ? CGRectGetWidth(platter) : gGeometryTarget;
+    CGFloat capsuleX = measured ? CGRectGetMinX(platter) : gMetrics.inset;
+    CGFloat diameter = gMetrics.height;
+    gGeometryMeasured = capsule;
+
+    CGFloat group = capsule + (available ? kDKPlusKeyGap + diameter : 0.0);
+    CGFloat left = (size.width - group) / 2.0;
+    CGRect barFrame = gBar.frame;
+    barFrame.origin.x = left - capsuleX;
     if (!CGRectEqualToRect(gBar.frame, barFrame)) gBar.frame = barFrame;
     if (!available) return;
 
-    CGRect keyFrame = CGRectMake(size.width - inset - diameter, top, diameter, diameter);
+    CGRect keyFrame = CGRectMake(left + capsule + kDKPlusKeyGap, gMetrics.top, diameter, diameter);
     if (!CGRectEqualToRect(gPlusKey.frame, keyFrame)) gPlusKey.frame = keyFrame;
 
     CGRect bounds = gPlusKey.bounds;
@@ -787,6 +919,19 @@ static void DKGlassSetDouyinContentVisible(AWENormalModeTabBar *douyinBar, NSArr
         if (view.layer.opacity != opacity) view.layer.opacity = opacity;
         if (view.userInteractionEnabled != visible) view.userInteractionEnabled = visible;
     }
+}
+
+// 4+1 参考态里胶囊的项目数：当前在镜像的项目，加上被「移除底栏项目」隐藏的。
+// 抖音或其他插件自己藏起的按钮不算，那不是参考态的一部分。
+static NSUInteger DKGlassReferenceCount(NSArray *buttons) {
+    NSUInteger count = 0;
+    for (id button in buttons) {
+        UIView *view = [button isKindOfClass:UIView.class] ? button : nil;
+        if (!view.superview) continue;
+        if ([DKGlassValue(button, @"type") longLongValue] == kDKPlusButtonType) continue;
+        if (!view.isHidden || DKTabBarRemovalHides(view)) count++;
+    }
+    return count;
 }
 
 #pragma mark - 挂载与拆除
@@ -859,7 +1004,7 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
     // 取色排在最前：标题图按极性渲染，拍摄图标着色也要用这一步定下的极性。
     DKGlassApplyInk(DKGlassInkStyleFor(buttons, (NSInteger)controller.selectedIndex, gGlassStyle));
     DKGlassSyncItems(controller, buttons);
-    DKGlassLayoutGlass(douyinBar);
+    DKGlassLayoutGlass(douyinBar, DKGlassReferenceCount(buttons));
     DKGlassSetDouyinContentVisible(douyinBar, buttons, NO);
     // 放在最后：可视化的环绕轮廓要用 DKGlassLayoutGlass 刚算完的胶囊与圆键几何。
     DKAudioVisualizerLayout(douyinBar);
