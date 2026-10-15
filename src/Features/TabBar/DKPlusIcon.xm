@@ -1,14 +1,16 @@
 //
 //  DKPlusIcon.xm
-//  拍摄圆键的自定义图标：设置页选图 → 圆形裁剪 → 存成 PNG，圆键取图时优先用它。
+//  拍摄按钮的自定义图片：设置页选图 → 圆形裁剪 → 存成 PNG。「拍摄按钮」选「自定义图片」时
+//  悬浮玻璃圆键与原生拍摄按钮都显示它（见 DKGlassTabBar.xm、DKTabBarAppearance.xm）。
 //
-//  全程不碰抖音自己的拍摄图标 image view，只改 DYKiller 圆键的取图来源，
-//  所以「不覆盖原生图标」是结构性成立的——清除后取图自然回落到镜像抖音那条老路径。
+//  全程不改抖音自己的拍摄图标，原生按钮只是在它上面盖一层；清除或换回其他选项即回到原样。
 //
 
 #import "DKPlusIcon.h"
 #import "DKIconCropper.h"
 #import "DKGlassTabBar.h"
+#import "DKTabBarAppearance.h"
+#import "DKUtils.h"
 #import "DouyinHeaders.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
@@ -78,7 +80,7 @@ static void DKPlusIconStore(UIImage *icon) {
 static void DKPlusIconReload(void) {
     gCustomIconLoaded = NO;
     gCustomIcon = nil;
-    DKGlassTabBarRefresh();
+    DKTabBarAppearanceRefresh();
 }
 
 static NSString *DKPlusIconDetail(void) {
@@ -86,31 +88,47 @@ static NSString *DKPlusIconDetail(void) {
 }
 
 // detail 一律按落地后的真实状态重取，不按「打算设成什么」写。
-static void DKPlusIconApply(UIImage *icon, AWESettingItemModel *item) {
-    DKPlusIconStore(icon);
-    DKGlassTabBarRefresh();
+// 清除图片时若「拍摄按钮」正选着自定义图片，一并改回默认：这是交互动作，不放进 onChange，
+// 免得备份恢复依次调 onChange 时改写刚恢复的值。
+static void DKPlusIconDidChange(AWESettingItemModel *item) {
+    DKTabBarAppearanceRefresh();
     if (item) item.detail = DKPlusIconDetail();
     DKSettingsReloadCurrentPage();
 }
 
+static void DKPlusIconApply(UIImage *icon, AWESettingItemModel *item) {
+    DKPlusIconStore(icon);
+    if (!icon && DKPrefInteger(DKKeyPlusStyle) == DKPlusStyleCustom) {
+        [NSUserDefaults.standardUserDefaults setInteger:DKPlusStyleDefault forKey:DKKeyPlusStyle];
+    }
+    DKPlusIconDidChange(item);
+}
+
 #pragma mark - 裁剪
 
-static void DKPlusIconPresentCropper(UIViewController *presenter, UIImage *image,
-                                     AWESettingItemModel *item) {
-    if (!presenter || !image) return;
-    __weak AWESettingItemModel *weakItem = item;
-    DKIconCropper *cropper = [[DKIconCropper alloc] initWithImage:image
-                                                       completion:^(UIImage *cropped) {
-        if (cropped) DKPlusIconApply(cropped, weakItem);
+// completion 只在写盘成功后以 YES 调用；取消裁剪、写盘失败都以 NO 调用。
+static void DKPlusIconPresentCropper(UIViewController *presenter, UIImage *image, void (^completion)(BOOL picked)) {
+    if (!presenter || !image) {
+        if (completion) completion(NO);
+        return;
+    }
+    DKIconCropper *cropper = [[DKIconCropper alloc] initWithImage:image completion:^(UIImage *cropped) {
+        BOOL stored = NO;
+        if (cropped) {
+            DKPlusIconStore(cropped);
+            stored = DKPlusIconCustom() == cropped;
+        }
+        if (completion) completion(stored);
     }];
     if (cropper) [presenter presentViewController:cropper animated:YES completion:nil];
+    else if (completion) completion(NO);
 }
 
 #pragma mark - 相册
 
 @interface DKPlusIconPickerRelay : NSObject <PHPickerViewControllerDelegate>
 @property (nonatomic, weak) UIViewController *presenter;
-@property (nonatomic, weak) AWESettingItemModel *item;
+@property (nonatomic, copy) void (^completion)(BOOL picked);
 @end
 
 @implementation DKPlusIconPickerRelay
@@ -120,16 +138,22 @@ static void DKPlusIconPresentCropper(UIViewController *presenter, UIImage *image
     // 只捕获目标对象，不捕获 self：relay 挂在 picker 上，picker 一消失它就走了，
     // 而取图是异步的，回来时 self 早已为 nil。
     __weak UIViewController *presenter = self.presenter;
-    __weak AWESettingItemModel *item = self.item;
+    void (^completion)(BOOL) = self.completion;
 
     // 裁剪页要等相册收完再开：present 不能压在别人的 dismiss 动画上。
     [picker dismissViewControllerAnimated:YES completion:^{
-        if (![provider canLoadObjectOfClass:UIImage.class]) return;
+        if (![provider canLoadObjectOfClass:UIImage.class]) {
+            if (completion) completion(NO);
+            return;
+        }
         [provider loadObjectOfClass:UIImage.class
                   completionHandler:^(UIImage *image, __unused NSError *error) {
-            if (![image isKindOfClass:UIImage.class]) return;
             dispatch_async(dispatch_get_main_queue(), ^{
-                DKPlusIconPresentCropper(presenter, image, item);
+                if (![image isKindOfClass:UIImage.class]) {
+                    if (completion) completion(NO);
+                    return;
+                }
+                DKPlusIconPresentCropper(presenter, image, completion);
             });
         }];
     }];
@@ -138,8 +162,11 @@ static void DKPlusIconPresentCropper(UIViewController *presenter, UIImage *image
 @end
 
 // 不建 PHPhotoLibrary，走进程外选取：不申请相册权限，也就不弹权限请求。
-static void DKPlusIconPresentPicker(UIViewController *presenter, AWESettingItemModel *item) {
-    if (!presenter) return;
+void DKPlusIconPick(UIViewController *presenter, void (^completion)(BOOL picked)) {
+    if (!presenter) {
+        if (completion) completion(NO);
+        return;
+    }
 
     PHPickerConfiguration *configuration = [[PHPickerConfiguration alloc] init];
     configuration.filter = PHPickerFilter.imagesFilter;
@@ -149,7 +176,7 @@ static void DKPlusIconPresentPicker(UIViewController *presenter, AWESettingItemM
         [[PHPickerViewController alloc] initWithConfiguration:configuration];
     DKPlusIconPickerRelay *relay = [[DKPlusIconPickerRelay alloc] init];
     relay.presenter = presenter;
-    relay.item = item;
+    relay.completion = completion;
     picker.delegate = relay;
     // delegate 是弱引用，relay 得跟着 picker 一起活着。
     objc_setAssociatedObject(picker, &kDKPickerRelayKey, relay, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -214,7 +241,9 @@ static void DKPlusIconShowDialog(AWESettingItemModel *item, UIViewController *pr
                                             handler:^(__unused UIAlertAction *action) {
         // 退一拍再开相册：直接 present 会压在 alert 自己的消失动画上。
         dispatch_async(dispatch_get_main_queue(), ^{
-            DKPlusIconPresentPicker(weakPresenter, weakItem);
+            DKPlusIconPick(weakPresenter, ^(BOOL picked) {
+                if (picked) DKPlusIconDidChange(weakItem);
+            });
         });
     }]];
 
@@ -241,6 +270,7 @@ static void DKPlusIconShowDialog(AWESettingItemModel *item, UIViewController *pr
         });
         DKSettingsOnChange(item, ^{ DKPlusIconReload(); });
         return DKSettingsWithInfo(item,
-            @"从相册选一张图片裁成圆形，替换悬浮玻璃底栏中间的拍摄按钮图标；点「清除」恢复抖音默认图标。");
+            @"从相册选一张图片裁成圆形，作为拍摄按钮的图标；需在「拍摄按钮」中选择「自定义图片」。"
+            @"悬浮玻璃底栏与抖音原生底栏都生效；点「清除」删除图片并把「拍摄按钮」改回默认。");
     });
 }

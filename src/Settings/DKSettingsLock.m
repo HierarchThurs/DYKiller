@@ -2,7 +2,7 @@
 //  DKSettingsLock.m
 //  建页收尾与两类锁：
 //  - 玻璃锁：低于 iOS 26 时守卫表里的项灰显、加「 (iOS26+)」、按关显示（偏好已被守卫清掉），运行期不会解除。
-//  - 联动锁：前置项未生效、或阻断项开启时灰显，只改 isEnable、不动存值，条件解除后照原值显示。
+//  - 联动锁：前置项未生效、或阻断条件成立时灰显，只改 isEnable、不动存值，条件解除后照原值显示。
 //  灰显由抖音 cell 按 isEnable 完成（关开关交互、调暗 realContentView）；点击由页面 hook 拦截。
 //
 
@@ -30,10 +30,18 @@ static BOOL DKKeyActive(NSString *key, NSUInteger depth) {
     return !DKKeyLocked(key, depth) && DKPrefInteger(key) != 0;
 }
 
-// 阻断项是普通开关：开着即锁。
+static BOOL DKBlockerHolds(DKSettingsBlocker *blocker) {
+    switch (blocker.match) {
+        case DKSettingsBlockerWhenOn: return DKPrefBool(blocker.key);
+        case DKSettingsBlockerWhenEqual: return DKPrefInteger(blocker.key) == blocker.value;
+        case DKSettingsBlockerWhenNotEqual: return DKPrefInteger(blocker.key) != blocker.value;
+    }
+    return NO;
+}
+
 static BOOL DKKeyBlocked(NSString *key) {
-    for (NSString *blocker in DKSettingsLayoutBlockers(key)) {
-        if (DKPrefBool(blocker)) return YES;
+    for (DKSettingsBlocker *blocker in DKSettingsLayoutBlockers(key)) {
+        if (DKBlockerHolds(blocker)) return YES;
     }
     return NO;
 }
@@ -108,9 +116,8 @@ NSString *DKSettingsLockReason(AWESettingItemModel *item) {
         NSString *format = DKSettingsItemIsChoice(source) ? @"需先设置「%@」" : @"需先开启「%@」";
         [parts addObject:[NSString stringWithFormat:format, source.title ?: parent]];
     }
-    NSDictionary<NSString *, NSString *> *blockers = DKSettingsLayoutBlockers(item.identifier);
-    for (NSString *blocker in blockers) {
-        if (DKPrefBool(blocker)) [parts addObject:blockers[blocker]];
+    for (DKSettingsBlocker *blocker in DKSettingsLayoutBlockers(item.identifier)) {
+        if (DKBlockerHolds(blocker)) [parts addObject:blocker.reason];
     }
     return parts.count ? [parts componentsJoinedByString:@"；"] : nil;
 }

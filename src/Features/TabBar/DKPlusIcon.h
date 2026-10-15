@@ -18,6 +18,9 @@ extern "C" {
 /// 首次读盘一次后常驻内存，可放在逐帧布局路径上。只在主线程调用。
 UIImage *DKPlusIconCustom(void);
 
+/// 走相册选图 → 圆形裁剪 → 写盘；completion 只在写盘成功后以 YES 调用，取消或失败为 NO。
+void DKPlusIconPick(UIViewController *presenter, void (^completion)(BOOL picked));
+
 #ifdef __cplusplus
 }
 #endif

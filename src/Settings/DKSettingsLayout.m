@@ -34,6 +34,14 @@
 }
 @end
 
+@implementation DKSettingsBlocker
+- (instancetype)initWithKey:(NSString *)key match:(DKSettingsBlockerMatch)match value:(NSInteger)value
+                     reason:(NSString *)reason {
+    if ((self = [super init])) { _key = [key copy]; _match = match; _value = value; _reason = [reason copy]; }
+    return self;
+}
+@end
+
 @implementation DKSettingsSection
 - (instancetype)initWithHeader:(NSString *)header footer:(NSString *)footer rows:(NSArray *)rows {
     if ((self = [super init])) { _header = [header copy]; _footer = [footer copy]; _rows = [rows copy]; }
@@ -72,9 +80,6 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyTopBarSearchMode, @"ic_videosearch_outlined_20"),
             DKRow(DKKeyTopChannels, @"ic_doublearrowup_outlined_20"),
         ]),
-        DKSection(@"底栏", @[
-            DKRow(DKKeyBottomBar, @"ic_module_outlined_20"),
-        ]),
         DKSection(@"视频播放", @[
             DKRow(DKKeyHideFollowButton, @"ic_userplus_outlined_20"),
             DKRow(DKKeyHideMusicInfo, @"ic_quaver_outlined_20"),
@@ -89,13 +94,30 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
         ]),
     ]);
 
+    DKSettingsPage *appearance = DKPage(@"外观定制", @"ic_magic_outlined_20", @[
+        DKSection(@"底栏图标", @[
+            DKRow(DKKeyBottomBar, @"ic_module_outlined_20"),
+            DKRow(DKKeyTabBarStyle, @"ic_module_outlined_20"),
+            DKRow(DKKeyPlusStyle, @"ic_cameralogo_outlined_20"),
+            DKRow(DKKeyPlusIcon, @"ic_pensketch_outlined_20"),
+            DKPage(@"修改底栏文字", @"ic_text_outlined_20", @[
+                DKSectionWithFooter(@"底栏文字", @"留空为抖音默认文字，最多 6 个汉字。", @[
+                    DKRow(DKKeyTabTitleHome, @"ic_text_outlined_20"),
+                    DKRow(DKKeyTabTitleFriends, @"ic_text_outlined_20"),
+                    DKRow(DKKeyTabTitleMall, @"ic_text_outlined_20"),
+                    DKRow(DKKeyTabTitleNotification, @"ic_text_outlined_20"),
+                    DKRow(DKKeyTabTitleProfile, @"ic_text_outlined_20"),
+                ]),
+            ]),
+        ]),
+    ]);
+
     DKSettingsPage *glass = [[DKSettingsPage alloc] initWithTitle:@"液态玻璃 (iOS26+)"
                                                              icon:@"ic_rectangleonrectangleup_outlined_20"
                                                        identifier:DKKeySettingsPageGlass
                                                          sections:@[
         DKSection(@"底栏", @[
             DKRow(DKKeyGlassTabBar, @"ic_module_outlined_20"),
-            DKRow(DKKeyPlusIcon, @"ic_pensketch_outlined_20"),
         ]),
         DKSection(@"音频可视化", @[
             DKRow(DKKeyAudioVizPosition, @"ic_playbackquaver_outlined"),
@@ -179,7 +201,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                                                              action:DKSettingsLinkAuthor];
 
     return @[
-        DKSection(@"功能", @[ interface, glass, enhance, media, filter ]),
+        DKSection(@"功能", @[ interface, appearance, glass, enhance, media, filter ]),
         [[DKSettingsSection alloc] initWithHeader:@"DYKiller" footer:kDKDisclaimer
                                              rows:@[ tools, backup, author ]],
     ];
@@ -267,7 +289,6 @@ NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         requires = @{
-            DKKeyPlusIcon:               @[ DKKeyGlassTabBar ],
             DKKeyAudioVizPosition:       @[ DKKeyGlassTabBar ],
             DKKeyAudioVizStyle:          @[ DKKeyAudioVizPosition ],
             DKKeyInnerNotiCorner:        @[ DKKeyInnerNotiGlass ],
@@ -277,13 +298,41 @@ NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {
     return (key ? requires[key] : nil) ?: @[];
 }
 
-NSDictionary<NSString *, NSString *> *DKSettingsLayoutBlockers(NSString *key) {
-    static NSDictionary<NSString *, NSDictionary<NSString *, NSString *> *> *blockers;
+static DKSettingsBlocker *DKBlockOn(NSString *key, NSString *reason) {
+    return [[DKSettingsBlocker alloc] initWithKey:key match:DKSettingsBlockerWhenOn value:0 reason:reason];
+}
+
+static DKSettingsBlocker *DKBlockEqual(NSString *key, NSInteger value, NSString *reason) {
+    return [[DKSettingsBlocker alloc] initWithKey:key match:DKSettingsBlockerWhenEqual value:value reason:reason];
+}
+
+static DKSettingsBlocker *DKBlockNotEqual(NSString *key, NSInteger value, NSString *reason) {
+    return [[DKSettingsBlocker alloc] initWithKey:key match:DKSettingsBlockerWhenNotEqual value:value reason:reason];
+}
+
+// 底栏文字：「单图标」不显示文字；该项被「移除底栏项目」移除时也无处显示。
+static NSArray<DKSettingsBlocker *> *DKTitleBlockers(NSString *removalKey) {
+    NSMutableArray<DKSettingsBlocker *> *list = [NSMutableArray arrayWithObject:
+        DKBlockEqual(DKKeyTabBarStyle, 1, @"「单图标」样式不显示文字")];
+    if (removalKey) [list addObject:DKBlockOn(removalKey, @"该项已在「移除底栏项目」中移除")];
+    return list;
+}
+
+NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
+    static NSDictionary<NSString *, NSArray<DKSettingsBlocker *> *> *blockers;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
+        NSString *removedPlus = @"拍摄按钮已在「移除底栏项目」中移除";
         blockers = @{
-            DKKeyPlusIcon: @{ DKKeyHidePlusButton: @"拍摄按钮已在「移除底栏项目」中移除" },
+            DKKeyPlusStyle: @[ DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
+            DKKeyPlusIcon: @[ DKBlockNotEqual(DKKeyPlusStyle, 3, @"需先在「拍摄按钮」中选择「自定义图片」"),
+                              DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
+            DKKeyTabTitleHome: DKTitleBlockers(nil),
+            DKKeyTabTitleFriends: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_familiar"]),
+            DKKeyTabTitleMall: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_mall"]),
+            DKKeyTabTitleNotification: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_notification"]),
+            DKKeyTabTitleProfile: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_profile"]),
         };
     });
-    return (key ? blockers[key] : nil) ?: @{};
+    return (key ? blockers[key] : nil) ?: @[];
 }

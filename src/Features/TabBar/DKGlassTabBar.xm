@@ -17,6 +17,8 @@
 #import "DKGlassTabBar.h"
 #import "DKAudioVisualizer.h"
 #import "DKPlusIcon.h"
+#import "DKTabBarAppearance.h"
+#import "DKTabBarIcons.h"
 #import "DKTabBarRemoval.h"
 #import "DouyinHeaders.h"
 #import "DKGlassGuard.h"
@@ -48,6 +50,16 @@ static const CGFloat kDKPlusKeyGap = 12.0;
 static const CGFloat kDKPlusIconInset = 14.0;
 // 自定义图标本身就是一枚圆，只留一圈窄边把它嵌进圆键，不需要给字形留呼吸空间。
 static const CGFloat kDKPlusIconCustomInset = 7.0;
+// 照相机图标（新图标 / 新双色图标）在 62pt 圆键里画 32pt，网格四周已留白。
+static const CGFloat kDKPlusIconCameraInset = 15.0;
+// 底栏样式「单图标」的图标边长；「图标+文字」为 24pt 图标加 10pt 文字。
+static const CGFloat kDKItemIconSide = 26.0;
+static const CGFloat kDKItemIconTextSide = 24.0;
+static const CGFloat kDKItemIconTextGap = 2.0;
+static const CGFloat kDKItemCaptionFontSize = 10.0;
+// 标题图的最大宽度：相邻项间距只有 70pt，过宽会压到邻项，超出时缩字。
+static const CGFloat kDKTitleMaxWidth = 64.0;
+static const CGFloat kDKTitleMinFontSize = 11.0;
 // platter 还没建起来时的兜底几何（beta7 实测值），量到真实值后即被取代。
 static const CGFloat kDKPlatterFallbackHeight = 62.0;
 static const CGFloat kDKPlatterFallbackInset = 21.0;
@@ -63,6 +75,8 @@ static id gProxy = nil;
 static NSArray<NSNumber *> *gItemKinds = nil;
 // 每个 item 对应的抖音按钮，转发点击与读取角标都用它。与 items 同序等长。
 static NSArray *gItemButtons = nil;
+// 每个 item 的抖音 tabID（取不到为 NSNull），按样式出图用。与 items 同序等长。
+static NSArray *gItemTabIDs = nil;
 // 上次构建 items 用的签名，变了才重建，避免每次布局都换 items。
 static NSString *gSignature = nil;
 // 最近一次见到的抖音底栏，供开关变化时立即生效。
@@ -73,6 +87,10 @@ static __weak UIWindowScene *gObservedScene = nil;
 // 拍摄圆键及其内容。
 static UIVisualEffectView *gPlusKey = nil;
 static UIImageView *gPlusIcon = nil;
+// 新双色图标的青红层，垫在 gPlusIcon 下面；其他样式隐藏。
+static UIImageView *gPlusAccent = nil;
+// 上次出图时的拍摄样式，样式变了要重新取图与着色。
+static DKPlusStyle gPlusStyleApplied = DKPlusStyleDefault;
 static UIButton *gPlusHit = nil;
 // 抖音的拍摄按钮；被其他插件移除时为 nil，圆键随之隐藏。
 static __weak UIView *gPlusButton = nil;
@@ -320,19 +338,23 @@ static UIColor *DKGlassInkColor(BOOL selected) {
     return [UIColor colorWithWhite:white alpha:(selected ? 1.0 : kDKInkSecondaryAlpha)];
 }
 
-// 按当前极性重渲染每个 item 的两张标题图。就地改 image / selectedImage，不重建 items——
+static UIImage *DKGlassItemImage(NSString *tabID, NSString *title, BOOL selected, UIColor *color);
+
+// 按当前极性与底栏样式重渲染每个 item 的两张图。就地改 image / selectedImage，不重建 items——
 // 极性变化和切页是同一时刻，重建 items 会打断系统正在跑的透镜位移动画。
 static void DKGlassApplyItemImages(void) {
     if (!gBar) return;
     UIColor *selected = DKGlassInkColor(YES);
     UIColor *normal = DKGlassInkColor(NO);
-    for (UITabBarItem *item in gBar.items) {
+    [gBar.items enumerateObjectsUsingBlock:^(UITabBarItem *item, NSUInteger index, __unused BOOL *stop) {
         // 标题不另存一份：建 item 时就写进 accessibilityLabel 了，跟着 item 走不会失配。
         NSString *title = item.accessibilityLabel;
-        if (title.length == 0) continue;
-        item.image = DKGlassTitleImage(title, normal);
-        item.selectedImage = DKGlassTitleImage(title, selected);
-    }
+        if (title.length == 0) return;
+        id tabID = index < gItemTabIDs.count ? gItemTabIDs[index] : nil;
+        if (![tabID isKindOfClass:NSString.class]) tabID = nil;
+        item.image = DKGlassItemImage(tabID, title, NO, normal);
+        item.selectedImage = DKGlassItemImage(tabID, title, YES, selected);
+    }];
 }
 
 // 底色明暗只有抖音自己知道：它每页都重算自绘按钮的文字色（首页白、浅色消息 #161823、
@@ -417,8 +439,14 @@ NSString *DKGlassInkStatus(void) {
 // 两张图字形与字号完全相同，只有颜色和浓度不同，所以尺寸一致、胶囊宽度不会跳。
 // 字重取 Semibold：玻璃胶囊上压着的内容要够重，太细在半透明底上会发糊。
 static UIImage *DKGlassTitleImage(NSString *title, UIColor *color) {
+    UIFont *font = [UIFont systemFontOfSize:kDKTitleFontSize weight:UIFontWeightSemibold];
+    CGFloat width = [title sizeWithAttributes:@{ NSFontAttributeName: font }].width;
+    if (width > kDKTitleMaxWidth) {
+        CGFloat fontSize = MAX(kDKTitleMinFontSize, floor(kDKTitleFontSize * kDKTitleMaxWidth / width));
+        font = [UIFont systemFontOfSize:fontSize weight:UIFontWeightSemibold];
+    }
     NSDictionary *attributes = @{
-        NSFontAttributeName: [UIFont systemFontOfSize:kDKTitleFontSize weight:UIFontWeightSemibold],
+        NSFontAttributeName: font,
         NSForegroundColorAttributeName: color
     };
     CGSize size = [title sizeWithAttributes:attributes];
@@ -432,6 +460,45 @@ static UIImage *DKGlassTitleImage(NSString *title, UIColor *color) {
             [title drawAtPoint:CGPointZero withAttributes:attributes];
         }];
     return [image imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+}
+
+// 「图标+文字」：图标在上、10pt 文字在下合成一张图，交给系统当图标居中；文字宽度同样受邻项间距限制。
+static UIImage *DKGlassIconCaptionImage(UIImage *icon, NSString *title, UIColor *color) {
+    NSMutableParagraphStyle *paragraph = [[NSMutableParagraphStyle alloc] init];
+    paragraph.alignment = NSTextAlignmentCenter;
+    paragraph.lineBreakMode = NSLineBreakByTruncatingTail;
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [UIFont systemFontOfSize:kDKItemCaptionFontSize weight:UIFontWeightSemibold],
+        NSForegroundColorAttributeName: color,
+        NSParagraphStyleAttributeName: paragraph
+    };
+    CGSize textSize = [title sizeWithAttributes:attributes];
+    CGFloat side = kDKItemIconTextSide;
+    CGFloat width = ceil(MAX(side, MIN(textSize.width, kDKTitleMaxWidth)));
+    CGFloat textHeight = ceil(textSize.height);
+    CGSize size = CGSizeMake(width, side + kDKItemIconTextGap + textHeight);
+
+    UIGraphicsImageRendererFormat *format = UIGraphicsImageRendererFormat.preferredFormat;
+    format.opaque = NO;
+    UIImage *image = [[[UIGraphicsImageRenderer alloc] initWithSize:size format:format]
+        imageWithActions:^(__unused UIGraphicsImageRendererContext *context) {
+            [icon drawInRect:CGRectMake((width - side) / 2.0, 0, side, side)];
+            [title drawWithRect:CGRectMake(0, side + kDKItemIconTextGap, width, textHeight)
+                        options:NSStringDrawingUsesLineFragmentOrigin attributes:attributes context:nil];
+        }];
+    return [image imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+}
+
+// 按底栏样式出一张 item 图，颜色烤进图里（悬浮 provider 不采纳 tint）。表外 tabID 回落标题图。
+static UIImage *DKGlassItemImage(NSString *tabID, NSString *title, BOOL selected, UIColor *color) {
+    DKTabBarStyle style = DKTabBarCurrentStyle();
+    if (style != DKTabBarStyleDefault && DKTabBarHasIcon(tabID)) {
+        CGFloat side = style == DKTabBarStyleIcon ? kDKItemIconSide : kDKItemIconTextSide;
+        UIImage *icon = [DKTabBarIconTemplate(tabID, selected, side)
+            imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal];
+        return style == DKTabBarStyleIcon ? icon : DKGlassIconCaptionImage(icon, title, color);
+    }
+    return DKGlassTitleImage(title, color);
 }
 
 #pragma mark - 拍摄图标
@@ -496,20 +563,51 @@ static UIImage *DKGlassTrimTransparent(UIImage *image) {
 // 图标同样走模板图：抖音会随页面在白/黑两版图标间切换，只取 alpha 则两版形状一致，
 // 着色跟内容极性走（见「内容取色」），黑视频上不会出现看不见的黑图标。
 CGFloat DKGlassPlusIconInset(void) {
-    return DKPlusIconCustom() ? kDKPlusIconCustomInset : kDKPlusIconInset;
+    switch (DKPlusCurrentStyle()) {
+        case DKPlusStyleCustom: return kDKPlusIconCustomInset;
+        case DKPlusStyleCamera:
+        case DKPlusStyleBrand: return kDKPlusIconCameraInset;
+        case DKPlusStyleDefault: break;
+    }
+    return kDKPlusIconInset;
 }
 
+// 拍摄圆键的图按「拍摄按钮」选项出：默认镜像抖音原图；新图标 / 新双色图标为照相机，
+// 双色在机身下垫一层青红；自定义图片用用户的圆形图。
 static void DKGlassSyncPlusIcon(UIView *button) {
+    DKPlusStyle style = DKPlusCurrentStyle();
+    if (style != gPlusStyleApplied) {
+        gPlusStyleApplied = style;
+        gPlusSourceIcon = nil;
+        gPlusIconInkStyle = UIUserInterfaceStyleUnspecified;
+    }
+    BOOL brand = style == DKPlusStyleBrand;
+    if (gPlusAccent.isHidden == brand) gPlusAccent.hidden = !brand;
+
     // 自定义图标是用户选的照片，两道加工都要跳过：模板化只取 alpha，会把彩色抹成单色块；
     // 圆形 alpha 已在裁剪时烘进图内，再裁一次透明包围盒会毁掉 3pt 均匀留边的前提。
-    UIImage *custom = DKPlusIconCustom();
-    if (custom) {
+    if (style == DKPlusStyleCustom) {
+        UIImage *custom = DKPlusIconCustom();
         if (custom == gPlusSourceIcon) return;
         gPlusSourceIcon = custom;
         gPlusIcon.image = custom;
-        // 自定义图标保持用户选的原色，一律不着色。档位复位是为了用户清掉它之后，
-        // 下一次布局能把模板图的着色补回来。
-        gPlusIconInkStyle = UIUserInterfaceStyleUnspecified;
+        return;
+    }
+
+    // 着色写在这里而不是 DKGlassApplyInk：这个函数每次布局都跑，图源没变也会走到，
+    // 换样式后不必等极性变化就能补上。
+    if (gPlusIconInkStyle != gInkStyle) {
+        gPlusIconInkStyle = gInkStyle;
+        gPlusIcon.tintColor = DKGlassInkColor(YES);
+    }
+
+    if (style == DKPlusStyleCamera || brand) {
+        CGFloat side = CGRectGetWidth(gPlusIcon.bounds);
+        UIImage *body = DKTabBarCameraTemplate(side);
+        if (gPlusIcon.image != body) gPlusIcon.image = body;
+        UIImage *accent = brand ? DKTabBarCameraAccent(side) : nil;
+        if (gPlusAccent.image != accent) gPlusAccent.image = accent;
+        gPlusSourceIcon = nil;
         return;
     }
 
@@ -617,7 +715,9 @@ static BOOL DKGlassSyncItems(UITabBarController *controller, NSArray *buttons) {
     NSMutableArray<NSString *> *titles = [NSMutableArray array];
     NSMutableArray<NSNumber *> *kinds = [NSMutableArray array];
     NSMutableArray *mirrored = [NSMutableArray array];
-    NSMutableString *signature = [NSMutableString string];
+    NSMutableArray *tabIDs = [NSMutableArray array];
+    // 底栏样式进签名：换样式即重建 items、重新出图。
+    NSMutableString *signature = [NSMutableString stringWithFormat:@"style%ld|", (long)DKTabBarCurrentStyle()];
     UIView *plus = nil;
 
     for (id button in buttons) {
@@ -634,10 +734,13 @@ static BOOL DKGlassSyncItems(UITabBarController *controller, NSArray *buttons) {
         if (title.length == 0) continue;
 
         NSInteger kind = [DKGlassValue(button, @"validIndex") integerValue];
+        NSString *tabID = DKTabBarButtonTabID(button);
         [titles addObject:title];
         [kinds addObject:@(kind)];
         [mirrored addObject:button];
-        [signature appendFormat:@"%@:%ld|", title, (long)kind];
+        [tabIDs addObject:tabID ?: (id)NSNull.null];
+        // tabID 取没取到也进签名：映射表晚于首轮布局就绪时，取到后要补出图标。
+        [signature appendFormat:@"%@:%ld:%@|", title, (long)kind, tabID ?: @"-"];
     }
 
     gPlusButton = plus;
@@ -660,6 +763,7 @@ static BOOL DKGlassSyncItems(UITabBarController *controller, NSArray *buttons) {
         }];
         gBar.items = items;
         gItemKinds = kinds;
+        gItemTabIDs = tabIDs;
         gSignature = [signature copy];
         DKGlassApplyItemImages();
     }
@@ -711,6 +815,11 @@ static UIVisualEffectView *DKGlassMakePlusKey(id target) API_AVAILABLE(ios(26.0)
     UIVisualEffectView *key =
         [[UIVisualEffectView alloc] initWithEffect:DKGlassMakeGlassEffect(gGlassStyle, YES)];
     key.cornerConfiguration = [UICornerConfiguration capsuleConfiguration];
+
+    gPlusAccent = [[UIImageView alloc] init];
+    gPlusAccent.contentMode = UIViewContentModeScaleAspectFit;
+    gPlusAccent.hidden = YES;
+    [key.contentView addSubview:gPlusAccent];
 
     gPlusIcon = [[UIImageView alloc] init];
     gPlusIcon.contentMode = UIViewContentModeScaleAspectFit;
@@ -892,6 +1001,7 @@ static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar, NSUInteger refere
     CGFloat iconInset = DKGlassPlusIconInset();
     CGRect iconFrame = CGRectInset(bounds, iconInset, iconInset);
     if (!CGRectEqualToRect(gPlusIcon.frame, iconFrame)) gPlusIcon.frame = iconFrame;
+    if (!CGRectEqualToRect(gPlusAccent.frame, iconFrame)) gPlusAccent.frame = iconFrame;
     if (!CGRectEqualToRect(gPlusHit.frame, bounds)) gPlusHit.frame = bounds;
 
     DKGlassSyncPlusIcon(gPlusButton);
@@ -957,12 +1067,15 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
         gBar = nil;
         gPlusKey = nil;
         gPlusIcon = nil;
+        gPlusAccent = nil;
+        gPlusStyleApplied = DKPlusStyleDefault;
         gPlusHit = nil;
         gPlusButton = nil;
         gPlusSourceIcon = nil;
         gProxy = nil;
         gItemKinds = nil;
         gItemButtons = nil;
+        gItemTabIDs = nil;
         gSignature = nil;
         // 重新开启时材质与 platter 玻璃都要能重新装上；探测结果不复位，那是设备能力，一次为准。
         gGlassStyle = UIUserInterfaceStyleUnspecified;

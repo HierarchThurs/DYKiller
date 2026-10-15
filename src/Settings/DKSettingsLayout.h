@@ -34,6 +34,21 @@ typedef NS_ENUM(NSInteger, DKSettingsLinkAction) {
 @property (nonatomic, assign, readonly) DKSettingsLinkAction action;
 @end
 
+/// 阻断项的判定方式。
+typedef NS_ENUM(NSInteger, DKSettingsBlockerMatch) {
+    DKSettingsBlockerWhenOn,         // 开关为开
+    DKSettingsBlockerWhenEqual,      // 单选等于 value
+    DKSettingsBlockerWhenNotEqual,   // 单选不等于 value
+};
+
+/// 阻断项：条件成立时目标行灰显，reason 即灰显原因。
+@interface DKSettingsBlocker : NSObject
+@property (nonatomic, copy, readonly) NSString *key;
+@property (nonatomic, assign, readonly) DKSettingsBlockerMatch match;
+@property (nonatomic, assign, readonly) NSInteger value;
+@property (nonatomic, copy, readonly) NSString *reason;
+@end
+
 /// 分区：rows 里可以是 DKSettingsRow、DKSettingsPage、DKSettingsLink。
 @interface DKSettingsSection : NSObject
 @property (nonatomic, copy, readonly) NSString *header;
@@ -61,8 +76,8 @@ NSString *DKSettingsLayoutIcon(NSString *key);
 /// 该键的前置项：任一前置项未生效时该行灰显。无前置项返回空数组。
 NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key);
 
-/// 该键的阻断项：阻断键 → 灰显原因。任一阻断键为开时该行灰显。无阻断项返回空字典。
-NSDictionary<NSString *, NSString *> *DKSettingsLayoutBlockers(NSString *key);
+/// 该键的阻断项，按原因展示顺序排列。任一阻断条件成立时该行灰显。无阻断项返回空数组。
+NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key);
 
 #ifdef __cplusplus
 }
