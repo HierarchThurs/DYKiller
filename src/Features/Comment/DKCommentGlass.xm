@@ -951,23 +951,8 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
     gClearedCovers = [NSHashTable weakObjectsHashTable];
     gFoldMaskedViews = [NSHashTable weakObjectsHashTable];
 
-    DKSettingsRegisterItem(@"评论区", ^AWESettingItemModel *{
-        return DKMakeSwitch(
-            DKKeyCommentGlass,
-            @"评论区液态玻璃",
-            @"把评论面板与输入框换成 iOS 26 系统液态玻璃；默认使用 Regular 自适应材质"
-        );
-    });
-
-    DKSettingsRegisterItem(@"评论区", ^AWESettingItemModel *{
-        AWESettingItemModel *item = DKMakeSwitch(
-            DKKeyCommentGlassClear,
-            @"清透玻璃",
-            @"显示更多背后视频细节；关闭则使用系统 Regular 自适应材质"
-        );
-        void (^originalBlock)(void) = [item.switchChangedBlock copy];
-        item.switchChangedBlock = ^{
-            if (originalBlock) originalBlock();
+    DKSettingsRegister(DKKeyCommentGlass, ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeGlassChoice(DKKeyCommentGlass, DKKeyCommentGlassClear, @"评论区液态玻璃", ^{
             void (^refresh)(void) = ^{
                 UIView *slot = gLastPanelSlot;
                 UIUserInterfaceStyle current = gGlassStyle;
@@ -977,8 +962,9 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
             };
             if ([NSThread isMainThread]) refresh();
             else dispatch_async(dispatch_get_main_queue(), refresh);
-        };
-        return item;
+        });
+        return DKSettingsWithInfo(item,
+            @"评论面板与输入框的材质：关闭时保持抖音原生样式；模糊玻璃使用系统 Regular；清透玻璃显示更多背后视频细节。");
     });
 
     if (DKGlassOSAvailable()) {

@@ -174,7 +174,7 @@ static void DKApplyDetailBarTransparency(AWECommentInputBackgroundView *bar) {
 #pragma mark - 设置项注册
 
 %ctor {
-    DKSettingsRegisterItem(@"播放体验", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyDetailHideBottomBar, ^AWESettingItemModel *{
         return DKMakeSwitch(DKKeyDetailHideBottomBar, @"作品详情页底栏移除",
                             @"好友页、搜索页、用户作品页统一隐藏底部输入栏并禁止点击");
     });

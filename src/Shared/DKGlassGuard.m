@@ -22,6 +22,9 @@ static NSSet<NSString *> *DKGlassGatedKeySet(void) {
                DKKeyPlusIcon,
                DKKeyAudioVizPosition,
                DKKeyAudioVizStyle,
+               DKKeyMediaSaveGlass,
+               DKKeyMediaSaveGlassClear,
+               DKKeySettingsPageGlass,
                nil];
     });
     return set;

@@ -816,31 +816,8 @@ static void DKNotiRefreshVisible(void) {
     gContainers = [NSHashTable weakObjectsHashTable];
     gCommonViews = [NSHashTable weakObjectsHashTable];
 
-    DKSettingsRegisterItem(@"通知", ^AWESettingItemModel *{
-        AWESettingItemModel *item = DKMakeSwitch(
-            DKKeyInnerNotiGlass,
-            @"应用内通知液态玻璃",
-            @"把应用内通知横幅换成 iOS 26 系统液态玻璃；默认 Regular"
-        );
-        void (^origBlock)(void) = [item.switchChangedBlock copy];
-        item.switchChangedBlock = ^{
-            if (origBlock) origBlock();
-            void (^refresh)(void) = ^{ DKNotiRefreshVisible(); };
-            if (NSThread.isMainThread) refresh();
-            else dispatch_async(dispatch_get_main_queue(), refresh);
-        };
-        return item;
-    });
-
-    DKSettingsRegisterItem(@"通知", ^AWESettingItemModel *{
-        AWESettingItemModel *item = DKMakeSwitch(
-            DKKeyInnerNotiGlassClear,
-            @"清透玻璃",
-            @"显示更多背后视频细节；关闭则使用系统 Regular"
-        );
-        void (^origBlock)(void) = [item.switchChangedBlock copy];
-        item.switchChangedBlock = ^{
-            if (origBlock) origBlock();
+    DKSettingsRegister(DKKeyInnerNotiGlass, ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeGlassChoice(DKKeyInnerNotiGlass, DKKeyInnerNotiGlassClear, @"消息通知液态玻璃", ^{
             void (^refresh)(void) = ^{
                 if (@available(iOS 26.0, *)) {
                     UIUserInterfaceStyle style = gGlassStyle;
@@ -853,12 +830,13 @@ static void DKNotiRefreshVisible(void) {
             };
             if (NSThread.isMainThread) refresh();
             else dispatch_async(dispatch_get_main_queue(), refresh);
-        };
-        return item;
+        });
+        return DKSettingsWithInfo(item,
+            @"应用内通知横幅的材质：关闭时保持抖音原生样式；模糊玻璃使用系统 Regular；清透玻璃显示更多背后视频细节。");
     });
 
-    DKSettingsRegisterItem(@"通知", ^AWESettingItemModel *{
-        return DKMakePercentSlider(
+    DKSettingsRegister(DKKeyInnerNotiCorner, ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakePercentSlider(
             DKKeyInnerNotiCorner,
             @"通知圆角",
             @"左侧为抖音默认圆角，右侧为胶囊圆角",
@@ -867,6 +845,7 @@ static void DKNotiRefreshVisible(void) {
                 if (@available(iOS 26.0, *)) DKNotiRefreshVisible();
             }
         );
+        return DKSettingsWithInfo(item, @"应用内通知玻璃横幅的圆角大小：0% 为抖音默认圆角，100% 为胶囊形。");
     });
 
     if (DKGlassOSAvailable()) {

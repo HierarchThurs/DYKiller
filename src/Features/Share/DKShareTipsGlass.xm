@@ -2,7 +2,7 @@
 //  DKShareTipsGlass.xm
 //  分享成功提示液态玻璃：把「已私信给 xxx」那张白卡片换成系统液态玻璃。
 //  头像不接管；黑系文字按材质与系统深浅改色，彩色文字不动。
-//  与分享面板共用 DYKillerSharePanelGlass / DYKillerSharePanelGlassClear 两个开关。
+//  与分享面板共用材质设置（DYKillerSharePanelGlass / DYKillerSharePanelGlassClear）。
 //
 
 #import "DouyinHeaders.h"

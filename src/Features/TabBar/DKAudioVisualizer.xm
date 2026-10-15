@@ -500,11 +500,14 @@ void DKAudioVisualizerLayout(UIView *douyinBar) {
 // DKAudioVisualizerLayout 每次底栏布局都会重读，位置/形态变了自然会重建，
 // 不需要额外的即时刷新通路。
 %ctor {
-    DKSettingsRegisterItem(@"音频可视化", ^AWESettingItemModel *{
-        return DKMakeChoice(DKKeyAudioVizPosition, @"可视化位置",
-                            @[ @"关闭", @"胶囊上方水平", @"胶囊整栏环绕", @"拍摄圆键环绕" ]);
+    DKSettingsRegister(DKKeyAudioVizPosition, ^AWESettingItemModel *{
+        return DKSettingsWithInfo(
+            DKMakeChoice(DKKeyAudioVizPosition, @"可视化位置",
+                         @[ @"关闭", @"胶囊上方水平", @"胶囊整栏环绕", @"拍摄圆键环绕" ]),
+            @"在悬浮玻璃底栏周围画随声音跳动的实时频谱，需开启「悬浮玻璃底栏」；选「关闭」不显示。");
     });
-    DKSettingsRegisterItem(@"音频可视化", ^AWESettingItemModel *{
-        return DKMakeChoice(DKKeyAudioVizStyle, @"可视化形态", @[ @"离散条", @"连续流体" ]);
+    DKSettingsRegister(DKKeyAudioVizStyle, ^AWESettingItemModel *{
+        return DKSettingsWithInfo(DKMakeChoice(DKKeyAudioVizStyle, @"可视化形态", @[ @"离散条", @"连续流体" ]),
+            @"频谱的画法：离散条为一根根独立的竖条，连续流体为一条平滑起伏的轮廓。");
     });
 }

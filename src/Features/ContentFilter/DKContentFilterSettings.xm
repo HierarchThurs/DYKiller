@@ -32,7 +32,7 @@ static NSString *DKFilterThresholdDetail(long long value) {
 
 static AWESettingItemModel *DKFilterThresholdItem(void) {
     long long current = DKFilterCurrentConfig().minimumLikes;
-    return DKMakeAction(DKKeyMinimumLikes, @"最低点赞数", DKFilterThresholdDetail(current),
+    AWESettingItemModel *threshold = DKMakeAction(DKKeyMinimumLikes, @"最低点赞数", DKFilterThresholdDetail(current),
         ^(AWESettingItemModel *item, UIViewController *presenter) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"最低点赞数"
             message:@"0 不筛选；设置从后续批次生效。" preferredStyle:UIAlertControllerStyleAlert];
@@ -61,17 +61,19 @@ static AWESettingItemModel *DKFilterThresholdItem(void) {
         [input changed:alert.textFields.firstObject];
         [presenter presentViewController:alert animated:YES completion:nil];
     });
+    return DKSettingsWithInfo(threshold,
+        @"「低赞过滤」的阈值：首页推荐里点赞数低于该值的作品不再出现；填 0 不筛选，修改从后续批次生效。");
 }
 
 %ctor {
-    DKSettingsRegisterItem(@"内容过滤", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyFilterLowLikes, ^AWESettingItemModel *{
         return DKFilterSwitch(DKKeyFilterLowLikes, @"低赞过滤", @"仅首页推荐；点赞数低于阈值的作品不进入后续批次");
     });
-    DKSettingsRegisterItem(@"内容过滤", ^AWESettingItemModel *{ return DKFilterThresholdItem(); });
-    DKSettingsRegisterItem(@"内容过滤", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyMinimumLikes, ^AWESettingItemModel *{ return DKFilterThresholdItem(); });
+    DKSettingsRegister(DKKeyRemoveRecommendedLive, ^AWESettingItemModel *{
         return DKFilterSwitch(DKKeyRemoveRecommendedLive, @"推荐页移除直播", @"从后续推荐批次移除直播预览");
     });
-    DKSettingsRegisterItem(@"内容过滤", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyFilterAds, ^AWESettingItemModel *{
         return DKFilterSwitch(DKKeyFilterAds, @"抖音过滤广告", @"过滤新载入的广告作品、搜索卡片及启动广告");
     });
 }

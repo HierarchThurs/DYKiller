@@ -37,7 +37,7 @@
 #pragma mark - 注册设置
 
 %ctor {
-    DKSettingsRegisterItem(@"个人主页", ^{
+    DKSettingsRegister(DKKeyProfileHideUGCGuide, ^{
         return DKMakeSwitch(DKKeyProfileHideUGCGuide, @"移除个人主页发作品区域", @"隐藏「作品」下方的去发布等引导元素");
     });
 }

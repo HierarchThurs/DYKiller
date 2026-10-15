@@ -216,11 +216,12 @@ static void DKPlusIconShowDialog(AWESettingItemModel *item, UIViewController *pr
 #pragma mark - 设置项注册
 
 %ctor {
-    // 注册在「悬浮玻璃底栏」「清透玻璃」之后，故显示在同分区末尾。
-    DKSettingsRegisterItem(@"底栏", ^AWESettingItemModel *{
-        return DKMakeAction(DKKeyPlusIcon, @"更换拍摄图标", DKPlusIconDetail(),
-                            ^(AWESettingItemModel *item, UIViewController *presenter) {
-            DKPlusIconShowDialog(item, presenter);
+    DKSettingsRegister(DKKeyPlusIcon, ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeAction(DKKeyPlusIcon, @"更换拍摄图标", DKPlusIconDetail(),
+                                                 ^(AWESettingItemModel *it, UIViewController *presenter) {
+            DKPlusIconShowDialog(it, presenter);
         });
+        return DKSettingsWithInfo(item,
+            @"从相册选一张图片裁成圆形，替换悬浮玻璃底栏中间的拍摄按钮图标；点「清除」恢复抖音默认图标。");
     });
 }

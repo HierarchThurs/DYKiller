@@ -1641,33 +1641,8 @@ static void DKShareRefreshVisible(void) {
     gCardCells = [NSHashTable weakObjectsHashTable];
     gSendButtons = [NSHashTable weakObjectsHashTable];
 
-    DKSettingsRegisterItem(@"分享", ^AWESettingItemModel *{
-        AWESettingItemModel *item = DKMakeSwitch(
-            DKKeySharePanelGlass,
-            @"分享面板液态玻璃",
-            @"把分享卡片、分享评论面板与分享成功提示换成 iOS 26 系统液态玻璃；默认 Regular"
-        );
-        void (^origBlock)(void) = [item.switchChangedBlock copy];
-        item.switchChangedBlock = ^{
-            if (origBlock) origBlock();
-            void (^refresh)(void) = ^{
-                if (@available(iOS 26.0, *)) DKShareRefreshVisible();
-            };
-            if (NSThread.isMainThread) refresh();
-            else dispatch_async(dispatch_get_main_queue(), refresh);
-        };
-        return item;
-    });
-
-    DKSettingsRegisterItem(@"分享", ^AWESettingItemModel *{
-        AWESettingItemModel *item = DKMakeSwitch(
-            DKKeySharePanelGlassClear,
-            @"清透玻璃",
-            @"显示更多背后视频细节；关闭则使用系统 Regular"
-        );
-        void (^origBlock)(void) = [item.switchChangedBlock copy];
-        item.switchChangedBlock = ^{
-            if (origBlock) origBlock();
+    DKSettingsRegister(DKKeySharePanelGlass, ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeGlassChoice(DKKeySharePanelGlass, DKKeySharePanelGlassClear, @"分享面板液态玻璃", ^{
             void (^refresh)(void) = ^{
                 if (@available(iOS 26.0, *)) {
                     UIUserInterfaceStyle style = gGlassStyle;
@@ -1680,8 +1655,9 @@ static void DKShareRefreshVisible(void) {
             };
             if (NSThread.isMainThread) refresh();
             else dispatch_async(dispatch_get_main_queue(), refresh);
-        };
-        return item;
+        });
+        return DKSettingsWithInfo(item,
+            @"分享面板、分享评论面板与分享成功提示的材质：关闭时保持抖音原生样式；模糊玻璃使用系统 Regular；清透玻璃显示更多背后视频细节。");
     });
 
     if (DKGlassOSAvailable()) {

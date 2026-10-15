@@ -46,7 +46,7 @@ static AWESettingItemModel *DKMakeDebugSwitch(void) {
 
 %ctor {
     DKAudioProbeInstallIfEnabled(YES);
-    DKSettingsRegisterItem(@"调试", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyDebugInspectorEnabled, ^AWESettingItemModel *{
         return DKMakeDebugSwitch();
     });
     DKDebugInspectorInstall();

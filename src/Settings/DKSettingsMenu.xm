@@ -1,358 +1,277 @@
 //
 //  DKSettingsMenu.xm
-//  在「抖音设置」主页插入 DYKiller 入口，点击进入本插件设置页。
-//  设置页内容由各功能模块通过 DKSettingsRegisterItem 注册，这里只负责收集与呈现。
+//  在「抖音设置」主页插入 DYKiller 入口，并按 DKSettingsLayout 建出各级设置页。
+//  页面统一走 DKMakeSettingsPage：卡片样式、viewModel 挂在关联对象上、出现时接管弹窗宿主并重算联动锁。
 //
 
-#import "DouyinHeaders.h"
-#import "DKGlassGuard.h"
+#import "DKSettingsInternal.h"
+#import "DKSettingsLayout.h"
 #import "DKKeys.h"
-#import "DKSettings.h"
-#import "DKUtils.h"
-#import <math.h>
 #import <objc/runtime.h>
 
-@interface _DKSliderRelay : NSObject
-@property (nonatomic, copy) void (^block)(UISlider *slider);
-- (void)changed:(UISlider *)sender;
-@end
+static char kDKViewModelKey;   // 手动创建的设置页把 viewModel 挂在这，有值即 DYKiller 页面
 
-@implementation _DKSliderRelay
-- (void)changed:(UISlider *)sender {
-    if (self.block) self.block(sender);
-}
-@end
+static NSString *const kDKUnplacedHeader = @"未归类";
+static NSString *const kDKEmptyPlaceholder = @"暂无设置项";
 
-static char kDKSliderRelayKey;
+#pragma mark - 注册表
 
-static char kViewModelKey;   // 手动创建的设置页把 viewModel 挂在这
-
-#pragma mark - 分区注册表
-
-static NSMutableArray<NSDictionary *> *DKSectionRegistry(void) {
-    static NSMutableArray *registry;
+static NSMutableDictionary<NSString *, DKSettingItemBuilder> *DKBuilderRegistry(void) {
+    static NSMutableDictionary *registry;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ registry = [NSMutableArray array]; });
+    dispatch_once(&once, ^{ registry = [NSMutableDictionary dictionary]; });
     return registry;
 }
 
-void DKSettingsRegisterItem(NSString *sectionHeader, DKSettingItemBuilder builder) {
-    if (!sectionHeader || !builder) return;
-    [DKSectionRegistry() addObject:@{ @"header": sectionHeader, @"builder": [builder copy] }];
-}
-
-#pragma mark - 液态玻璃设置项
-
-static NSString *const kDKGlassOSTitleSuffix = @" (iOS26+)";
-
-// 低系统：标题加后缀、灰掉、掐掉点击。在 builder 返回之后调用，盖住功能自己包的回调。
-static void DKGlassLockItemIfNeeded(AWESettingItemModel *item) {
-    if (!item || DKGlassOSAvailable() || !DKGlassIsGatedKey(item.identifier)) return;
-
-    if (item.title.length && ![item.title hasSuffix:kDKGlassOSTitleSuffix]) {
-        item.title = [item.title stringByAppendingString:kDKGlassOSTitleSuffix];
+void DKSettingsRegister(NSString *key, DKSettingItemBuilder builder) {
+    if (!key.length || !builder) return;
+    NSMutableDictionary *registry = DKBuilderRegistry();
+    if (registry[key]) {
+        NSLog(@"[DYKiller] 设置键重复登记，保留首个：%@", key);
+        return;
     }
-    item.isEnable = NO;
-    item.isSwitchOn = NO;
-    __weak AWESettingItemModel *weakItem = item;
-    item.switchChangedBlock = ^{
-        weakItem.isSwitchOn = NO;
-    };
-    item.cellTappedBlock = nil;
+    registry[key] = [builder copy];
 }
 
-#pragma mark - 开关项工厂
-
-AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *detail) {
-    AWESettingItemModel *item = [[%c(AWESettingItemModel) alloc] init];
-    item.identifier = key;
-    item.title = title;
-    item.detail = detail ?: @"";
-    item.type = 0;
-    item.cellType = 6;                 // 开关型 cell
-    item.colorStyle = 0;
-    item.isEnable = YES;
-    item.isSwitchOn = DKPrefBool(key);
-
-    __weak AWESettingItemModel *weakItem = item;
-    item.switchChangedBlock = ^{
-        __strong AWESettingItemModel *it = weakItem;
-        if (!it) return;
-        BOOL v = !it.isSwitchOn;
-        it.isSwitchOn = v;
-        [[NSUserDefaults standardUserDefaults] setBool:v forKey:it.identifier];
-        [[NSUserDefaults standardUserDefaults] synchronize];
-    };
-    return item;
+AWESettingItemModel *DKSettingsBuildItem(NSString *key) {
+    if (!key) return nil;
+    DKSettingItemBuilder builder = DKBuilderRegistry()[key];
+    return builder ? builder() : nil;
 }
 
-#pragma mark - 单选项工厂
+#pragma mark - 当前页
 
-// 当前正在显示的设置页，供单选项弹对话框与选完刷新那一行。
-static __weak UIViewController *gSettingsPresenter = nil;
+// 当前显示的 DYKiller 设置页；子页出现时由 viewWillAppear 接管。
+static __weak AWESettingBaseViewController *gSettingsPresenter = nil;
 
-static UITableView *DKFindTableView(UIView *root) {
-    if ([root isKindOfClass:UITableView.class]) return (UITableView *)root;
-    for (UIView *sub in root.subviews) {
-        UITableView *found = DKFindTableView(sub);
-        if (found) return found;
-    }
-    return nil;
+UIViewController *DKSettingsCurrentPage(void) {
+    return gSettingsPresenter;
 }
 
-AWESettingItemModel *DKMakeChoice(NSString *key, NSString *title, NSArray<NSString *> *options) {
-    AWESettingItemModel *item = [[%c(AWESettingItemModel) alloc] init];
-    NSInteger current = [[NSUserDefaults standardUserDefaults] integerForKey:key];
-    if (current < 0 || current >= (NSInteger)options.count) current = 0;
-
-    item.identifier = key;
-    item.title = title;
-    item.detail = options[current];
-    item.type = 0;
-    item.cellType = 26;                // 与 DYKiller 入口同型：可点击、右侧显示 detail
-    item.colorStyle = 0;
-    item.isEnable = YES;
-
-    __weak AWESettingItemModel *weakItem = item;
-    item.cellTappedBlock = ^{
-        UIViewController *presenter = gSettingsPresenter;
-        if (!presenter) return;
-        UIAlertController *sheet =
-            [UIAlertController alertControllerWithTitle:title message:nil
-                                         preferredStyle:UIAlertControllerStyleActionSheet];
-        [options enumerateObjectsUsingBlock:^(NSString *name, NSUInteger index, __unused BOOL *stop) {
-            [sheet addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault
-                                                   handler:^(__unused UIAlertAction *action) {
-                [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)index forKey:key];
-                [NSUserDefaults.standardUserDefaults synchronize];
-                // 这一行显示的就是所选值，不跟着变等于界面在说谎。改完就地刷新一次；
-                // 找不到表格也只是要重进页面才更新，写入本身已经生效。
-                weakItem.detail = name;
-                [DKFindTableView(presenter.view) reloadData];
-            }]];
-        }];
-        [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-        // iPad 上 actionSheet 必须给锚点，否则直接抛异常。
-        sheet.popoverPresentationController.sourceView = presenter.view;
-        sheet.popoverPresentationController.sourceRect =
-            CGRectMake(CGRectGetMidX(presenter.view.bounds), CGRectGetMidY(presenter.view.bounds), 1, 1);
-        [presenter presentViewController:sheet animated:YES completion:nil];
-    };
-    return item;
+static AWESettingsViewModel *DKPageViewModel(UIViewController *page) {
+    return page ? objc_getAssociatedObject(page, &kDKViewModelKey) : nil;
 }
 
-#pragma mark - 滑条项工厂
-
-static NSString *DKPercentSliderDetail(NSInteger percent) {
-    if (percent <= 0) return @"抖音默认";
-    if (percent >= 100) return @"胶囊";
-    return [NSString stringWithFormat:@"%ld%%", (long)percent];
-}
-
-AWESettingItemModel *DKMakePercentSlider(NSString *key, NSString *title, NSString *message,
-                                         NSInteger defaultPercent, void (^onChange)(NSInteger percent)) {
-    AWESettingItemModel *item = [[%c(AWESettingItemModel) alloc] init];
-    NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:key];
-    NSInteger current = stored ? stored.integerValue : defaultPercent;
-    if (current < 0) current = 0;
-    if (current > 100) current = 100;
-
-    item.identifier = key;
-    item.title = title;
-    item.detail = DKPercentSliderDetail(current);
-    item.type = 0;
-    item.cellType = 26;
-    item.colorStyle = 0;
-    item.isEnable = YES;
-
-    __weak AWESettingItemModel *weakItem = item;
-    void (^onChangeCopy)(NSInteger) = [onChange copy];
-    item.cellTappedBlock = ^{
-        UIViewController *presenter = gSettingsPresenter;
-        if (!presenter) return;
-
-        NSNumber *now = [NSUserDefaults.standardUserDefaults objectForKey:key];
-        NSInteger value = now ? now.integerValue : defaultPercent;
-        if (value < 0) value = 0;
-        if (value > 100) value = 100;
-
-        UIAlertController *alert =
-            [UIAlertController alertControllerWithTitle:title
-                                                message:message
-                                         preferredStyle:UIAlertControllerStyleAlert];
-
-        // 读数与滑块都用约束定位：box.view 建出来时是整屏宽，之后被 alert 压到自己的
-        // 内容宽度，写死 frame 会在两侧留下不对称的空当。
-        UIViewController *box = [[UIViewController alloc] init];
-        box.preferredContentSize = CGSizeMake(250.0, 68.0);
-
-        UILabel *readout = [[UILabel alloc] init];
-        readout.text = DKPercentSliderDetail(value);
-        readout.textAlignment = NSTextAlignmentCenter;
-        readout.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
-        readout.translatesAutoresizingMaskIntoConstraints = NO;
-        [box.view addSubview:readout];
-
-        UISlider *slider = [[UISlider alloc] init];
-        slider.minimumValue = 0.0;
-        slider.maximumValue = 100.0;
-        slider.value = (float)value;
-        slider.continuous = YES;
-        slider.translatesAutoresizingMaskIntoConstraints = NO;
-        [box.view addSubview:slider];
-
-        [NSLayoutConstraint activateConstraints:@[
-            [readout.topAnchor constraintEqualToAnchor:box.view.topAnchor constant:4.0],
-            [readout.leadingAnchor constraintEqualToAnchor:box.view.leadingAnchor constant:16.0],
-            [readout.trailingAnchor constraintEqualToAnchor:box.view.trailingAnchor constant:-16.0],
-            [readout.heightAnchor constraintEqualToConstant:22.0],
-            [slider.topAnchor constraintEqualToAnchor:readout.bottomAnchor constant:6.0],
-            [slider.leadingAnchor constraintEqualToAnchor:box.view.leadingAnchor constant:16.0],
-            [slider.trailingAnchor constraintEqualToAnchor:box.view.trailingAnchor constant:-16.0],
-            [slider.heightAnchor constraintEqualToConstant:30.0]
-        ]];
-        [alert setValue:box forKey:@"contentViewController"];
-
-        void (^applyValue)(float, BOOL) = ^(float raw, BOOL finish) {
-            NSInteger percent = (NSInteger)lroundf(raw);
-            if (percent < 0) percent = 0;
-            if (percent > 100) percent = 100;
-            // 拖动途中就把读数写上去，用的是和设置行同一套文案，两处不会出现两种说法。
-            readout.text = DKPercentSliderDetail(percent);
-            [NSUserDefaults.standardUserDefaults setInteger:percent forKey:key];
-            if (onChangeCopy) onChangeCopy(percent);
-            if (!finish) return;
-            [NSUserDefaults.standardUserDefaults synchronize];
-            weakItem.detail = DKPercentSliderDetail(percent);
-            [DKFindTableView(presenter.view) reloadData];
-        };
-
-        _DKSliderRelay *relay = [[_DKSliderRelay alloc] init];
-        relay.block = ^(UISlider *sender) { applyValue(sender.value, NO); };
-        objc_setAssociatedObject(slider, &kDKSliderRelayKey, relay, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [slider addTarget:relay action:@selector(changed:) forControlEvents:UIControlEventValueChanged];
-
-        [alert addAction:[UIAlertAction actionWithTitle:@"完成"
-                                                  style:UIAlertActionStyleDefault
-                                                handler:^(__unused UIAlertAction *action) {
-            applyValue(slider.value, YES);
-        }]];
-        [presenter presentViewController:alert animated:YES completion:nil];
-    };
-    return item;
-}
-
-#pragma mark - 动作项工厂
-
-AWESettingItemModel *DKMakeAction(NSString *key, NSString *title, NSString *detail,
-                                  void (^onTap)(AWESettingItemModel *item, UIViewController *presenter)) {
-    AWESettingItemModel *item = [[%c(AWESettingItemModel) alloc] init];
-    item.identifier = key;
-    item.title = title;
-    item.detail = detail ?: @"";
-    item.type = 0;
-    item.cellType = 26;
-    item.colorStyle = 0;
-    item.isEnable = YES;
-
-    __weak AWESettingItemModel *weakItem = item;
-    void (^onTapCopy)(AWESettingItemModel *, UIViewController *) = [onTap copy];
-    item.cellTappedBlock = ^{
-        UIViewController *presenter = gSettingsPresenter;
-        if (onTapCopy && presenter) onTapCopy(weakItem, presenter);
-    };
-    return item;
+static UITableView *DKPageTableView(UIViewController *page) {
+    if (![page respondsToSelector:@selector(tableView)]) return nil;
+    UITableView *table = ((AWESettingBaseViewController *)page).tableView;
+    return [table isKindOfClass:UITableView.class] ? table : nil;
 }
 
 void DKSettingsReloadCurrentPage(void) {
-    UIViewController *presenter = gSettingsPresenter;
-    if (presenter) [DKFindTableView(presenter.view) reloadData];
+    UIViewController *page = gSettingsPresenter;
+    DKSettingsApplyLocks(DKPageViewModel(page).sectionDataArray);
+    [DKPageTableView(page) reloadData];
 }
 
-#pragma mark - 设置页构建
+void DKSettingsValuesChanged(void) {
+    UIViewController *page = gSettingsPresenter;
+    NSArray<AWESettingItemModel *> *changed = DKSettingsApplyLocks(DKPageViewModel(page).sectionDataArray);
+    for (AWESettingItemModel *item in changed) {
+        if ([item respondsToSelector:@selector(refreshCell)]) [item refreshCell];
+        else { [DKPageTableView(page) reloadData]; break; }
+    }
+}
 
-static AWESettingSectionModel *DKMakeSection(NSString *header, NSArray *items) {
+#pragma mark - 建页
+
+static AWESettingSectionModel *DKMakeSection(NSString *header, NSString *footer, NSArray *items) {
     AWESettingSectionModel *section = [[%c(AWESettingSectionModel) alloc] init];
     section.sectionHeaderTitle = header;
     section.sectionHeaderHeight = 40;
     section.type = 0;
     section.itemArray = items;
+    if (footer.length && [section respondsToSelector:@selector(setSectionFooterTitle:)]) {
+        section.sectionFooterTitle = footer;
+        if ([section respondsToSelector:@selector(setUseNewFooterLayout:)]) section.useNewFooterLayout = YES;
+    }
     return section;
 }
 
-// 手动建一个设置页：设导航标题，把 viewModel 挂在关联对象上供 viewModel getter 回落。
-static AWESettingBaseViewController *DKMakeSettingsPage(NSString *title, NSArray *sections) {
-    AWESettingBaseViewController *vc = [[%c(AWESettingBaseViewController) alloc] init];
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        for (UIView *sub in vc.view.subviews) {
-            if ([sub isKindOfClass:%c(AWENavigationBar)]) {
-                AWENavigationBar *bar = (AWENavigationBar *)sub;
-                if ([bar respondsToSelector:@selector(titleLabel)]) bar.titleLabel.text = title;
-                break;
-            }
-        }
-    });
-
-    AWESettingsViewModel *viewModel = [[%c(AWESettingsViewModel) alloc] init];
-    viewModel.colorStyle = 0;
-    viewModel.sectionDataArray = sections;
-    objc_setAssociatedObject(vc, &kViewModelKey, viewModel, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    return vc;
+static void DKSetNavigationTitle(UIViewController *page, NSString *title) {
+    for (UIView *sub in page.view.subviews) {
+        if (![sub isKindOfClass:%c(AWENavigationBar)]) continue;
+        AWENavigationBar *bar = (AWENavigationBar *)sub;
+        if ([bar respondsToSelector:@selector(titleLabel)]) bar.titleLabel.text = title;
+        return;
+    }
 }
 
-void DKSettingsPushPage(UIViewController *presenter, NSString *title, NSString *sectionHeader,
-                        NSArray<AWESettingItemModel *> *items) {
+static void DKShowEmptyPlaceholder(UIViewController *page) {
+    UITableView *table = DKPageTableView(page);
+    if (!table) return;
+    UILabel *label = [[UILabel alloc] init];
+    label.text = kDKEmptyPlaceholder;
+    label.textAlignment = NSTextAlignmentCenter;
+    label.font = [UIFont systemFontOfSize:13.0];
+    label.textColor = UIColor.secondaryLabelColor;
+    table.backgroundView = label;
+}
+
+// 手动建一个设置页：卡片样式要在 viewDidLoad 前设好（抖音在那里按 useCardUIStyle 配样式）。
+static AWESettingBaseViewController *DKMakeSettingsPage(NSString *title, NSArray *sections) {
+    AWESettingBaseViewController *page = [[%c(AWESettingBaseViewController) alloc] init];
+    if ([page respondsToSelector:@selector(setUseCardUIStyle:)]) page.useCardUIStyle = YES;
+    if ([page respondsToSelector:@selector(setColorStyle:)]) page.colorStyle = 2;
+
+    AWESettingsViewModel *viewModel = [[%c(AWESettingsViewModel) alloc] init];
+    if ([viewModel respondsToSelector:@selector(setColorStyle:)]) viewModel.colorStyle = 2;
+    viewModel.sectionDataArray = sections;
+    objc_setAssociatedObject(page, &kDKViewModelKey, viewModel, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    DKSettingsApplyLocks(sections);
+
+    BOOL empty = sections.count == 0;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DKSetNavigationTitle(page, title);
+        if (empty) DKShowEmptyPlaceholder(page);
+    });
+    return page;
+}
+
+static void DKPushPage(UIViewController *presenter, AWESettingBaseViewController *page) {
     UINavigationController *nav = presenter.navigationController;
-    if (!nav || items.count == 0) return;
-    AWESettingBaseViewController *vc = DKMakeSettingsPage(title, @[ DKMakeSection(sectionHeader, items) ]);
-    [nav pushViewController:vc animated:YES];
+    if (nav && page) [nav pushViewController:page animated:YES];
+}
+
+static NSArray<AWESettingSectionModel *> *DKBuildSections(NSArray<DKSettingsSection *> *layout);
+
+// 子页 / 动作入口；图标由 DKSettingsPrepareItem 统一挂上。
+static AWESettingItemModel *DKMakeEntry(NSString *identifier, NSString *title) {
+    AWESettingItemModel *item = [[%c(AWESettingItemModel) alloc] init];
+    item.identifier = identifier;
+    item.title = title;
+    item.detail = @"";
+    item.type = 0;
+    item.cellType = 26;                // 可点击跳转型 cell
+    item.isEnable = YES;
+    return item;
+}
+
+static AWESettingItemModel *DKMakePageEntry(DKSettingsPage *spec) {
+    AWESettingItemModel *item = DKMakeEntry(spec.identifier, spec.title);
+    __weak AWESettingItemModel *weakItem = item;
+    item.cellTappedBlock = ^{
+        UIViewController *presenter = DKSettingsCurrentPage();
+        if (!presenter || !weakItem.isEnable) return;
+        DKPushPage(presenter, DKMakeSettingsPage(spec.title, DKBuildSections(spec.sections)));
+    };
+    return item;
+}
+
+static AWESettingItemModel *DKMakeLinkEntry(DKSettingsLink *spec) {
+    AWESettingItemModel *item = DKMakeEntry(spec.title, spec.title);
+    item.cellTappedBlock = ^{
+        UIViewController *presenter = DKSettingsCurrentPage();
+        if (!presenter) return;
+        switch (spec.action) {
+            case DKSettingsLinkAuthor: DKSettingsShowAuthorCard(presenter.view); break;
+        }
+    };
+    return item;
+}
+
+// 布局分区 → 抖音分区；未登记的键与空分区跳过。
+static NSArray<AWESettingSectionModel *> *DKBuildSections(NSArray<DKSettingsSection *> *layout) {
+    NSMutableArray<AWESettingSectionModel *> *sections = [NSMutableArray array];
+    for (DKSettingsSection *spec in layout) {
+        NSMutableArray<AWESettingItemModel *> *items = [NSMutableArray array];
+        for (id row in spec.rows) {
+            AWESettingItemModel *item = nil;
+            NSString *icon = nil;
+            if ([row isKindOfClass:DKSettingsRow.class]) {
+                item = DKSettingsBuildItem(((DKSettingsRow *)row).key);
+                icon = ((DKSettingsRow *)row).icon;
+            } else if ([row isKindOfClass:DKSettingsPage.class]) {
+                item = DKMakePageEntry(row);
+                icon = ((DKSettingsPage *)row).icon;
+            } else if ([row isKindOfClass:DKSettingsLink.class]) {
+                item = DKMakeLinkEntry(row);
+                icon = ((DKSettingsLink *)row).icon;
+            }
+            if (!item) continue;
+            DKSettingsPrepareItem(item, icon);
+            [items addObject:item];
+        }
+        if (items.count) [sections addObject:DKMakeSection(spec.header, spec.footer, items)];
+    }
+    return sections;
+}
+
+// 已登记却没写进布局表的键，放进一级页末尾，提醒补布局表。
+static AWESettingSectionModel *DKBuildUnplacedSection(void) {
+    NSSet<NSString *> *placed = DKSettingsLayoutKeys();
+    NSArray<NSString *> *keys = [DKBuilderRegistry().allKeys sortedArrayUsingSelector:@selector(compare:)];
+    NSMutableArray<AWESettingItemModel *> *items = [NSMutableArray array];
+    for (NSString *key in keys) {
+        if ([placed containsObject:key]) continue;
+        AWESettingItemModel *item = DKSettingsBuildItem(key);
+        if (!item) continue;
+        DKSettingsPrepareItem(item, nil);
+        [items addObject:item];
+    }
+    return items.count ? DKMakeSection(kDKUnplacedHeader, nil, items) : nil;
 }
 
 static void DKShowSettings(UIViewController *rootVC) {
     if (!rootVC) return;
+    NSMutableArray *sections = [DKBuildSections(DKSettingsLayoutMain()) mutableCopy];
+    AWESettingSectionModel *unplaced = DKBuildUnplacedSection();
+    if (unplaced) [sections addObject:unplaced];
 
-    // 遍历注册表，按 header 分组（保持首次出现顺序），每项即时构建以反映当前开关状态
-    NSMutableArray<NSString *> *headerOrder = [NSMutableArray array];
-    NSMutableDictionary<NSString *, NSMutableArray *> *itemsByHeader = [NSMutableDictionary dictionary];
-    for (NSDictionary *desc in DKSectionRegistry()) {
-        NSString *header = desc[@"header"];
-        DKSettingItemBuilder builder = desc[@"builder"];
-        AWESettingItemModel *item = builder ? builder() : nil;
-        if (!item) continue;
-        DKGlassLockItemIfNeeded(item);
-        NSMutableArray *arr = itemsByHeader[header];
-        if (!arr) { arr = [NSMutableArray array]; itemsByHeader[header] = arr; [headerOrder addObject:header]; }
-        [arr addObject:item];
-    }
+    AWESettingBaseViewController *page = DKMakeSettingsPage(@"DYKiller", sections);
+    gSettingsPresenter = page;
+    DKPushPage(rootVC, page);
+}
 
-    NSMutableArray *sections = [NSMutableArray array];
-    for (NSString *header in headerOrder) {
-        [sections addObject:DKMakeSection(header, itemsByHeader[header])];
-    }
-
-    AWESettingBaseViewController *vc = DKMakeSettingsPage(@"DYKiller", sections);
-    gSettingsPresenter = vc;
-    [rootVC.navigationController pushViewController:vc animated:YES];
+void DKSettingsPushPage(UIViewController *presenter, NSString *title, NSString *sectionHeader,
+                        NSArray<AWESettingItemModel *> *items) {
+    if (!presenter.navigationController || items.count == 0) return;
+    for (AWESettingItemModel *item in items) DKSettingsPrepareItem(item, nil);
+    DKPushPage(presenter, DKMakeSettingsPage(title, @[ DKMakeSection(sectionHeader, nil, items) ]));
 }
 
 #pragma mark - 钩子
 
-// 手动创建的设置页 viewModel 为 nil 时，回落到我们挂载的关联对象
+static AWESettingItemModel *DKOwnItemAtIndexPath(AWESettingBaseViewController *page, NSIndexPath *indexPath) {
+    NSArray *sections = DKPageViewModel(page).sectionDataArray;
+    if (indexPath.section >= (NSInteger)sections.count) return nil;
+    NSArray *items = ((AWESettingSectionModel *)sections[indexPath.section]).itemArray;
+    if (indexPath.row >= (NSInteger)items.count) return nil;
+    AWESettingItemModel *item = items[indexPath.row];
+    return DKSettingsIsOwnItem(item) ? item : nil;
+}
+
 %hook AWESettingBaseViewController
 
+// 手动创建的设置页 viewModel 为 nil 时，回落到我们挂载的关联对象
 - (AWESettingBaseViewModel *)viewModel {
     AWESettingBaseViewModel *orig = %orig;
-    if (!orig) return objc_getAssociatedObject(self, &kViewModelKey);
+    if (!orig) return objc_getAssociatedObject(self, &kDKViewModelKey);
     return orig;
 }
 
-// 本插件的页面重新出现时（含从子页面返回）接回弹窗宿主，并刷新各行 detail。
+// 本插件的页面重新出现时（含从子页面返回）接回弹窗宿主，重算联动锁并刷新各行。
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
-    if (!objc_getAssociatedObject(self, &kViewModelKey)) return;
+    if (!DKPageViewModel(self)) return;
     gSettingsPresenter = self;
-    [DKFindTableView(self.view) reloadData];
+    DKSettingsReloadCurrentPage();
+}
+
+// 抖音点行时直接调 cellTappedBlock，不看 isEnable；灰显项在这里拦下。
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    AWESettingItemModel *item = DKPageViewModel(self) ? DKOwnItemAtIndexPath(self, indexPath) : nil;
+    if (item && !item.isEnable) {
+        [tableView deselectRowAtIndexPath:indexPath animated:NO];
+        return;
+    }
+    %orig;
+}
+
+%new
+- (BOOL)tableView:(UITableView *)tableView shouldHighlightRowAtIndexPath:(NSIndexPath *)indexPath {
+    AWESettingItemModel *item = DKPageViewModel(self) ? DKOwnItemAtIndexPath(self, indexPath) : nil;
+    return !(item && !item.isEnable);
 }
 
 %end

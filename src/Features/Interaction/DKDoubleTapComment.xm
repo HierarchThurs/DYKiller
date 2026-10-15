@@ -260,7 +260,7 @@ static BOOL DKTapFeedComment(AWEPlayInteractionViewController *controller, id pl
 %end
 
 %ctor {
-    DKSettingsRegisterItem(@"播放体验", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyDoubleTapOpenComment, ^AWESettingItemModel *{
         return DKMakeSwitch(DKKeyDoubleTapOpenComment, @"双击打开评论区", @"双击作品打开评论区，替代原双击操作");
     });
     Class feed = NSClassFromString(@"AWEPlayInteractionViewController");

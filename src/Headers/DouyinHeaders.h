@@ -396,6 +396,95 @@
 + (double)viewHeight;
 @end
 
+#pragma mark - 媒体保存功能组用到的类
+
+// 作品长按面板的一项；actionType 121 为原生「保存至相册」（AWELongPressPanelDownloadViewModel）。
+@interface AWELongPressPanelBaseViewModel : NSObject
+@property (nonatomic, strong) AWEAwemeModel *awemeModel;
+@property (nonatomic, assign) unsigned long long actionType;
+@property (nonatomic, strong) NSString *duxIconName;
+@property (nonatomic, strong) NSString *describeString;
+@property (nonatomic, copy) id action;
+@end
+
+@interface AWELongPressPanelViewGroupModel : NSObject                 // 长按面板的一组
+@property (nonatomic, assign) unsigned long long groupType;
+@property (nonatomic, strong) NSArray *groupArr;
+@property (nonatomic, assign) long long numberOfRowsInSection;
+@property (nonatomic, assign) long long cellHeight;
+@property (nonatomic, assign) BOOL hasMore;
+@property (nonatomic, assign) BOOL isModern;
+@end
+
+@interface AWELongPressPanelManager : NSObject
++ (instancetype)shareInstance;
+- (void)dismissWithAnimation:(BOOL)animated completion:(id)completion;
+@end
+
+@interface AWELongPressPanelTableViewController : UIViewController   // 推荐页视频与图文共用
+- (NSArray *)dataArray;
+@end
+
+@interface AWEModernLongPressPanelTableViewController : UIViewController
+- (NSArray *)dataArray;
+@end
+
+@interface AWECommentImageModel : NSObject                            // 评论图片：download_url 为水印模板
+- (id)originUrl;
+- (id)downloadUrl;
+@end
+
+@interface AWECommentMediaDownloadConfigLivePhoto : NSObject          // 原生评论实况下载配置
+- (BOOL)needClientWaterMark;
+- (BOOL)needClientEndWaterMark;
+- (id)watermarkConfig;
+@end
+
+@interface AWEIMCustomMenuModel : NSObject                            // 私信长按菜单项，点击走 willPerform block
+@property (nonatomic, copy) NSString *title;
+@property (nonatomic, copy) NSString *imageName;
+@property (nonatomic, copy) NSString *lightImageURL;
+@property (nonatomic, copy) NSString *darkImageURL;
+@property (nonatomic, assign) unsigned long long type;
+@property (nonatomic, copy) NSString *trackerName;
+@property (nonatomic, copy) id willPerformMenuActionSelectorBlock;
+@end
+
+@interface AWEIMCustomMenuComponentContext : NSObject
+@property (nonatomic, copy) NSArray *menuItemList;
+@property (nonatomic, strong) UITableViewCell *cell;
+@end
+
+@interface AWEIMCustomMenuComponent : NSObject
+- (void)p_showMenuWithContext:(AWEIMCustomMenuComponentContext *)context;
+- (void)msg_dismissMenu;
+@end
+
+// 表情面板长按预览：按钮行在 container 底部，各操作按钮叠放、按需显示。
+@interface AWEIMEmoticonPreviewV2 : UIView
+@property (nonatomic, strong) UIView *container;
+@property (nonatomic, strong) UIView *content;
+@property (nonatomic, strong) UIView *verticalSeparateLineView;
+@property (nonatomic, strong) UIButton *checkSeriesButton;
+@property (nonatomic, strong) UIButton *addToCustomButton;
+@property (nonatomic, strong) UIButton *deleteFromCustomButton;
+@property (nonatomic, strong) UIButton *deleteDoubleCheckButton;
+@property (nonatomic, strong) UIButton *sendButton;
+@property (nonatomic, strong) id model;
+- (BOOL)shouldShowOptionButtons;
+- (void)p_setupOptionButtonsIfNeededWithModel:(id)model;
+- (void)resetButtonsAndColor;
+- (void)p_hidePreview;
+@end
+
+// 相似表情页头部（单击评论表情、私信表情消息后出现）：buttonStackView 为等宽按钮行。
+@interface AWEIMSimilarEmojiDisplayView : UIView
+@property (nonatomic, strong) UIStackView *buttonStackView;
+- (void)renderWithDisplayModel:(id)model context:(id)context;
+- (void)p_configButtonsWithButtonViewModels:(id)models;
+- (id)p_createButton;
+@end
+
 #pragma mark - 抖音设置系统（注入设置菜单用）
 
 @interface AWESettingItemModel : NSObject
@@ -410,6 +499,7 @@
 @property (nonatomic, assign) BOOL isSwitchOn;
 @property (nonatomic, copy) void (^cellTappedBlock)(void);
 @property (nonatomic, copy) void (^switchChangedBlock)(void);
+- (void)refreshCell;                 // 按当前属性重配所在 cell
 @end
 
 @interface AWESettingSectionModel : NSObject
@@ -417,6 +507,8 @@
 @property (nonatomic, assign) CGFloat sectionHeaderHeight;
 @property (nonatomic, copy) NSString *sectionHeaderTitle;
 @property (nonatomic, strong) NSArray *itemArray;
+@property (nonatomic, copy) NSString *sectionFooterTitle;
+@property (nonatomic, assign) BOOL useNewFooterLayout;   // 页脚按多行说明文字排版
 @end
 
 @interface AWESettingBaseViewModel : NSObject
@@ -429,7 +521,18 @@
 @end
 
 @interface AWESettingBaseViewController : UIViewController
+@property (nonatomic, assign) NSInteger colorStyle;
+@property (nonatomic, assign) BOOL useCardUIStyle;       // viewDidLoad 里据此切圆角卡片样式
+@property (nonatomic, strong, readonly) UITableView *tableView;
 - (AWESettingBaseViewModel *)viewModel;
+@end
+
+// 设置页的行。卡片样式下标题、开关等都在 containerView（即 realContentView）里，
+// 项不可用时抖音调暗的是这一层。
+@interface AWESettingsTableViewCell : UITableViewCell
+@property (nonatomic, strong, readonly) AWESettingItemModel *itemModel;
+@property (nonatomic, strong, readonly) UILabel *titleLabel;
+- (void)updateSubviewsAfterLayout;
 @end
 
 @interface AWENavigationBar : UIView

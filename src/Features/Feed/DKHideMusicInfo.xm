@@ -24,7 +24,7 @@
 #pragma mark - 设置项注册
 
 %ctor {
-    DKSettingsRegisterItem(@"播放体验", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyHideMusicInfo, ^AWESettingItemModel *{
         return DKMakeSwitch(DKKeyHideMusicInfo, @"移除文案下方\"去汽水听\"", @"隐藏视频底部的音乐信息栏（含汽水音乐引导和歌曲名）");
     });
 }

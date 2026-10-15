@@ -527,7 +527,7 @@ static void DKSetCommentEditing(AWECommentContainerViewController *controller, B
 %ctor {
     gDetailInputBackgroundViews = [NSHashTable weakObjectsHashTable];
 
-    DKSettingsRegisterItem(@"评论区", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyCommentHideBottomBar, ^AWESettingItemModel *{
         return DKMakeSwitch(DKKeyCommentHideBottomBar, @"移除评论区底栏", @"隐藏常驻输入栏，回复时临时恢复");
     });
 

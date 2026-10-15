@@ -942,34 +942,9 @@ void DKGlassTabBarRefresh(void) {
 #pragma mark - 设置项注册
 
 %ctor {
-    DKSettingsRegisterItem(@"底栏", ^AWESettingItemModel *{
-        AWESettingItemModel *item = DKMakeSwitch(
-            DKKeyGlassTabBar,
-            @"悬浮玻璃底栏",
-            @"用 iOS 26 原生液态玻璃底栏顶替抖音底栏，标题与拍摄入口镜像自抖音"
-        );
-        // 开关一变立刻生效，不必等抖音下一次布局。
-        void (^origBlock)(void) = [item.switchChangedBlock copy];
-        item.switchChangedBlock = ^{
-            if (origBlock) origBlock();
-            AWENormalModeTabBar *bar = gDouyinBar;
-            if (@available(iOS 26.0, *)) {
-                if (bar) DKGlassUpdate(bar);
-            }
-        };
-        return item;
-    });
-
-    // 同分区按注册顺序排列，注册在后即显示在「悬浮玻璃底栏」下方。
-    DKSettingsRegisterItem(@"底栏", ^AWESettingItemModel *{
-        AWESettingItemModel *item = DKMakeSwitch(
-            DKKeyGlassTabBarClear,
-            @"清透玻璃",
-            @"把悬浮底栏换成清透液态玻璃，背后视频细节可辨；关闭则用系统默认的磨砂材质"
-        );
-        void (^origBlock)(void) = [item.switchChangedBlock copy];
-        item.switchChangedBlock = ^{
-            if (origBlock) origBlock();
+    DKSettingsRegister(DKKeyGlassTabBar, ^AWESettingItemModel *{
+        // 选定后立刻生效，不必等抖音下一次布局。
+        AWESettingItemModel *item = DKMakeGlassChoice(DKKeyGlassTabBar, DKKeyGlassTabBarClear, @"悬浮玻璃底栏", ^{
             AWENormalModeTabBar *bar = gDouyinBar;
             if (@available(iOS 26.0, *)) {
                 if (!bar) return;
@@ -978,8 +953,9 @@ void DKGlassTabBarRefresh(void) {
                 gGlassStyle = UIUserInterfaceStyleUnspecified;
                 DKGlassUpdate(bar);
             }
-        };
-        return item;
+        });
+        return DKSettingsWithInfo(item,
+            @"悬浮底栏的材质：关闭时不显示悬浮玻璃底栏；模糊玻璃使用系统 Regular；清透玻璃显示更多背后视频细节。");
     });
 
     if (DKGlassOSAvailable()) {

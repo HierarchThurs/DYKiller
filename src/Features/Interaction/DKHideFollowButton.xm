@@ -40,7 +40,7 @@ static char kDKFollowBtnHiddenByDK;   // 标记：此 + 由本功能隐藏，供
 #pragma mark - 设置项注册
 
 %ctor {
-    DKSettingsRegisterItem(@"播放体验", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyHideFollowButton, ^AWESettingItemModel *{
         return DKMakeSwitch(DKKeyHideFollowButton, @"移除关注按钮", @"隐藏头像下方的＋并禁止点击");
     });
 }

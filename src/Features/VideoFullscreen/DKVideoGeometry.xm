@@ -176,7 +176,7 @@ static CGRect DKAdjustFrame(UIView *view, CGRect frame) {
 #pragma mark - 设置项注册
 
 %ctor {
-    DKSettingsRegisterItem(@"视频", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyVideoFullscreen, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeSwitch(
             DKKeyVideoFullscreen,
             @"视频全屏",

@@ -547,7 +547,7 @@ static void DKMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
         %init(DKMediaAdaptiveLayoutHook);
     }
 
-    DKSettingsRegisterItem(@"评论区", ^AWESettingItemModel *{
+    DKSettingsRegister(DKKeyCommentMediaCleanBottomBar, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeSwitch(
             DKKeyCommentMediaCleanBottomBar,
             @"评论区图片清理底栏",

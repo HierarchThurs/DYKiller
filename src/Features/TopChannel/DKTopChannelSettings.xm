@@ -18,19 +18,21 @@ static NSString *DKTopChannelString(NSDictionary *entry, NSString *field) {
     return [value isKindOfClass:NSString.class] && [value length] ? value : nil;
 }
 
-static NSString *DKTopChannelRowDetail(NSDictionary *entry) {
-    if ([entry[DKTopChannelFieldLocked] boolValue]) return @"不可移除";
-    if (![entry[DKTopChannelFieldPresent] boolValue]) return @"当前未出现";
+// 频道行的 ⓘ 说明；顶栏文案与频道名不同时（如同城显示为城市名）一并给出频道名。
+static NSString *DKTopChannelRowInfo(NSDictionary *entry, NSString *title) {
+    if ([entry[DKTopChannelFieldLocked] boolValue]) return [NSString stringWithFormat:@"「%@」是首页主频道，不可移除。", title];
     NSString *name = DKTopChannelString(entry, DKTopChannelFieldName);
-    NSString *title = DKTopChannelString(entry, DKTopChannelFieldTitle);
-    return name && title && ![name isEqualToString:title] ? name : @"";
+    NSString *label = name && ![name isEqualToString:title] ? [NSString stringWithFormat:@"「%@」（%@）", title, name]
+                                                           : [NSString stringWithFormat:@"「%@」", title];
+    NSString *absent = [entry[DKTopChannelFieldPresent] boolValue] ? @"" : @"该频道最近一次扫描时未出现。";
+    return [NSString stringWithFormat:@"开启后从首页顶栏移除%@频道，重启抖音后生效。%@", label, absent];
 }
 
 static AWESettingItemModel *DKTopChannelRow(NSDictionary *entry, AWESettingItemModel *entryItem) {
     NSString *channelID = entry[DKTopChannelFieldID];
     NSString *title = DKTopChannelString(entry, DKTopChannelFieldTitle)
         ?: DKTopChannelString(entry, DKTopChannelFieldName) ?: channelID;
-    AWESettingItemModel *item = DKMakeSwitch(DKTopChannelHideKey(channelID), title, DKTopChannelRowDetail(entry));
+    AWESettingItemModel *item = DKMakeSwitch(DKTopChannelHideKey(channelID), title, DKTopChannelRowInfo(entry, title));
 
     if ([entry[DKTopChannelFieldLocked] boolValue]) {
         item.isEnable = NO;
@@ -71,10 +73,12 @@ static void DKTopChannelOpen(AWESettingItemModel *entryItem, UIViewController *p
 #pragma mark - 设置项注册
 
 %ctor {
-    DKSettingsRegisterItem(@"顶部频道", ^AWESettingItemModel *{
-        return DKMakeAction(DKKeyTopChannels, @"移除顶部频道", DKTopChannelEntryDetail(),
-                            ^(AWESettingItemModel *item, UIViewController *presenter) {
-            DKTopChannelOpen(item, presenter);
+    DKSettingsRegister(DKKeyTopChannels, ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeAction(DKKeyTopChannels, @"移除顶部频道", DKTopChannelEntryDetail(),
+                                                 ^(AWESettingItemModel *it, UIViewController *presenter) {
+            DKTopChannelOpen(it, presenter);
         });
+        return DKSettingsWithInfo(item,
+            @"逐个选择要从首页顶栏移除的频道，重启抖音后生效；「推荐」不可移除。需先打开过首页，才能扫描到频道列表。");
     });
 }
