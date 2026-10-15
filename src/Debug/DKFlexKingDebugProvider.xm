@@ -1,4 +1,5 @@
 #import "DKFlexKingProviderSDK.h"
+#import "DKBackupEntries.h"
 #import "DKMediaSaveDiagnostics.h"
 #import "DKTabBarProbe.h"
 #import "DKVideoFeedTable.h"
@@ -15,6 +16,7 @@ static NSDictionary *DKFKProviderSnapshot(void) {
     Class detail=NSClassFromString(@"AWEAwemeDetailTableViewController");SEL selector=NSSelectorFromString(@"viewDidLayoutSubviews");Method method=detail?class_getInstanceMethod(detail,selector):NULL;
     if(method){IMP imp=method_getImplementation(method);Dl_info info={0};dladdr((void *)imp,&info);result[@"detail_layout_hook"]=@{@"class":NSStringFromClass(detail),@"selector":NSStringFromSelector(selector),@"current_imp":[NSString stringWithFormat:@"%p",imp],@"image_path":info.dli_fname?@(info.dli_fname):@"",@"symbol":info.dli_sname?@(info.dli_sname):@"",@"encoding":@(method_getTypeEncoding(method))};}
     else result[@"detail_layout_hook"]=@{@"state":@"method_unavailable"};
+    result[@"settings_backup"]=DKSettingsBackupDiagnostics() ?: @{};
     return result;
 }
 static void DKRegisterFLEXKingDebugProvider(void) {
