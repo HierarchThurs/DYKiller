@@ -9,6 +9,37 @@
 
 #import <UIKit/UIKit.h>
 
+#pragma mark - 播放交互右侧功能区
+
+@interface AWEElementStackView : UIStackView
+@end
+
+@interface AWEFeedVideoButton : UIButton
+@property (nonatomic, readonly, strong) UIImageView *buttonImageView;
+@property (nonatomic, strong) UIImageView *aweImageView;
+@property (nonatomic, strong) UILabel *label;
+@property (nonatomic, strong) UILabel *buttonLabel;
+@property (nonatomic, strong) UIView *containerView;
+@end
+
+@interface AWEPlayInteractionListenFeedView : UIView
+- (void)layoutWithSize:(CGSize)size;
+@end
+
+@interface AWEMusicCoverButton : UIButton
+@end
+
+@interface AWEPlayInteractionUserProfileContainerView : UIView
+@end
+
+@interface AWEPlayInteractionUserProfilePictureView : UIView
+@property (nonatomic, strong) UIButton *avatarButton;
+- (CGRect)getAvatarFrame;
+@end
+
+@interface AWEPlayInteractionFollowPromptView : UIView
+@end
+
 #pragma mark - 详情页视频功能组用到的类
 
 @class AWEAwemeDetailTableView;
@@ -299,9 +330,6 @@
 
 @interface AWEListenFeedPlayControlView : UIView
 - (void)commentButtonClicked:(id)sender;
-@end
-
-@interface AWEPlayInteractionFollowPromptView : UIView             // 头像下方「关注(+)」容器；整视图仅含 + 图标
 @end
 
 #pragma mark - 内容过滤用到的类

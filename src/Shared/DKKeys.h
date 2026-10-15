@@ -46,13 +46,43 @@ static NSString *const DKKeyInnerNotiCorner     = @"DYKillerInnerNotiCorner";
 static NSString *const DKKeyGlassTabBar      = @"DYKillerGlassTabBar";
 static NSString *const DKKeyGlassTabBarClear = @"DYKillerGlassTabBarClear";
 // 自定义拍摄图标：图片本体存文件（见 DKPlusIcon.xm），这个键只作设置项 identifier，
-// 供液态玻璃守卫认出并在低系统上灰显，NSUserDefaults 里不写值。
+// NSUserDefaults 里不写值。是否使用由「拍摄按钮」（DKKeyPlusStyle）选「自定义图片」决定。
 static NSString *const DKKeyPlusIcon         = @"DYKillerPlusIcon";
 // 底栏项目移除：每项一个 BOOL 键，前缀 + 抖音 tabID（见 DKTabBarRemoval.xm）。
 static NSString *const DKKeyBottomBarHidePrefix = @"DYKillerHideBottomBar.";
 static NSString *const DKKeyHidePlusButton      = @"DYKillerHideBottomBar.homepage_publish";
 // 设置主页入口的 identifier，NSUserDefaults 里不写值。
 static NSString *const DKKeyBottomBar           = @"DYKillerBottomBar";
+
+#pragma mark - 功能组：外观定制
+
+// 底栏样式（单选，整数）：0 默认 / 1 单图标 / 2 图标+文字，作用于首页、朋友或商城、消息、我。
+static NSString *const DKKeyTabBarStyle = @"DYKillerTabBarStyle";
+// 拍摄按钮（单选，整数）：0 默认 / 1 新图标 / 2 新双色图标 / 3 自定义图片（图片本体见 DKKeyPlusIcon）。
+static NSString *const DKKeyPlusStyle   = @"DYKillerPlusStyle";
+// 底栏文字：每项一个字符串键，前缀 + 抖音 tabID；未设置即抖音默认文字。
+static NSString *const DKKeyTabTitlePrefix       = @"DYKillerTabBarTitle.";
+static NSString *const DKKeyTabTitleHome         = @"DYKillerTabBarTitle.homepage_home";
+static NSString *const DKKeyTabTitleFriends      = @"DYKillerTabBarTitle.homepage_familiar";
+static NSString *const DKKeyTabTitleMall         = @"DYKillerTabBarTitle.homepage_mall";
+static NSString *const DKKeyTabTitleNotification = @"DYKillerTabBarTitle.homepage_notification";
+static NSString *const DKKeyTabTitleProfile      = @"DYKillerTabBarTitle.homepage_profile";
+
+#pragma mark - 功能组：互动按钮
+
+// 透明度：0–100，默认 100；缩放：50–100，默认 100；显示方式：0 默认显示 / 1 隐藏可点击 / 2 隐藏不可点击。
+static NSString *const DKKeyInteractionIconAlpha  = @"DYKillerInteractionIconAlpha";
+static NSString *const DKKeyInteractionLabelAlpha = @"DYKillerInteractionLabelAlpha";
+static NSString *const DKKeyAvatarAlpha           = @"DYKillerAvatarAlpha";
+static NSString *const DKKeyMusicAlpha            = @"DYKillerMusicAlpha";
+static NSString *const DKKeyInteractionScale      = @"DYKillerInteractionScale";
+static NSString *const DKKeyAvatarScale            = @"DYKillerAvatarScale";
+static NSString *const DKKeyMusicScale             = @"DYKillerMusicScale";
+static NSString *const DKKeyInteractionDisplay    = @"DYKillerInteractionDisplay";
+static NSString *const DKKeyAvatarDisplay         = @"DYKillerAvatarDisplay";
+static NSString *const DKKeyMusicDisplay          = @"DYKillerMusicDisplay";
+// 互动区域上移：0–100 pt，默认 0（抖音原位）；头像、互动按钮、音乐整体上移。
+static NSString *const DKKeyInteractionOffset     = @"DYKillerInteractionOffset";
 
 #pragma mark - 功能组：音频可视化
 
