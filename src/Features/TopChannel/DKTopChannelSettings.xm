@@ -54,6 +54,18 @@ static AWESettingItemModel *DKTopChannelRow(NSDictionary *entry, AWESettingItemM
     return item;
 }
 
+// 按目录里的顶栏文案列出频道；目录里没有的 ID 原样列出。
+static NSString *DKTopChannelNames(NSArray<NSString *> *channelIDs) {
+    NSMutableDictionary<NSString *, NSString *> *titles = [NSMutableDictionary dictionary];
+    for (NSDictionary *entry in DKTopChannelCatalog()) {
+        NSString *title = DKTopChannelString(entry, DKTopChannelFieldTitle) ?: DKTopChannelString(entry, DKTopChannelFieldName);
+        if (title) titles[entry[DKTopChannelFieldID]] = title;
+    }
+    NSMutableArray<NSString *> *names = [NSMutableArray arrayWithCapacity:channelIDs.count];
+    for (NSString *channelID in channelIDs) [names addObject:titles[channelID] ?: channelID];
+    return [names componentsJoinedByString:@"、"];
+}
+
 static void DKTopChannelOpen(AWESettingItemModel *entryItem, UIViewController *presenter) {
     NSArray<NSDictionary *> *catalog = DKTopChannelCatalog();
     if (catalog.count == 0) {
@@ -78,7 +90,14 @@ static void DKTopChannelOpen(AWESettingItemModel *entryItem, UIViewController *p
                                                  ^(AWESettingItemModel *it, UIViewController *presenter) {
             DKTopChannelOpen(it, presenter);
         });
-        return DKSettingsWithInfo(item,
-            @"逐个选择要从首页顶栏移除的频道，重启抖音后生效；「推荐」不可移除。需先打开过首页，才能扫描到频道列表。");
+        DKSettingsWithValues(item, @[ [DKSettingsValue idSetWithPrefix:DKKeyTopChannelHidePrefix] ],
+            ^NSString *(NSArray *values, BOOL brief) {
+                NSArray<NSString *> *channelIDs = values[0];
+                if (channelIDs.count == 0) return @"未移除";
+                return brief ? [NSString stringWithFormat:@"已移除 %lu 个", (unsigned long)channelIDs.count]
+                             : DKTopChannelNames(channelIDs);
+            });
+        return DKSettingsNeedsRestart(DKSettingsWithInfo(item,
+            @"逐个选择要从首页顶栏移除的频道，重启抖音后生效；「推荐」不可移除。需先打开过首页，才能扫描到频道列表。"));
     });
 }

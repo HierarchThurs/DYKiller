@@ -20,10 +20,7 @@
 static char kDKFilterNumberInputKey;
 
 static AWESettingItemModel *DKFilterSwitch(NSString *key, NSString *title, NSString *detail) {
-    AWESettingItemModel *item = DKMakeSwitch(key, title, detail);
-    void (^original)(void) = item.switchChangedBlock;
-    item.switchChangedBlock = ^{ original(); DKFilterPreferencesChanged(); };
-    return item;
+    return DKSettingsOnChange(DKMakeSwitch(key, title, detail), ^{ DKFilterPreferencesChanged(); });
 }
 
 static NSString *DKFilterThresholdDetail(long long value) {
@@ -61,6 +58,11 @@ static AWESettingItemModel *DKFilterThresholdItem(void) {
         [input changed:alert.textFields.firstObject];
         [presenter presentViewController:alert animated:YES completion:nil];
     });
+    DKSettingsWithValues(threshold, @[ [DKSettingsValue integerWithKey:DKKeyMinimumLikes minimum:0 maximum:LLONG_MAX] ],
+        ^NSString *(NSArray *values, __unused BOOL brief) {
+            return DKFilterThresholdDetail(values[0] == NSNull.null ? 0 : [values[0] longLongValue]);
+        });
+    DKSettingsOnChange(threshold, ^{ DKFilterPreferencesChanged(); });
     return DKSettingsWithInfo(threshold,
         @"「低赞过滤」的阈值：首页推荐里点赞数低于该值的作品不再出现；填 0 不筛选，修改从后续批次生效。");
 }

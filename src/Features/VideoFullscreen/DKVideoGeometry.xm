@@ -183,12 +183,9 @@ static CGRect DKAdjustFrame(UIView *view, CGRect frame) {
             @"首页、朋友页、好友聊天页、搜索页、用户作品页统一铺满整屏；"
             @"其他比例视频的原生背景延伸至底栏，文案与进度条保持原位"
         );
-        void (^origBlock)(void) = [item.switchChangedBlock copy];
-        item.switchChangedBlock = ^{
-            if (origBlock) origBlock();
+        return DKSettingsOnChange(item, ^{
             if (DKVideoFullscreenOn()) return;
             for (NSUInteger i = 0; i < gRestoreCount; i++) gRestoreHooks[i]();
-        };
-        return item;
+        });
     });
 }

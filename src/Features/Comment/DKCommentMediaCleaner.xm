@@ -553,9 +553,7 @@ static void DKMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
             @"评论区图片清理底栏",
             @"隐藏图片页底栏、返回键与底部交互，图片完整居中显示"
         );
-        void (^origBlock)(void) = [item.switchChangedBlock copy];
-        item.switchChangedBlock = ^{
-            if (origBlock) origBlock();
+        return DKSettingsOnChange(item, ^{
             void (^refresh)(void) = ^{
                 BOOL enabled = DKCommentMediaCleanerEnabled();
                 if (!enabled) DKMediaRestoreAllViews();
@@ -567,7 +565,6 @@ static void DKMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
             };
             if (NSThread.isMainThread) refresh();
             else dispatch_async(dispatch_get_main_queue(), refresh);
-        };
-        return item;
+        });
     });
 }

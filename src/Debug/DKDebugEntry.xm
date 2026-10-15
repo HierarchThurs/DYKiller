@@ -46,8 +46,9 @@ static AWESettingItemModel *DKMakeDebugSwitch(void) {
 
 %ctor {
     DKAudioProbeInstallIfEnabled(YES);
+    // 调试入口按设备临时开关，不进备份，恢复与恢复默认都不改它。
     DKSettingsRegister(DKKeyDebugInspectorEnabled, ^AWESettingItemModel *{
-        return DKMakeDebugSwitch();
+        return DKSettingsWithoutBackup(DKMakeDebugSwitch());
     });
     DKDebugInspectorInstall();
 }

@@ -18,6 +18,11 @@
 
 static char kDKPickerRelayKey;
 
+// 备份恢复时接受的图标：与 DKIconCropper 的输出一致，正方形 PNG，边长 128–512。
+static const NSUInteger kDKPlusIconMinSide = 128;
+static const NSUInteger kDKPlusIconMaxSide = 512;
+static const NSUInteger kDKPlusIconMaxBytes = 4 * 1024 * 1024;
+
 // 弹窗里缩略图/占位文案的高度。
 static const CGFloat kDKPreviewSide = 88.0;
 static const CGFloat kDKPreviewPadding = 8.0;
@@ -67,6 +72,13 @@ static void DKPlusIconStore(UIImage *icon) {
     if (!data || ![data writeToFile:path atomically:YES]) return;
     gCustomIconLoaded = YES;
     gCustomIcon = icon;
+}
+
+// 文件被备份恢复替换或删除后，丢掉内存里的旧图，下次取图重新读盘。
+static void DKPlusIconReload(void) {
+    gCustomIconLoaded = NO;
+    gCustomIcon = nil;
+    DKGlassTabBarRefresh();
 }
 
 static NSString *DKPlusIconDetail(void) {
@@ -221,6 +233,13 @@ static void DKPlusIconShowDialog(AWESettingItemModel *item, UIViewController *pr
                                                  ^(AWESettingItemModel *it, UIViewController *presenter) {
             DKPlusIconShowDialog(it, presenter);
         });
+        DKSettingsValue *icon = [DKSettingsValue imageWithName:DKKeyPlusIcon path:DKPlusIconPath() types:@[ @"public.png" ]
+                                                      maxBytes:kDKPlusIconMaxBytes minSide:kDKPlusIconMinSide
+                                                       maxSide:kDKPlusIconMaxSide square:YES];
+        DKSettingsWithValues(item, @[ icon ], ^NSString *(NSArray *values, __unused BOOL brief) {
+            return values[0] == NSNull.null ? @"抖音默认" : @"已自定义";
+        });
+        DKSettingsOnChange(item, ^{ DKPlusIconReload(); });
         return DKSettingsWithInfo(item,
             @"从相册选一张图片裁成圆形，替换悬浮玻璃底栏中间的拍摄按钮图标；点「清除」恢复抖音默认图标。");
     });
