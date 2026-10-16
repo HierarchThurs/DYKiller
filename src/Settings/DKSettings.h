@@ -49,6 +49,11 @@ void DKSettingsSetItemEnabled(AWESettingItemModel *item, BOOL enabled);
 /// 开关项（identifier 即 NSUserDefaults 键）。detail 作为 ⓘ 说明，行内不显示。
 AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *detail);
 
+/// 打开前须确认的开关：用户打开时先交给 confirm，confirm 调用 commit 才写入并触发 onChange；
+/// 不调用即保持关闭。关闭不经确认。
+AWESettingItemModel *DKMakeSwitchConfirmingOn(NSString *key, NSString *title, NSString *detail,
+                                              void (^confirm)(UIViewController *presenter, dispatch_block_t commit));
+
 /// 单选项：点击弹底部列表，选中项的下标写进 NSUserDefaults（整数），options[0] 对应 0。
 /// 当前选中项显示在行右侧。
 AWESettingItemModel *DKMakeChoice(NSString *key, NSString *title, NSArray<NSString *> *options);
@@ -79,6 +84,11 @@ AWESettingItemModel *DKMakeUnitSlider(NSString *key, NSString *title, NSString *
 AWESettingItemModel *DKMakeRangeSlider(NSString *key, NSString *title, NSString *message,
                                        NSInteger minimum, NSInteger maximum, NSInteger defaultValue,
                                        void (^onChange)(NSInteger value));
+
+/// 缩放与位移类滑条：范围、默认值与单位取自 DKAdjustRange 登记表，随「扩展所有缩放与位移」放宽；
+/// 说明末尾附当前可调范围。落盘值按扩展范围声明。key 必须已在登记表中。
+AWESettingItemModel *DKMakeAdjustSlider(NSString *key, NSString *title, NSString *message,
+                                        void (^onChange)(NSInteger value));
 
 /// 动作项：点击时把该项与当前设置页交给 onTap，界面由功能自己弹。
 /// 状态不落在 NSUserDefaults 上（key 只作 identifier）的功能用它；须声明值或排除备份。

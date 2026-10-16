@@ -79,6 +79,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyBlockSideBarSwipe, @"ic_switch_outlined"),
             DKRow(DKKeyTopBarSearchMode, @"ic_videosearch_outlined_20"),
             DKRow(DKKeyTopChannels, @"ic_doublearrowup_outlined_20"),
+            DKRow(DKKeyTopBarAlpha, @"ic_eyeslash_outlined_20"),
         ]),
         DKSection(@"视频播放", @[
             DKRow(DKKeyHideFollowButton, @"ic_userplus_outlined_20"),
@@ -130,6 +131,19 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyInteractionDisplay, @"ic_module_outlined_20"),
                     DKRow(DKKeyAvatarDisplay, @"ic_user_outlined_20"),
                     DKRow(DKKeyMusicDisplay, @"ic_quaver_outlined_20"),
+                ]),
+            ]),
+            DKPage(@"昵称文案", @"ic_text_outlined_20", @[
+                DKSection(@"透明度", @[
+                    DKRow(DKKeyNicknameAlpha, @"ic_user_outlined_20"),
+                    DKRow(DKKeyDescriptionAlpha, @"ic_text_outlined_20"),
+                ]),
+                DKSection(@"缩放", @[
+                    DKRow(DKKeyNicknameScale, @"ic_user_outlined_20"),
+                    DKRow(DKKeyDescriptionScale, @"ic_text_outlined_20"),
+                ]),
+                DKSection(@"位置", @[
+                    DKRow(DKKeyInfoOffset, @"ic_doublearrowup_outlined_20"),
                 ]),
             ]),
         ]),
@@ -204,6 +218,9 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
     DKSettingsPage *tools = DKPage(@"插件工具", @"ic_gearsimplify_outlined_20", @[
         DKSection(@"调试", @[
             DKRow(DKKeyDebugInspectorEnabled, @"ic_videosearch_outlined_20"),
+        ]),
+        DKSection(@"高级", @[
+            DKRow(DKKeyAdjustRangeExtended, @"ic_fullscreen_outlined_16"),
         ]),
     ]);
 

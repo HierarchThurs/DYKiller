@@ -70,7 +70,8 @@ static NSString *const DKKeyTabTitleProfile      = @"DYKillerTabBarTitle.homepag
 
 #pragma mark - 功能组：互动按钮
 
-// 透明度：0–100，默认 100；缩放：50–100，默认 100；显示方式：0 默认显示 / 1 隐藏可点击 / 2 隐藏不可点击。
+// 透明度：0–100，默认 100；缩放：常规 50–100，默认 100；显示方式：0 默认显示 / 1 隐藏可点击 / 2 隐藏不可点击。
+// 缩放与上移的范围登记在 DKAdjustRange.m，开启「扩展所有缩放与位移」后放宽。
 static NSString *const DKKeyInteractionIconAlpha  = @"DYKillerInteractionIconAlpha";
 static NSString *const DKKeyInteractionLabelAlpha = @"DYKillerInteractionLabelAlpha";
 static NSString *const DKKeyAvatarAlpha           = @"DYKillerAvatarAlpha";
@@ -83,6 +84,16 @@ static NSString *const DKKeyAvatarDisplay         = @"DYKillerAvatarDisplay";
 static NSString *const DKKeyMusicDisplay          = @"DYKillerMusicDisplay";
 // 互动区域上移：0–100 pt，默认 0（抖音原位）；头像、互动按钮、音乐整体上移。
 static NSString *const DKKeyInteractionOffset     = @"DYKillerInteractionOffset";
+
+#pragma mark - 功能组：昵称文案
+
+// 视频左下昵称一行与文案及其余信息行。透明度：0–100，默认 100；缩放：常规 25–100，默认 100；
+// 上移：常规 0–100 pt，默认 0。缩放与上移的范围登记在 DKAdjustRange.m。
+static NSString *const DKKeyNicknameAlpha    = @"DYKillerNicknameAlpha";
+static NSString *const DKKeyDescriptionAlpha = @"DYKillerDescriptionAlpha";
+static NSString *const DKKeyNicknameScale    = @"DYKillerNicknameScale";
+static NSString *const DKKeyDescriptionScale = @"DYKillerDescriptionScale";
+static NSString *const DKKeyInfoOffset       = @"DYKillerInfoOffset";
 
 #pragma mark - 功能组：音频可视化
 
@@ -122,6 +133,8 @@ static NSString *const DKKeyTopBarSideBarMode = @"DYKillerTopBarSideBarMode";
 static NSString *const DKKeyTopBarSearchMode  = @"DYKillerTopBarSearchMode";
 // 屏蔽在最左侧频道右滑展开左侧栏。
 static NSString *const DKKeyBlockSideBarSwipe = @"DYKillerBlockSideBarSwipe";
+// 顶栏透明度：0–100，默认 100；作用于左侧栏入口、全部频道与搜索图标。
+static NSString *const DKKeyTopBarAlpha       = @"DYKillerTopBarAlpha";
 
 #pragma mark - 功能组：个人主页
 
@@ -163,6 +176,11 @@ static NSString *const DKKeyBackupLastExportDate = @"DYKillerBackupLastExportDat
 
 // 「液态玻璃 (iOS26+)」子页入口的 identifier，供玻璃守卫在低系统灰显整个入口；不写值。
 static NSString *const DKKeySettingsPageGlass = @"DYKillerPageLiquidGlass";
+
+#pragma mark - 功能组：调整范围
+
+// 扩展所有缩放与位移：开启后 DKAdjustRange 登记的各项按扩展范围生效。开启前须确认，不进备份。
+static NSString *const DKKeyAdjustRangeExtended = @"DYKillerAdjustRangeExtended";
 
 #pragma mark - 功能组：调试工具
 

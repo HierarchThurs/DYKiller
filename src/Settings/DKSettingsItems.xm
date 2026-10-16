@@ -6,6 +6,7 @@
 //
 
 #import "DKSettingsInternal.h"
+#import "DKAdjustRange.h"
 #import <math.h>
 #import <objc/runtime.h>
 
@@ -179,6 +180,32 @@ AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *deta
     return item;
 }
 
+AWESettingItemModel *DKMakeSwitchConfirmingOn(NSString *key, NSString *title, NSString *detail,
+                                              void (^confirm)(UIViewController *presenter, dispatch_block_t commit)) {
+    AWESettingItemModel *item = DKMakeSwitch(key, title, detail);
+    dispatch_block_t toggle = [item.switchChangedBlock copy];
+    void (^confirmCopy)(UIViewController *, dispatch_block_t) = [confirm copy];
+    __weak AWESettingItemModel *weakItem = item;
+    item.switchChangedBlock = ^{
+        __strong AWESettingItemModel *it = weakItem;
+        if (!it.isEnable) return;
+        if (it.isSwitchOn || !confirmCopy) {
+            toggle();
+            return;
+        }
+        // 打开要先确认：行上的开关先拨回关，确认后由 commit 打开；取不到宿主页就不打开。
+        DKSettingsReloadCurrentPage();
+        UIViewController *presenter = DKSettingsCurrentPage();
+        if (!presenter) return;
+        confirmCopy(presenter, ^{
+            if (weakItem.isSwitchOn) return;
+            toggle();
+            DKSettingsReloadCurrentPage();
+        });
+    };
+    return item;
+}
+
 #pragma mark - 单选
 
 // 单选行：点击弹出框，选中后交给 apply 写入，再调项上的 onChange。current 越界时按第 0 项显示。
@@ -341,47 +368,47 @@ AWESettingItemModel *DKMakeGlassChoice(NSString *key, NSString *clearKey, NSStri
 #pragma mark - 有界滑条
 
 typedef NSString * (^DKSliderDetailBlock)(NSInteger value);
+typedef DKAdjustBounds (^DKSliderBoundsBlock)(void);
+typedef NSString * (^DKSliderMessageBlock)(void);
 
-static NSInteger DKClampSliderValue(NSInteger value, NSInteger minimum, NSInteger maximum) {
-    return MIN(maximum, MAX(minimum, value));
+static NSInteger DKClampSliderValue(NSInteger value, DKAdjustBounds bounds) {
+    return MIN(bounds.maximum, MAX(bounds.minimum, value));
 }
 
-static AWESettingItemModel *DKMakeBoundedSlider(NSString *key, NSString *title, NSString *message,
-                                                NSInteger minimum, NSInteger maximum, NSInteger defaultValue,
-                                                DKSliderDetailBlock detailBlock,
+// 滑条范围与说明在显示、点开、onChange 时求值，可随「扩展所有缩放与位移」变化；
+// 落盘值按 declared 声明，备份能容纳任一状态下写入的值。
+static AWESettingItemModel *DKMakeBoundedSlider(NSString *key, NSString *title, DKSliderMessageBlock message,
+                                                DKAdjustBounds declared, DKSliderBoundsBlock bounds,
+                                                NSInteger defaultValue, DKSliderDetailBlock detailBlock,
                                                 void (^onChange)(NSInteger value)) {
-    if (maximum < minimum) maximum = minimum;
-    defaultValue = DKClampSliderValue(defaultValue, minimum, maximum);
-    NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:key];
-    NSInteger current = stored ? stored.integerValue : defaultValue;
-    current = DKClampSliderValue(current, minimum, maximum);
+    defaultValue = DKClampSliderValue(defaultValue, declared);
+    NSInteger (^currentValue)(void) = ^NSInteger {
+        NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:key];
+        return DKClampSliderValue(stored ? stored.integerValue : defaultValue, bounds());
+    };
 
     AWESettingItemModel *item = DKMakeItem(key, title, 26);
-    item.detail = detailBlock(current);
+    item.detail = detailBlock(currentValue());
 
     __weak AWESettingItemModel *weakItem = item;
     void (^onChangeCopy)(NSInteger) = [onChange copy];
-    DKSettingsWithValues(item, @[ [DKSettingsValue integerWithKey:key minimum:minimum maximum:maximum] ],
+    DKSettingsWithValues(item, @[ [DKSettingsValue integerWithKey:key minimum:declared.minimum maximum:declared.maximum] ],
         ^NSString *(NSArray *values, __unused BOOL brief) {
             NSInteger value = values[0] == NSNull.null ? defaultValue : [values[0] integerValue];
-            return detailBlock(DKClampSliderValue(value, minimum, maximum));
+            return detailBlock(DKClampSliderValue(value, bounds()));
         });
     if (onChangeCopy) {
-        DKSettingsOnChange(item, ^{
-            NSNumber *now = [NSUserDefaults.standardUserDefaults objectForKey:key];
-            NSInteger value = DKClampSliderValue(now ? now.integerValue : defaultValue, minimum, maximum);
-            onChangeCopy(value);
-        });
+        DKSettingsOnChange(item, ^{ onChangeCopy(currentValue()); });
     }
 
     item.cellTappedBlock = ^{
         UIViewController *presenter = DKSettingsCurrentPage();
         if (!presenter || !weakItem.isEnable) return;
 
-        NSNumber *now = [NSUserDefaults.standardUserDefaults objectForKey:key];
-        NSInteger value = DKClampSliderValue(now ? now.integerValue : defaultValue, minimum, maximum);
+        DKAdjustBounds range = bounds();
+        NSInteger value = currentValue();
         UIAlertController *alert =
-            [UIAlertController alertControllerWithTitle:title message:message
+            [UIAlertController alertControllerWithTitle:title message:message()
                                          preferredStyle:UIAlertControllerStyleAlert];
 
         UIViewController *box = [[UIViewController alloc] init];
@@ -395,8 +422,8 @@ static AWESettingItemModel *DKMakeBoundedSlider(NSString *key, NSString *title, 
         [box.view addSubview:readout];
 
         UISlider *slider = [[UISlider alloc] init];
-        slider.minimumValue = (float)minimum;
-        slider.maximumValue = (float)maximum;
+        slider.minimumValue = (float)range.minimum;
+        slider.maximumValue = (float)range.maximum;
         slider.value = (float)value;
         slider.continuous = YES;
         slider.translatesAutoresizingMaskIntoConstraints = NO;
@@ -415,7 +442,7 @@ static AWESettingItemModel *DKMakeBoundedSlider(NSString *key, NSString *title, 
         [alert setValue:box forKey:@"contentViewController"];
 
         void (^applyValue)(float, BOOL) = ^(float raw, BOOL finish) {
-            NSInteger next = DKClampSliderValue((NSInteger)lroundf(raw), minimum, maximum);
+            NSInteger next = DKClampSliderValue((NSInteger)lroundf(raw), range);
             readout.text = detailBlock(next);
             [NSUserDefaults.standardUserDefaults setInteger:next forKey:key];
             if (onChangeCopy) onChangeCopy(next);
@@ -438,6 +465,16 @@ static AWESettingItemModel *DKMakeBoundedSlider(NSString *key, NSString *title, 
     return item;
 }
 
+// 范围固定的滑条。
+static AWESettingItemModel *DKMakeFixedSlider(NSString *key, NSString *title, NSString *message,
+                                              NSInteger minimum, NSInteger maximum, NSInteger defaultValue,
+                                              DKSliderDetailBlock detailBlock, void (^onChange)(NSInteger value)) {
+    DKAdjustBounds fixed = { minimum, MAX(minimum, maximum) };
+    NSString *messageCopy = [message copy];
+    return DKMakeBoundedSlider(key, title, ^NSString *{ return messageCopy; }, fixed,
+                               ^DKAdjustBounds { return fixed; }, defaultValue, detailBlock, onChange);
+}
+
 static NSString *DKPercentSliderDetail(NSInteger percent) {
     if (percent <= 0) return @"抖音默认";
     if (percent >= 100) return @"胶囊";
@@ -446,16 +483,16 @@ static NSString *DKPercentSliderDetail(NSInteger percent) {
 
 AWESettingItemModel *DKMakePercentSlider(NSString *key, NSString *title, NSString *message,
                                          NSInteger defaultPercent, void (^onChange)(NSInteger percent)) {
-    return DKMakeBoundedSlider(key, title, message, 0, 100, defaultPercent,
-                               ^NSString *(NSInteger value) { return DKPercentSliderDetail(value); }, onChange);
+    return DKMakeFixedSlider(key, title, message, 0, 100, defaultPercent,
+                             ^NSString *(NSInteger value) { return DKPercentSliderDetail(value); }, onChange);
 }
 
 AWESettingItemModel *DKMakeUnitSlider(NSString *key, NSString *title, NSString *message,
                                       NSInteger minimum, NSInteger maximum, NSInteger defaultValue,
                                       NSString *unit, void (^onChange)(NSInteger value)) {
     NSString *suffix = [unit copy] ?: @"";
-    return DKMakeBoundedSlider(key, title, message, minimum, maximum, defaultValue,
-                               ^NSString *(NSInteger value) {
+    return DKMakeFixedSlider(key, title, message, minimum, maximum, defaultValue,
+                             ^NSString *(NSInteger value) {
         return [NSString stringWithFormat:@"%ld%@", (long)value, suffix];
     }, onChange);
 }
@@ -464,6 +501,24 @@ AWESettingItemModel *DKMakeRangeSlider(NSString *key, NSString *title, NSString 
                                        NSInteger minimum, NSInteger maximum, NSInteger defaultValue,
                                        void (^onChange)(NSInteger value)) {
     return DKMakeUnitSlider(key, title, message, minimum, maximum, defaultValue, @"%", onChange);
+}
+
+AWESettingItemModel *DKMakeAdjustSlider(NSString *key, NSString *title, NSString *message,
+                                        void (^onChange)(NSInteger value)) {
+    DKAdjustKind kind = DKAdjustKindForKey(key);
+    NSString *messageCopy = [message copy];
+    DKSliderMessageBlock fullMessage = ^NSString * {
+        BOOL extended = DKAdjustRangeExtended();
+        DKAdjustBounds range = DKAdjustEffectiveBounds(key);
+        NSString *note = extended ? @"已扩展可调范围" : @"可调范围";
+        NSString *below = extended && kind == DKAdjustKindOffset && range.minimum < 0 ? @"，负值为下移" : @"";
+        return [NSString stringWithFormat:@"%@\n%@：%@%@。", messageCopy, note,
+                DKAdjustBoundsText(kind, range), below];
+    };
+    return DKMakeBoundedSlider(key, title, fullMessage,
+                               DKAdjustExtendedBounds(key), ^DKAdjustBounds { return DKAdjustEffectiveBounds(key); },
+                               DKAdjustDefaultValue(key),
+                               ^NSString *(NSInteger value) { return DKAdjustValueText(kind, value); }, onChange);
 }
 
 #pragma mark - 动作
