@@ -17,6 +17,7 @@
 
 #import "DouyinHeaders.h"
 #import "DKVideoFullscreen.h"
+#import "DKTabBarBackdrop.h"
 #import "DKGlassGuard.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
@@ -181,9 +182,11 @@ static CGRect DKAdjustFrame(UIView *view, CGRect frame) {
             DKKeyVideoFullscreen,
             @"视频全屏",
             @"首页、朋友页、好友聊天页、搜索页、用户作品页统一铺满整屏；"
-            @"其他比例视频的原生背景延伸至底栏，文案与进度条保持原位"
+            @"其他比例视频的原生背景延伸至底栏，文案与进度条保持原位；"
+            @"未开启悬浮玻璃底栏时，底栏背景透明，图标与文字悬浮在页面上"
         );
         return DKSettingsOnChange(item, ^{
+            DKTabBarBackdropSetNeedsUpdate();
             if (DKVideoFullscreenOn()) return;
             for (NSUInteger i = 0; i < gRestoreCount; i++) gRestoreHooks[i]();
         });

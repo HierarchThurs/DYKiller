@@ -18,6 +18,7 @@
 #import "DKAudioVisualizer.h"
 #import "DKPlusIcon.h"
 #import "DKTabBarAppearance.h"
+#import "DKTabBarBackdrop.h"
 #import "DKTabBarIcons.h"
 #import "DKTabBarRemoval.h"
 #import "DouyinHeaders.h"
@@ -146,6 +147,10 @@ static UITabBarController *DKGlassControllerForView(UIView *view) {
 
 static BOOL DKGlassTabBarEnabled(void) {
     return DKGlassOSAvailable() && DKPrefBool(DKKeyGlassTabBar);
+}
+
+BOOL DKGlassTabBarActive(void) {
+    return DKGlassTabBarEnabled();
 }
 
 static BOOL DKGlassTabBarUsesClear(void) {
@@ -1203,6 +1208,8 @@ void DKGlassTabBarRefresh(void) {
     DKSettingsRegister(DKKeyGlassTabBar, ^AWESettingItemModel *{
         // 选定后立刻生效，不必等抖音下一次布局。
         AWESettingItemModel *item = DKMakeGlassChoice(DKKeyGlassTabBar, DKKeyGlassTabBarClear, @"悬浮玻璃底栏", ^{
+            // 玻璃接管与否决定抖音底栏背景归谁管，背景让位跟着重判。
+            DKTabBarBackdropSetNeedsUpdate();
             AWENormalModeTabBar *bar = gDouyinBar;
             if (@available(iOS 26.0, *)) {
                 if (!bar) return;

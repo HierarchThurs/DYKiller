@@ -14,6 +14,9 @@
 extern "C" {
 #endif
 
+/// 悬浮玻璃底栏是否开启（系统支持且开关打开）。开启时抖音自绘底栏的背景与按钮由玻璃底栏接管。
+BOOL DKGlassTabBarActive(void);
+
 /// 当前挂载中的玻璃底栏；功能关闭时为 nil。
 UITabBar *DKGlassTabBarCurrent(void);
 
