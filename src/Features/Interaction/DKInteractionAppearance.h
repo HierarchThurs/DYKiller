@@ -19,6 +19,9 @@ extern "C" {
 /// 右侧互动栈布局后应用外观；不是右侧栈时直接返回。由元素栈的统一布局入口调用。
 void DKInteractionAppearanceApplyStack(AWEElementStackView *stack);
 
+/// 右侧栈的行是否因显示方式为「移除」而收拢：行内是互动按钮、头像或听音乐组件且对应项为移除。
+BOOL DKInteractionRowRemoved(UIView *row);
+
 /// 设置改变后立即刷新当前页面上的播放交互层。
 void DKInteractionAppearanceRefresh(void);
 

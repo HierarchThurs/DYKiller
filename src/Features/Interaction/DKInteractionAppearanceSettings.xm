@@ -24,7 +24,7 @@ static AWESettingItemModel *DKInteractionScaleItem(NSString *key, NSString *titl
 }
 
 static AWESettingItemModel *DKInteractionDisplayItem(NSString *key, NSString *title, NSString *info) {
-    AWESettingItemModel *item = DKMakeChoice(key, title, @[ @"默认显示", @"隐藏可点击", @"隐藏不可点击" ]);
+    AWESettingItemModel *item = DKMakeChoice(key, title, @[ @"显示", @"隐藏", @"移除" ]);
     DKSettingsOnChange(item, ^{ DKInteractionAppearanceRefresh(); });
     return DKSettingsWithInfo(item, info);
 }
@@ -74,17 +74,17 @@ static AWESettingItemModel *DKInteractionDisplayItem(NSString *key, NSString *ti
     });
 
     DKSettingsRegister(DKKeyInteractionDisplay, ^AWESettingItemModel *{
-        return DKInteractionDisplayItem(DKKeyInteractionDisplay, @"互动按钮显示方式",
-                                        @"默认显示；隐藏可点击只隐藏按钮内容；隐藏不可点击同时阻止按钮命中。");
+        return DKInteractionDisplayItem(DKKeyInteractionDisplay, @"互动按钮",
+                                        @"默认显示；隐藏只隐藏按钮内容，原位置仍可点击；移除同时取消按钮占位与点击，右侧栏其余元素按抖音原生排布收拢。");
     });
 
     DKSettingsRegister(DKKeyAvatarDisplay, ^AWESettingItemModel *{
-        return DKInteractionDisplayItem(DKKeyAvatarDisplay, @"头像显示方式",
-                                        @"默认显示；隐藏可点击仍可进入头像；隐藏不可点击同时阻止头像及其小圆标命中。");
+        return DKInteractionDisplayItem(DKKeyAvatarDisplay, @"头像",
+                                        @"默认显示；隐藏仍可点击进入头像；移除同时取消头像及其小圆标的占位与点击，右侧栏其余元素收拢。");
     });
 
     DKSettingsRegister(DKKeyMusicDisplay, ^AWESettingItemModel *{
-        return DKInteractionDisplayItem(DKKeyMusicDisplay, @"听音乐图标显示方式",
-                                        @"默认显示；隐藏可点击仍可打开音乐入口；隐藏不可点击同时阻止入口命中。「取消静音」按钮不受影响。");
+        return DKInteractionDisplayItem(DKKeyMusicDisplay, @"听音乐图标",
+                                        @"默认显示；隐藏仍可打开音乐入口；移除同时取消入口占位与点击，右侧栏其余元素收拢。「取消静音」按钮不受影响。");
     });
 }

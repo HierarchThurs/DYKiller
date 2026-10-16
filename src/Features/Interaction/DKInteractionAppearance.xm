@@ -12,10 +12,6 @@
 #import "DKUtils.h"
 #import "DKViewAdjust.h"
 
-static const NSInteger kDKInteractionDisplayDefault = 0;
-static const NSInteger kDKInteractionDisplayHiddenClickable = 1;
-static const NSInteger kDKInteractionDisplayHiddenDisabled = 2;
-
 static NSHashTable<AWEElementStackView *> *gDKInteractionStacks;
 
 #pragma mark - 取值
@@ -40,11 +36,6 @@ static CGFloat DKInteractionAlpha(NSString *key) {
 
 static CGFloat DKInteractionScale(NSString *key) {
     return DKAdjustValue(key) / 100.0;
-}
-
-static NSInteger DKInteractionDisplay(NSString *key) {
-    return MIN(kDKInteractionDisplayHiddenDisabled,
-               MAX(kDKInteractionDisplayDefault, DKInteractionStoredInteger(key, 0)));
 }
 
 static CGFloat DKInteractionOffset(void) {
@@ -114,25 +105,17 @@ static void DKInteractionCollectMute(UIView *stack, NSMutableArray<UIView *> *re
     DKInteractionCollectViews(stack, @"AFDCancelMuteAwemeView", result);
 }
 
-// 显示方式为「隐藏不可点击」（disabled = YES）或其余两档（disabled = NO）的目标：
-// 互动按钮、头像容器（头像本体与关注加号、私信小圆标）、音乐组件。
-static void DKInteractionCollectTargets(UIView *stack, BOOL disabled, NSMutableArray<UIView *> *result) {
-    if ((DKInteractionDisplay(DKKeyInteractionDisplay) == kDKInteractionDisplayHiddenDisabled) == disabled) {
+// 仍可点击（显示或隐藏）的目标：互动按钮、头像容器（头像本体与关注加号、私信小圆标）、音乐组件。
+static void DKInteractionCollectClickTargets(UIView *stack, NSMutableArray<UIView *> *result) {
+    if (DKPrefDisplayMode(DKKeyInteractionDisplay) != DKDisplayModeRemove) {
         DKInteractionCollectViews(stack, @"AWEFeedVideoButton", result);
     }
-    if ((DKInteractionDisplay(DKKeyAvatarDisplay) == kDKInteractionDisplayHiddenDisabled) == disabled) {
+    if (DKPrefDisplayMode(DKKeyAvatarDisplay) != DKDisplayModeRemove) {
         DKInteractionCollectViews(stack, @"AWEPlayInteractionUserProfileContainerView", result);
     }
-    if ((DKInteractionDisplay(DKKeyMusicDisplay) == kDKInteractionDisplayHiddenDisabled) == disabled) {
+    if (DKPrefDisplayMode(DKKeyMusicDisplay) != DKDisplayModeRemove) {
         DKInteractionCollectMusic(stack, result);
     }
-}
-
-static BOOL DKInteractionViewInTargets(UIView *view, NSArray<UIView *> *targets) {
-    for (UIView *target in targets) {
-        if ([view isDescendantOfView:target]) return YES;
-    }
-    return NO;
 }
 
 #pragma mark - 目标应用
@@ -160,24 +143,24 @@ static UILabel *DKInteractionButtonLabel(AWEFeedVideoButton *button) {
 
 static void DKInteractionApplyButton(AWEFeedVideoButton *button) {
     if (!button) return;
-    NSInteger display = DKInteractionDisplay(DKKeyInteractionDisplay);
-    CGFloat visibleFactor = display == kDKInteractionDisplayDefault ? DKInteractionAlpha(DKKeyInteractionIconAlpha) : 0.0;
-    CGFloat labelFactor = display == kDKInteractionDisplayDefault ? DKInteractionAlpha(DKKeyInteractionLabelAlpha) : 0.0;
+    DKDisplayMode display = DKPrefDisplayMode(DKKeyInteractionDisplay);
+    CGFloat visibleFactor = display == DKDisplayModeShow ? DKInteractionAlpha(DKKeyInteractionIconAlpha) : 0.0;
+    CGFloat labelFactor = display == DKDisplayModeShow ? DKInteractionAlpha(DKKeyInteractionLabelAlpha) : 0.0;
     DKAdjustAlpha(DKInteractionButtonImage(button), visibleFactor);
     DKAdjustAlpha(DKInteractionButtonLabel(button), labelFactor);
 }
 
 static void DKInteractionApplyAvatar(AWEPlayInteractionUserProfileContainerView *avatar, CGSize outset) {
     if (!avatar) return;
-    NSInteger display = DKInteractionDisplay(DKKeyAvatarDisplay);
-    CGFloat factor = display == kDKInteractionDisplayDefault ? DKInteractionAlpha(DKKeyAvatarAlpha) : 0.0;
+    DKDisplayMode display = DKPrefDisplayMode(DKKeyAvatarDisplay);
+    CGFloat factor = display == DKDisplayModeShow ? DKInteractionAlpha(DKKeyAvatarAlpha) : 0.0;
     DKAdjustFade(avatar, factor, outset);
 }
 
 static void DKInteractionApplyMusic(UIView *music, CGSize outset) {
     if (!music) return;
-    NSInteger display = DKInteractionDisplay(DKKeyMusicDisplay);
-    CGFloat factor = display == kDKInteractionDisplayDefault ? DKInteractionAlpha(DKKeyMusicAlpha) : 0.0;
+    DKDisplayMode display = DKPrefDisplayMode(DKKeyMusicDisplay);
+    CGFloat factor = display == DKDisplayModeShow ? DKInteractionAlpha(DKKeyMusicAlpha) : 0.0;
     DKAdjustFade(music, factor, outset);
 }
 
@@ -236,20 +219,24 @@ void DKInteractionAppearanceApplyStack(AWEElementStackView *stack) {
     DKAdjustTransform(stack, CGAffineTransformMakeTranslation(0, -DKInteractionOffset()));
 }
 
-#pragma mark - 命中控制
+#pragma mark - 移除
 
-// 「隐藏不可点击」的目标：命中落在目标子树内或点位落在目标范围内时整栈不接收。
-static BOOL DKInteractionHitsDisabled(UIView *stack, UIView *hit, CGPoint point) {
-    NSMutableArray<UIView *> *targets = [NSMutableArray array];
-    DKInteractionCollectTargets(stack, YES, targets);
-    if (hit && DKInteractionViewInTargets(hit, targets)) return YES;
+// 「移除」由行隐藏实现（见 DKElementRowHiding）：隐藏行不参与命中，右侧栈按抖音原生排布收拢。
+BOOL DKInteractionRowRemoved(UIView *row) {
+    BOOL buttons = DKPrefDisplayMode(DKKeyInteractionDisplay) == DKDisplayModeRemove;
+    BOOL avatar = DKPrefDisplayMode(DKKeyAvatarDisplay) == DKDisplayModeRemove;
+    BOOL music = DKPrefDisplayMode(DKKeyMusicDisplay) == DKDisplayModeRemove;
+    if (!buttons && !avatar && !music) return NO;
 
-    for (UIView *target in targets) {
-        CGPoint local = [target convertPoint:point fromView:stack];
-        if (CGRectContainsPoint(target.bounds, local)) return YES;
-    }
-    return NO;
+    Class stackClass = NSClassFromString(@"AWEElementStackView");
+    UIView *stack = row.superview;
+    if (!stackClass || ![stack isKindOfClass:stackClass] || !DKInteractionIsRightStack((AWEElementStackView *)stack)) return NO;
+    if (buttons && DKInteractionContainsClass(row, @"AWEFeedVideoButton")) return YES;
+    if (avatar && DKInteractionContainsClass(row, @"AWEPlayInteractionUserProfileContainerView")) return YES;
+    return music && DKInteractionContainsClass(row, @"AWEMusicCoverButton");
 }
+
+#pragma mark - 命中让位
 
 // 进度条容器与右侧栈同属一个父视图且层级更高，其扩展触控区会盖住右侧栈底部。
 // 缩放或上移生效时按 UIKit 的顺序问容器下方的兄弟：第一个接收该点的兄弟就是容器放手后的去处，
@@ -267,7 +254,7 @@ static BOOL DKInteractionStackClaimsPoint(UIView *container, CGPoint point, UIEv
         if (!hit) continue;
         if (![sibling isKindOfClass:stackClass] || !DKInteractionIsRightStack((AWEElementStackView *)sibling)) return NO;
         NSMutableArray<UIView *> *targets = [NSMutableArray array];
-        DKInteractionCollectTargets(sibling, NO, targets);
+        DKInteractionCollectClickTargets(sibling, targets);
         DKInteractionCollectMute(sibling, targets);
         for (UIView *target in targets) {
             if (![hit isDescendantOfView:target]) continue;
@@ -291,11 +278,11 @@ void DKInteractionAppearanceRefresh(void) {
     }
 }
 
-static NSString *DKInteractionDisplayText(NSInteger value) {
+static NSString *DKInteractionDisplayText(DKDisplayMode value) {
     switch (value) {
-        case kDKInteractionDisplayHiddenClickable: return @"隐藏可点击";
-        case kDKInteractionDisplayHiddenDisabled: return @"隐藏不可点击";
-        default: return @"默认显示";
+        case DKDisplayModeHide: return @"隐藏";
+        case DKDisplayModeRemove: return @"移除";
+        default: return @"显示";
     }
 }
 
@@ -305,14 +292,14 @@ NSString *DKInteractionAppearanceStatus(void) {
         (long)DKInteractionStoredInteger(DKKeyInteractionIconAlpha, 100),
         (long)DKInteractionStoredInteger(DKKeyInteractionLabelAlpha, 100),
         (long)DKAdjustValue(DKKeyInteractionScale),
-        DKInteractionDisplayText(DKInteractionDisplay(DKKeyInteractionDisplay))];
+        DKInteractionDisplayText(DKPrefDisplayMode(DKKeyInteractionDisplay))];
     [out appendFormat:@"头像透明度=%ld%% 缩放=%ld%% 显示=%@ · 听音乐透明度=%ld%% 缩放=%ld%% 显示=%@\n",
         (long)DKInteractionStoredInteger(DKKeyAvatarAlpha, 100),
         (long)DKAdjustValue(DKKeyAvatarScale),
-        DKInteractionDisplayText(DKInteractionDisplay(DKKeyAvatarDisplay)),
+        DKInteractionDisplayText(DKPrefDisplayMode(DKKeyAvatarDisplay)),
         (long)DKInteractionStoredInteger(DKKeyMusicAlpha, 100),
         (long)DKAdjustValue(DKKeyMusicScale),
-        DKInteractionDisplayText(DKInteractionDisplay(DKKeyMusicDisplay))];
+        DKInteractionDisplayText(DKPrefDisplayMode(DKKeyMusicDisplay))];
     [out appendFormat:@"上移=%ldpt\n", (long)DKInteractionOffset()];
     [out appendFormat:@"可见交互栈=%lu\n", (unsigned long)gDKInteractionStacks.allObjects.count];
     for (AWEElementStackView *stack in gDKInteractionStacks.allObjects) {
@@ -328,16 +315,6 @@ NSString *DKInteractionAppearanceStatus(void) {
 }
 
 #pragma mark - Hook
-
-%hook AWEElementStackView
-
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    UIView *hit = %orig(point, event);
-    if (DKInteractionHitsDisabled(self, hit, point) && DKInteractionIsRightStack(self)) return nil;
-    return hit;
-}
-
-%end
 
 %hook AWEDPlayerProgressContainerView
 

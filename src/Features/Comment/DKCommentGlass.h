@@ -2,7 +2,7 @@
 //  DKCommentGlass.h
 //  DYKiller
 //
-//  评论区液态玻璃对外只暴露最近接管的两个槽位，供调试导出采集其状态。
+//  评论区液态玻璃提供槽位状态查询和输入栏覆盖刷新入口。
 //  玻璃层挂在槽位的最底层，探针从槽位自己推出来即可。
 //
 
@@ -34,6 +34,9 @@ UIView *DKCommentGlassCurrentEmoticonPanel(void);
 /// 本次会话拦下「不透明绘制优化」网关的次数。恒为 0 说明抖音没走这个网关——
 /// 那就要靠探针的「残留面板底色」判断面板有没有被刷上底色。
 NSUInteger DKCommentGlassRenderOptimizeBlocks(void);
+
+/// 输入栏显隐改变后，按当前实际覆盖重新同步主面板玻璃。
+void DKCommentGlassRefreshInputCoverage(UIView *container);
 
 #ifdef __cplusplus
 }

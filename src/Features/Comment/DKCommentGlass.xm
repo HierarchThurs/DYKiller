@@ -45,6 +45,7 @@
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKUtils.h"
+#import "DKViewAdjust.h"
 
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
@@ -131,11 +132,10 @@ static BOOL DKViewIsVisible(UIView *view) {
     return view && !view.hidden && view.alpha >= 0.01;
 }
 
-// 视图自己连同每一级祖先都可见。「移除评论区底栏」把整个输入栏容器压成 alpha 0，
-// 玻璃作为它的后代跟着看不见——只看玻璃自己会判成还在盖着。
+// 输入栏隐藏使用透明 mask 保留点击；其后代玻璃也不再提供可见覆盖。
 static BOOL DKViewChainVisible(UIView *view) {
     for (UIView *node = view; node; node = node.superview) {
-        if (!DKViewIsVisible(node)) return NO;
+        if (!DKViewIsVisible(node) || DKAdjustFadeFactor(node) < 0.01) return NO;
     }
     return YES;
 }
@@ -614,6 +614,10 @@ static void DKSyncPanelGlassHeight(void) {
     CGRect target = slot.bounds;
     if (covered) target.size.height = coverTop;
     if (!CGRectEqualToRect(glass.frame, target)) glass.frame = target;
+}
+
+void DKCommentGlassRefreshInputCoverage(UIView *container) {
+    if (container && container == gLastInputContainer) DKSyncPanelGlassHeight();
 }
 
 #pragma mark - 折叠提示条

@@ -20,7 +20,18 @@ static NSString *const DKKeyVideoFullscreen = @"DYKillerVideoFullscreen";
 
 #pragma mark - 功能组：评论区
 
-static NSString *const DKKeyCommentHideBottomBar = @"DYKillerHideCommentBottomBar";
+// 评论区回复底栏（单选，整数）：0 显示 / 1 隐藏（原位置可点击回复）/ 2 移除（点击交给列表）；后两档列表均铺满。
+static NSString *const DKKeyCommentReplyBottomBarMode = @"DYKillerCommentReplyBottomBarMode";
+static NSString *const DKKeyCommentAIParseMode = @"DYKillerCommentAIParseMode";
+static NSString *const DKKeyCommentSearchAnchorMode = @"DYKillerCommentSearchAnchorMode";
+static NSString *const DKKeyCommentLunaAnchorMode = @"DYKillerCommentLunaAnchorMode";
+static NSString *const DKKeyCommentLocationMode = @"DYKillerCommentLocationMode";
+static NSString *const DKKeyCommentGameAnchorMode = @"DYKillerCommentGameAnchorMode";
+static NSString *const DKKeyCommentPlayerDiscussionMode = @"DYKillerCommentPlayerDiscussionMode";
+static NSString *const DKKeyCommentStoreReviewMode = @"DYKillerCommentStoreReviewMode";
+static NSString *const DKKeyCommentSeriesAnchorMode = @"DYKillerCommentSeriesAnchorMode";
+// 移除评论列表中的「评论氛围是否满意」评价卡片。
+static NSString *const DKKeyRemoveCommentSurvey = @"DYKillerRemoveCommentSurvey";
 static NSString *const DKKeyCommentMediaCleanBottomBar = @"DYKillerCommentMediaCleanBottomBar";
 // 材质单选（DKMakeGlassChoice）：总开关 + 清透档两个 BOOL，清透档关即系统 Regular。
 static NSString *const DKKeyCommentGlass         = @"DYKillerCommentGlass";
@@ -70,7 +81,8 @@ static NSString *const DKKeyTabTitleProfile      = @"DYKillerTabBarTitle.homepag
 
 #pragma mark - 功能组：互动按钮
 
-// 透明度：0–100，默认 100；缩放：常规 50–100，默认 100；显示方式：0 默认显示 / 1 隐藏可点击 / 2 隐藏不可点击。
+// 透明度：0–100，默认 100；缩放：常规 50–100，默认 100；
+// 显示方式：0 显示 / 1 隐藏（不显示、仍可点击）/ 2 移除（不显示、不可点击，所在行收拢）。
 // 缩放与上移的范围登记在 DKAdjustRange.m，开启「扩展所有缩放与位移」后放宽。
 static NSString *const DKKeyInteractionIconAlpha  = @"DYKillerInteractionIconAlpha";
 static NSString *const DKKeyInteractionLabelAlpha = @"DYKillerInteractionLabelAlpha";
@@ -82,6 +94,8 @@ static NSString *const DKKeyMusicScale             = @"DYKillerMusicScale";
 static NSString *const DKKeyInteractionDisplay    = @"DYKillerInteractionDisplay";
 static NSString *const DKKeyAvatarDisplay         = @"DYKillerAvatarDisplay";
 static NSString *const DKKeyMusicDisplay          = @"DYKillerMusicDisplay";
+// 头像下方关注入口：0 显示 / 1 隐藏（仍可点击）/ 2 移除（与已关注作者时一致）。
+static NSString *const DKKeyFollowButtonDisplay   = @"DYKillerFollowButtonDisplayMode";
 // 互动区域上移：0–100 pt，默认 0（抖音原位）；头像、互动按钮、音乐整体上移。
 static NSString *const DKKeyInteractionOffset     = @"DYKillerInteractionOffset";
 
@@ -107,14 +121,45 @@ static NSString *const DKKeyAudioVizStyle = @"DYKillerAudioVizStyle";
 
 static NSString *const DKKeyDoubleTapOpenComment = @"DYKillerDoubleTapOpenComment";
 static NSString *const DKKeyDetailHideBottomBar = @"DYKillerHideChatVideoBottomBar";
-static NSString *const DKKeyHideFollowButton     = @"DYKillerHideFollowButton";
-static NSString *const DKKeyHideMusicInfo        = @"DYKillerHideMusicInfo";
+// 所有视频常态下都显示底部进度条。
+static NSString *const DKKeyProgressAlwaysVisible = @"DYKillerProgressAlwaysVisible";
+
+#pragma mark - 功能组：播放页精简
+
+// 每项单选，存整数：0 显示 / 1 隐藏（不显示、仍可点击，位置保留）/ 2 移除（不显示、不可点击，按抖音原生排布收拢）。
+static NSString *const DKKeyPlaybackFullscreenMode         = @"DYKillerPlaybackFullscreenMode";
+static NSString *const DKKeyPlaybackDanmakuMode            = @"DYKillerPlaybackDanmakuMode";
+// 文案上方
+static NSString *const DKKeyPlaybackOtherUserRecommendMode = @"DYKillerPlaybackOtherUserRecommendMode";
+static NSString *const DKKeyPlaybackFriendRecommendMode    = @"DYKillerPlaybackFriendRecommendMode";
+static NSString *const DKKeyPlaybackFriendShareMode        = @"DYKillerPlaybackFriendShareMode";
+static NSString *const DKKeyPlaybackSelectedMode           = @"DYKillerPlaybackSelectedMode";
+static NSString *const DKKeyPlaybackGameTagMode            = @"DYKillerPlaybackGameTagMode";
+static NSString *const DKKeyPlaybackMusicAnchorMode        = @"DYKillerPlaybackMusicAnchorMode";
+static NSString *const DKKeyPlaybackPropEffectMode         = @"DYKillerPlaybackPropEffectMode";
+static NSString *const DKKeyPlaybackJianyingMode           = @"DYKillerPlaybackJianyingMode";
+static NSString *const DKKeyPlaybackLocationMode           = @"DYKillerPlaybackLocationMode";
+static NSString *const DKKeyPlaybackStoreMode              = @"DYKillerPlaybackStoreMode";
+// 昵称右侧
+static NSString *const DKKeyPlaybackChapterHighlightsMode  = @"DYKillerPlaybackChapterHighlightsMode";
+static NSString *const DKKeyPlaybackCoCreatorMode          = @"DYKillerPlaybackCoCreatorMode";
+static NSString *const DKKeyPlaybackSlidesTagMode          = @"DYKillerPlaybackSlidesTagMode";
+// 文案下方
+static NSString *const DKKeyPlaybackRelatedSearchMode      = @"DYKillerPlaybackRelatedSearchMode";
+static NSString *const DKKeyPlaybackRiskNoticeMode         = @"DYKillerPlaybackRiskNoticeMode";
+static NSString *const DKKeyPlaybackVideoCollectionMode    = @"DYKillerPlaybackVideoCollectionMode";
+static NSString *const DKKeyPlaybackHotspotMode            = @"DYKillerPlaybackHotspotMode";
+static NSString *const DKKeyPlaybackMusicInfoMode          = @"DYKillerPlaybackMusicInfoMode";
+static NSString *const DKKeyPlaybackQuickReplyMode         = @"DYKillerPlaybackQuickReplyMode";
+static NSString *const DKKeyPlaybackAppDownloadMode        = @"DYKillerPlaybackAppDownloadMode";
 
 #pragma mark - 功能组：内容过滤
 
 static NSString *const DKKeyFilterLowLikes = @"DYKillerFilterLowLikes";
 static NSString *const DKKeyMinimumLikes = @"DYKillerMinimumLikes";
 static NSString *const DKKeyRemoveRecommendedLive = @"DYKillerRemoveRecommendedLive";
+static NSString *const DKKeyFilterRecommendedMusic = @"DYKillerFilterRecommendedMusic";
+static NSString *const DKKeyFilterRecommendedHotspot = @"DYKillerFilterRecommendedHotspot";
 static NSString *const DKKeyFilterAds = @"DYKillerFilterAds";
 
 #pragma mark - 功能组：顶部频道

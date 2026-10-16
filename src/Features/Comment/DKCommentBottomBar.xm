@@ -1,6 +1,8 @@
 //
 //  DKCommentBottomBar.xm
-//  功能：隐藏标准竖屏评论面板常驻输入栏、让评论流铺满面板，并在回复编辑期间恢复原生输入界面。
+//  功能：标准竖屏评论面板常驻输入栏的显示 / 隐藏 / 移除，回复编辑期间恢复原生输入界面。
+//   - 隐藏：输入栏挂透明 mask，原位置可点击回复，评论流铺满面板。
+//   - 移除：输入栏透明且不可交互，评论流铺满面板。
 //
 //  本文件同时是 AWECommentInputBackgroundView（作品详情页底栏本体）显隐的唯一 owner，
 //  「作品详情页底栏移除」开关也在此取或；背景色归 DKChatVideoBottomBar，属性不相交。
@@ -10,6 +12,8 @@
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKUtils.h"
+#import "DKViewAdjust.h"
+#import "DKCommentGlass.h"
 #import <math.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -43,8 +47,8 @@ static __weak AWECommentContainerViewController *gEditingController;
 // 评论区的表情面板复用 IM 那一套，类名带 AWEIM 前缀。
 static NSString *const kDKEmoticonPanelClass = @"AWEIMEmoticonPanelContainerView";
 
-static BOOL DKShouldHideCommentBottomBar(void) {
-    return DKPrefBool(DKKeyCommentHideBottomBar);
+static DKDisplayMode DKCommentBarMode(void) {
+    return DKPrefDisplayMode(DKKeyCommentReplyBottomBarMode);
 }
 
 static BOOL DKReadBoolSelector(id object, SEL selector) {
@@ -121,12 +125,27 @@ static BOOL DKContainsVisibleEmoticonPanel(UIView *view, NSUInteger depth) {
     return NO;
 }
 
-// 抑制的前提是「输入界面没在用」：正在编辑，或表情面板开着，都算在用。
-static BOOL DKCommentControllerShouldSuppress(AWECommentContainerViewController *controller) {
-    if (!DKShouldHideCommentBottomBar() || !DKCommentControllerIsStandard(controller)) return NO;
+// 档位为 mode 且「输入界面没在用」时生效：正在编辑，或表情面板开着，都算在用。
+static BOOL DKCommentBarModeActive(AWECommentContainerViewController *controller, DKDisplayMode mode) {
+    if (DKCommentBarMode() != mode || !DKCommentControllerIsStandard(controller)) return NO;
     if (![objc_getAssociatedObject(controller, &kCommentVisibleKey) boolValue]) return NO;
     if ([objc_getAssociatedObject(controller, &kCommentEditingKey) boolValue]) return NO;
     return !DKContainsVisibleEmoticonPanel(DKCommentInputContainer(controller), 0);
+}
+
+// 移除：输入栏透明且不可交互，列表铺满。
+static BOOL DKCommentControllerShouldSuppress(AWECommentContainerViewController *controller) {
+    return DKCommentBarModeActive(controller, DKDisplayModeRemove);
+}
+
+// 隐藏：输入栏挂透明 mask，保留原生点击入口。
+static BOOL DKCommentControllerShouldFade(AWECommentContainerViewController *controller) {
+    return DKCommentBarModeActive(controller, DKDisplayModeHide);
+}
+
+// 隐藏与移除共用列表铺满和底部渐隐层处理，输入栏交互仍按各自档位处理。
+static BOOL DKCommentControllerShouldFill(AWECommentContainerViewController *controller) {
+    return DKCommentControllerShouldSuppress(controller) || DKCommentControllerShouldFade(controller);
 }
 
 #pragma mark - 通用视图状态
@@ -192,7 +211,7 @@ static void DKSetListIndicatorInset(AWEListKitMagicCollectionView *collectionVie
 // setFrame: 写入时改；退出回复后若抖音不再写 frame，必须在状态重入时主动撑一次。
 static BOOL DKStretchCommentListFrame(AWEListKitMagicCollectionView *collectionView, CGRect *frame) {
     if (!collectionView || !frame) return NO;
-    if (!DKCommentControllerShouldSuppress(DKCommentControllerForView(collectionView))) return NO;
+    if (!DKCommentControllerShouldFill(DKCommentControllerForView(collectionView))) return NO;
 
     UIView *parent = collectionView.superview;
     CGFloat parentHeight = parent ? CGRectGetHeight(parent.bounds) : 0.0;
@@ -210,7 +229,7 @@ static void DKApplyCommentListState(AWEListKitMagicCollectionView *collectionVie
     if (!collectionView) return;
 
     AWECommentContainerViewController *controller = DKCommentControllerForView(collectionView);
-    BOOL suppress = DKCommentControllerShouldSuppress(controller);
+    BOOL fill = DKCommentControllerShouldFill(controller);
 
     NSValue *nativeContentValue = objc_getAssociatedObject(collectionView, &kListNativeContentInsetKey);
     NSValue *nativeIndicatorValue = objc_getAssociatedObject(collectionView, &kListNativeIndicatorInsetKey);
@@ -223,7 +242,7 @@ static void DKApplyCommentListState(AWEListKitMagicCollectionView *collectionVie
         objc_setAssociatedObject(collectionView, &kListNativeIndicatorInsetKey, nativeIndicatorValue, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
-    if (suppress) {
+    if (fill) {
         UIEdgeInsets contentInset = nativeContentValue ? nativeContentValue.UIEdgeInsetsValue : collectionView.contentInset;
         UIEdgeInsets indicatorInset = nativeIndicatorValue ? nativeIndicatorValue.UIEdgeInsetsValue : collectionView.scrollIndicatorInsets;
         contentInset.bottom = 0.0;
@@ -251,7 +270,7 @@ static void DKApplyCommentListState(AWEListKitMagicCollectionView *collectionVie
     }
 
     // 恢复列表高度不反向写 frame（会和布局引擎打架），只请父视图重排让抖音自己算回去。
-    if (!suppress && objc_getAssociatedObject(collectionView, &kListStretchedKey)) {
+    if (!fill && objc_getAssociatedObject(collectionView, &kListStretchedKey)) {
         objc_setAssociatedObject(collectionView, &kListStretchedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [collectionView.superview setNeedsLayout];
     }
@@ -346,11 +365,12 @@ static AWECommentContainerViewController *DKActiveCommentControllerInWindow(UIWi
     return DKFindActiveCommentController(window.rootViewController, window);
 }
 
-// 两个功能都要让这条底栏消失：评论面板打开时的临时抑制，以及「作品详情页底栏移除」。
+// 两个功能都要让这条底栏消失：评论面板打开时的临时抑制（隐藏档下评论输入栏透明，
+// 这条叠在下面的底栏同样会透出来），以及「作品详情页底栏移除」。
 static BOOL DKShouldSuppressDetailInputBackground(AWECommentInputBackgroundView *backgroundView) {
     if (DKPrefBool(DKKeyDetailHideBottomBar)) return YES;
     AWECommentContainerViewController *controller = DKActiveCommentControllerInWindow(backgroundView.window);
-    return DKCommentControllerShouldSuppress(controller);
+    return DKCommentControllerShouldFill(controller);
 }
 
 static void DKApplyDetailInputBackgroundState(AWECommentInputBackgroundView *backgroundView) {
@@ -376,9 +396,9 @@ static void DKApplyCommentControllerState(AWECommentContainerViewController *con
     if (!controller || !controller.isViewLoaded) return;
 
     BOOL standard = DKCommentControllerIsStandard(controller);
-    BOOL enabled = DKShouldHideCommentBottomBar() && standard;
+    DKDisplayMode mode = DKCommentBarMode();
     BOOL suppress = DKCommentControllerShouldSuppress(controller);
-    if (!enabled) {
+    if (mode == DKDisplayModeShow || !standard) {
         objc_setAssociatedObject(controller, &kCommentEditingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
@@ -388,16 +408,21 @@ static void DKApplyCommentControllerState(AWECommentContainerViewController *con
     } else {
         DKRestoreView(inputView);
     }
+    DKAdjustFade(inputView, DKCommentControllerShouldFade(controller) ? 0.0 : 1.0, CGSizeZero);
+    DKCommentGlassRefreshInputCoverage(inputView);
 
-    DKRefreshCommentListsInView(controller.view, !enabled);
-    DKApplyCommentEdgeEffectState(controller, suppress);
+    DKRefreshCommentListsInView(controller.view, mode == DKDisplayModeShow || !standard);
+    DKApplyCommentEdgeEffectState(controller, DKCommentControllerShouldFill(controller));
     DKRefreshDetailInputBackgrounds();
 }
 
 static void DKRestoreCommentControllerState(AWECommentContainerViewController *controller) {
     if (!controller || !controller.isViewLoaded) return;
 
-    DKRestoreView(DKCommentInputContainer(controller));
+    UIView *inputView = DKCommentInputContainer(controller);
+    DKRestoreView(inputView);
+    DKAdjustFade(inputView, 1.0, CGSizeZero);
+    DKCommentGlassRefreshInputCoverage(inputView);
     DKRefreshCommentListsInView(controller.view, YES);
     DKApplyCommentEdgeEffectState(controller, NO);
 }
@@ -410,7 +435,7 @@ static AWECommentContainerViewController *DKCommentControllerForTextView(UIView 
 }
 
 static void DKSetCommentEditing(AWECommentContainerViewController *controller, BOOL editing) {
-    if (!controller || !DKShouldHideCommentBottomBar() || !DKCommentControllerIsStandard(controller)) return;
+    if (!controller || DKCommentBarMode() == DKDisplayModeShow || !DKCommentControllerIsStandard(controller)) return;
 
     objc_setAssociatedObject(controller, &kCommentEditingKey, @(editing), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     DKApplyCommentControllerState(controller);
@@ -465,7 +490,7 @@ static void DKSetCommentEditing(AWECommentContainerViewController *controller, B
         objc_setAssociatedObject(self, &kListNativeContentInsetKey,
                                  [NSValue valueWithUIEdgeInsets:contentInset],
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        if (DKCommentControllerShouldSuppress(controller)) contentInset.bottom = 0.0;
+        if (DKCommentControllerShouldFill(controller)) contentInset.bottom = 0.0;
     }
     %orig(contentInset);
 }
@@ -481,7 +506,7 @@ static void DKSetCommentEditing(AWECommentContainerViewController *controller, B
         objc_setAssociatedObject(self, &kListNativeIndicatorInsetKey,
                                  [NSValue valueWithUIEdgeInsets:scrollIndicatorInsets],
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        if (DKCommentControllerShouldSuppress(controller)) scrollIndicatorInsets.bottom = 0.0;
+        if (DKCommentControllerShouldFill(controller)) scrollIndicatorInsets.bottom = 0.0;
     }
     %orig(scrollIndicatorInsets);
 }
@@ -489,13 +514,13 @@ static void DKSetCommentEditing(AWECommentContainerViewController *controller, B
 - (void)layoutSubviews {
     %orig;
     AWECommentContainerViewController *controller = DKCommentControllerForView(self);
-    BOOL forgetState = controller && (!DKShouldHideCommentBottomBar() || !DKCommentControllerIsStandard(controller));
+    BOOL forgetState = controller && (DKCommentBarMode() == DKDisplayModeShow || !DKCommentControllerIsStandard(controller));
     DKApplyCommentListState(self, forgetState);
 }
 
 %end
 
-// 表情面板出现/移除时立刻重评一次，不必等下一次布局。判定仍归 DKCommentControllerShouldSuppress，
+// 表情面板出现/移除时立刻重评输入与列表状态，不必等下一次布局。
 // 这里只提供触发点。面板在 IM 聊天里也用，但那边取不到评论控制器，DKApplyCommentControllerState
 // 收到 nil 直接返回，不会误伤。
 %hook AWEIMEmoticonPanelContainerView
@@ -527,8 +552,9 @@ static void DKSetCommentEditing(AWECommentContainerViewController *controller, B
 %ctor {
     gDetailInputBackgroundViews = [NSHashTable weakObjectsHashTable];
 
-    DKSettingsRegister(DKKeyCommentHideBottomBar, ^AWESettingItemModel *{
-        return DKMakeSwitch(DKKeyCommentHideBottomBar, @"移除评论区底栏", @"隐藏常驻输入栏，回复时临时恢复");
+    DKSettingsRegister(DKKeyCommentReplyBottomBarMode, ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeChoice(DKKeyCommentReplyBottomBarMode, @"评论区回复底栏", @[ @"显示", @"隐藏", @"移除" ]);
+        return DKSettingsWithInfo(item, @"隐藏和移除均让评论列表铺满底部。隐藏时原输入栏位置仍可点击回复；移除时点击该区域由评论列表处理。回复编辑期间恢复原生输入界面。");
     });
 
     NSNotificationCenter *center = [NSNotificationCenter defaultCenter];

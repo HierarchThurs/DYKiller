@@ -82,13 +82,58 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyTopBarAlpha, @"ic_eyeslash_outlined_20"),
         ]),
         DKSection(@"视频播放", @[
-            DKRow(DKKeyHideFollowButton, @"ic_userplus_outlined_20"),
-            DKRow(DKKeyHideMusicInfo, @"ic_quaver_outlined_20"),
+            DKPage(@"播放页精简", @"ic_eyeslash_outlined_20", @[
+                DKSection(@"播放页元素", @[
+                    DKRow(DKKeyPlaybackFullscreenMode, @"ic_fullscreen_outlined_16"),
+                    DKRow(DKKeyPlaybackDanmakuMode, @"ic_comment_outlined_20"),
+                ]),
+                DKSection(@"文案上方", @[
+                    DKRow(DKKeyPlaybackOtherUserRecommendMode, @"ic_user_outlined_20"),
+                    DKRow(DKKeyPlaybackFriendRecommendMode, @"ic_user_outlined_20"),
+                    DKRow(DKKeyPlaybackFriendShareMode, @"ic_share_outlined"),
+                    DKRow(DKKeyPlaybackSelectedMode, @"ic_magic_outlined_20"),
+                    DKRow(DKKeyPlaybackGameTagMode, @"ic_module_outlined_20"),
+                    DKRow(DKKeyPlaybackMusicAnchorMode, @"ic_quaver_outlined_20"),
+                    DKRow(DKKeyPlaybackPropEffectMode, @"ic_cameralogo_outlined_20"),
+                    DKRow(DKKeyPlaybackJianyingMode, @"ic_cameralogo_outlined_20"),
+                    DKRow(DKKeyPlaybackLocationMode, @"ic_location_outlined_20"),
+                    DKRow(DKKeyPlaybackStoreMode, @"ic_module_outlined_20"),
+                ]),
+                DKSection(@"昵称右侧", @[
+                    DKRow(DKKeyPlaybackChapterHighlightsMode, @"ic_text_outlined_20"),
+                    DKRow(DKKeyPlaybackCoCreatorMode, @"ic_personcircleclean_outlined_20"),
+                    DKRow(DKKeyPlaybackSlidesTagMode, @"ic_image_outlined_20"),
+                ]),
+                DKSection(@"文案下方", @[
+                    DKRow(DKKeyPlaybackRelatedSearchMode, @"ic_videosearch_outlined_20"),
+                    DKRow(DKKeyPlaybackRiskNoticeMode, @"ic_text_outlined_20"),
+                    DKRow(DKKeyPlaybackVideoCollectionMode, @"ic_playsquarestack_outlined_20"),
+                    DKRow(DKKeyPlaybackHotspotMode, @"ic_module_outlined_20"),
+                    DKRow(DKKeyPlaybackMusicInfoMode, @"ic_quaver_outlined_20"),
+                    DKRow(DKKeyPlaybackQuickReplyMode, @"ic_msg_outlined_20"),
+                    DKRow(DKKeyPlaybackAppDownloadMode, @"ic_boxarrowdown_outlined"),
+                ]),
+            ]),
+            DKPage(@"评论区精简", @"ic_comment_outlined_20", @[
+                DKSection(@"评论区顶部", @[
+                    DKRow(DKKeyCommentAIParseMode, @"ic_magic_outlined_20"),
+                    DKRow(DKKeyCommentPlayerDiscussionMode, @"ic_bubbletwo_outlined_20"),
+                    DKRow(DKKeyCommentStoreReviewMode, @"ic_star_outlined_20"),
+                    DKRow(DKKeyCommentSearchAnchorMode, @"ic_videosearch_outlined_20"),
+                    DKRow(DKKeyCommentLunaAnchorMode, @"ic_quaver_outlined_20"),
+                    DKRow(DKKeyCommentLocationMode, @"ic_location_outlined_20"),
+                    DKRow(DKKeyCommentGameAnchorMode, @"ic_tag_outlined_20"),
+                    DKRow(DKKeyCommentSeriesAnchorMode, @"ic_collection_outlined_20"),
+                ]),
+                DKSection(@"评论区元素", @[
+                    DKRow(DKKeyCommentReplyBottomBarMode, @"ic_comment_outlined_20"),
+                    DKRow(DKKeyRemoveCommentSurvey, @"ic_emoji_outlined_20"),
+                ]),
+                DKSection(@"评论区图片", @[
+                    DKRow(DKKeyCommentMediaCleanBottomBar, @"ic_image_outlined_20"),
+                ]),
+            ]),
             DKRow(DKKeyDetailHideBottomBar, @"ic_xmark_outlined_20"),
-        ]),
-        DKSection(@"评论区", @[
-            DKRow(DKKeyCommentHideBottomBar, @"ic_comment_outlined_20"),
-            DKRow(DKKeyCommentMediaCleanBottomBar, @"ic_image_outlined_20"),
         ]),
         DKSection(@"个人主页", @[
             DKRow(DKKeyProfileHideUGCGuide, @"ic_user_outlined_20"),
@@ -131,6 +176,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyInteractionDisplay, @"ic_module_outlined_20"),
                     DKRow(DKKeyAvatarDisplay, @"ic_user_outlined_20"),
                     DKRow(DKKeyMusicDisplay, @"ic_quaver_outlined_20"),
+                    DKRow(DKKeyFollowButtonDisplay, @"ic_userplus_outlined_20"),
                 ]),
             ]),
             DKPage(@"昵称文案", @"ic_text_outlined_20", @[
@@ -176,6 +222,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
     DKSettingsPage *enhance = DKPage(@"功能增强", @"ic_squaresplit_outlined_20", @[
         DKSection(@"视频", @[
             DKRow(DKKeyVideoFullscreen, @"ic_fullscreen_outlined_16"),
+            DKRow(DKKeyProgressAlwaysVisible, @"ic_playertime_outlined_20"),
         ]),
         DKSection(@"手势", @[
             DKRow(DKKeyDoubleTapOpenComment, @"ic_comment_outlined_20"),
@@ -209,6 +256,8 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyFilterLowLikes, @"ic_thumbsdown_outlined_20"),
             DKRow(DKKeyMinimumLikes, @"ic_thumbsup_outlined_20"),
             DKRow(DKKeyRemoveRecommendedLive, @"ic_tv_outlined_20"),
+            DKRow(DKKeyFilterRecommendedMusic, @"ic_quaver_outlined_20"),
+            DKRow(DKKeyFilterRecommendedHotspot, @"ic_fire_outlined_20"),
         ]),
         DKSection(@"广告", @[
             DKRow(DKKeyFilterAds, @"ic_ad_outlined_20"),

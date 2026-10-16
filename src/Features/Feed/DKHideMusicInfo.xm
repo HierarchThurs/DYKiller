@@ -1,30 +1,22 @@
 //
 //  DKHideMusicInfo.xm
-//  功能：播放体验 —— 移除视频底部文案下方的「去汽水听」音乐信息栏。
+//  功能：播放页精简 —— 文案下方「去汽水听」音乐信息栏的移除闸门。
 //
 //  实现：
 //   - Hook AWEPlayInteractionViewController 的 hideMusicInfo getter。
-//   - 开关开启时返回 YES，令抖音走自身隐藏逻辑。
+//   - 「去汽水听」为移除时返回 YES，令抖音走自身隐藏逻辑；整行的隐藏 / 移除另由播放页精简处理。
+//   - 设置项登记在 DKPlaybackCleanSettings.xm。
 //
 
 #import "DouyinHeaders.h"
 #import "DKUtils.h"
 #import "DKKeys.h"
-#import "DKSettings.h"
 
 %hook AWEPlayInteractionViewController
 
 - (BOOL)hideMusicInfo {
-    if (DKPrefBool(DKKeyHideMusicInfo)) return YES;
+    if (DKPrefDisplayMode(DKKeyPlaybackMusicInfoMode) == DKDisplayModeRemove) return YES;
     return %orig;
 }
 
 %end
-
-#pragma mark - 设置项注册
-
-%ctor {
-    DKSettingsRegister(DKKeyHideMusicInfo, ^AWESettingItemModel *{
-        return DKMakeSwitch(DKKeyHideMusicInfo, @"移除文案下方\"去汽水听\"", @"隐藏视频底部的音乐信息栏（含汽水音乐引导和歌曲名）");
-    });
-}
