@@ -13,6 +13,10 @@
 #import "DKPlusIcon.h"
 #import "DKTabBarAppearance.h"
 #import "DKInteractionAppearance.h"
+#import "DKInfoAppearance.h"
+#import "DKAdjustRange.h"
+#import "DKTabBarBackdrop.h"
+#import "DKTopBarAlpha.h"
 #import "DKTabBarRemoval.h"
 #import "DouyinHeaders.h"
 #import "DKCommentGlass.h"
@@ -1120,6 +1124,15 @@ NSString *DKTabBarProbeReport(void) {
     [out appendString:@"\n----- 互动按钮外观 -----\n"];
     [out appendString:DKInteractionAppearanceStatus()];
 
+    [out appendString:@"\n----- 昵称文案外观 -----\n"];
+    [out appendString:DKInfoAppearanceStatus()];
+
+    [out appendString:@"\n----- 顶栏透明度 -----\n"];
+    [out appendString:DKTopBarAlphaStatus()];
+
+    [out appendString:@"\n----- 调整范围 -----\n"];
+    [out appendString:DKAdjustRangeStatus()];
+
     UITabBarController *controller = DKProbeTabBarController();
     if (!controller) {
         [out appendString:@"\n没找到 UITabBarController，本页可能不在主 tab 容器内。\n"];
@@ -1132,6 +1145,10 @@ NSString *DKTabBarProbeReport(void) {
 
     [out appendString:@"\n----- 抖音自绘底栏（镜像源）-----\n"];
     DKProbeAppendDouyinBar(out, controller);
+
+    // 玻璃底栏关闭时，视频页底栏背景是否让位，以及三个判据输入。
+    [out appendString:@"\n----- 底栏背景让位 -----\n"];
+    [out appendString:DKTabBarBackdropStatus()];
 
     // 外观定制：各项原文、自定义文字与覆盖层状态，判断改字与图标模式是否生效。
     [out appendString:@"\n----- 外观定制 -----\n"];
