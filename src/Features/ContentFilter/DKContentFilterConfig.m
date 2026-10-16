@@ -43,6 +43,8 @@ DKFilterConfig DKFilterCurrentConfig(void) {
         next.lowLikes = DKPrefBool(DKKeyFilterLowLikes);
         next.removeLive = DKPrefBool(DKKeyRemoveRecommendedLive);
         next.removeAds = DKPrefBool(DKKeyFilterAds);
+        next.removeMusic = DKPrefBool(DKKeyFilterRecommendedMusic);
+        next.removeHotspot = DKPrefBool(DKKeyFilterRecommendedHotspot);
         id raw = [NSUserDefaults.standardUserDefaults objectForKey:DKKeyMinimumLikes];
         DKFilterLikeCount(raw, &next.minimumLikes);
         next.generation = generation;

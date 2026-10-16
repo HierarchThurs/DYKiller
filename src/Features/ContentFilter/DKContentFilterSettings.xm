@@ -1,4 +1,4 @@
-// 三个独立开关与精确整数阈值输入。
+// 内容过滤独立开关与精确整数阈值输入。
 #import "DKContentFilter.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
@@ -74,6 +74,13 @@ static AWESettingItemModel *DKFilterThresholdItem(void) {
     DKSettingsRegister(DKKeyMinimumLikes, ^AWESettingItemModel *{ return DKFilterThresholdItem(); });
     DKSettingsRegister(DKKeyRemoveRecommendedLive, ^AWESettingItemModel *{
         return DKFilterSwitch(DKKeyRemoveRecommendedLive, @"推荐页移除直播", @"从后续推荐批次移除直播预览");
+    });
+    DKSettingsRegister(DKKeyFilterRecommendedMusic, ^AWESettingItemModel *{
+        return DKFilterSwitch(DKKeyFilterRecommendedMusic, @"推荐过滤音乐", @"过滤首页推荐中的音乐卡片；从后续新载入批次生效，普通配乐作品保留。");
+    });
+    DKSettingsRegister(DKKeyFilterRecommendedHotspot, ^AWESettingItemModel *{
+        return DKFilterSwitch(DKKeyFilterRecommendedHotspot, @"推荐过滤热点",
+            @"过滤首页推荐中的「抖音热点」卡片（如 24 小时精选热点）；从后续新载入批次生效，普通视频保留。");
     });
     DKSettingsRegister(DKKeyFilterAds, ^AWESettingItemModel *{
         return DKFilterSwitch(DKKeyFilterAds, @"抖音过滤广告", @"过滤新载入的广告作品、搜索卡片及启动广告");

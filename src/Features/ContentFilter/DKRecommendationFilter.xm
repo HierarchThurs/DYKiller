@@ -3,7 +3,7 @@
 #import "DouyinHeaders.h"
 
 static BOOL DKFilterBatchEnabled(DKFilterConfig config) {
-    return config.lowLikes || config.removeLive || config.removeAds;
+    return config.lowLikes || config.removeLive || config.removeAds || config.removeMusic || config.removeHotspot;
 }
 
 static id DKFilterTransfer(id controller, id array, NSString *entry, id (^native)(id)) {
@@ -12,7 +12,7 @@ static id DKFilterTransfer(id controller, id array, NSString *entry, id (^native
         DKFilterEntry(entry, controller);
         id input = DKFilterArray(array, controller, DKFilterStageLive);
         id result = native(input);
-        return DKFilterArray(result, controller, DKFilterStageAds | DKFilterStageLikes);
+        return DKFilterArray(result, controller, DKFilterStageAds | DKFilterStageMusic | DKFilterStageHotspot | DKFilterStageLikes);
     });
 }
 

@@ -6,6 +6,7 @@ static os_unfair_lock gDKFilterStatsLock = OS_UNFAIR_LOCK_INIT;
 static NSMutableDictionary *gDKFilterHooks, *gDKFilterEntries;
 static DKFilterCounts gDKFilterCounts;
 static NSUInteger gDKFilterEmpty, gDKFilterAdModels, gDKFilterUnknownBatches, gDKFilterConflicts;
+static NSUInteger gDKFilterInsertCancels, gDKFilterInsertUnknown;
 static DKFilterAdReason gDKFilterReasons;
 static NSString *gDKFilterLastClass;
 
@@ -32,6 +33,13 @@ void DKFilterRecordAd(DKFilterAdReason reason) {
     os_unfair_lock_unlock(&gDKFilterStatsLock);
 }
 
+void DKFilterRecordInsert(DKFilterInsertDecision decision) {
+    os_unfair_lock_lock(&gDKFilterStatsLock);
+    if (decision == DKFilterInsertCancel) gDKFilterInsertCancels++;
+    if (decision == DKFilterInsertUnknownSource) gDKFilterInsertUnknown++;
+    os_unfair_lock_unlock(&gDKFilterStatsLock);
+}
+
 id DKFilterArray(id array, id controller, DKFilterStage stage) {
     DKFilterConfig config = DKFilterCurrentConfig();
     DKFilterSource source = DKFilterControllerSource(controller);
@@ -42,12 +50,14 @@ id DKFilterArray(id array, id controller, DKFilterStage stage) {
     gDKFilterCounts.output += counts.output;
     gDKFilterCounts.ads += counts.ads;
     gDKFilterCounts.live += counts.live;
+    gDKFilterCounts.music += counts.music;
+    gDKFilterCounts.hotspot += counts.hotspot;
     gDKFilterCounts.likes += counts.likes;
     gDKFilterCounts.unknownLikes += counts.unknownLikes;
     gDKFilterCounts.unknownSource += counts.unknownSource;
     gDKFilterReasons |= counts.adReasons;
     if (counts.input && !counts.output) gDKFilterEmpty++;
-    if (stage & (DKFilterStageLive | DKFilterStageLikes)) {
+    if (stage & (DKFilterStageLive | DKFilterStageMusic | DKFilterStageHotspot | DKFilterStageLikes)) {
         if (source == DKFilterSourceUnknown) gDKFilterUnknownBatches++;
         if (source == DKFilterSourceConflict) gDKFilterConflicts++;
     }
@@ -62,24 +72,29 @@ NSString *DKContentFilterDiagnostics(void) {
     DKFilterCounts counts = gDKFilterCounts;
     NSUInteger empty = gDKFilterEmpty, adModels = gDKFilterAdModels;
     NSUInteger unknown = gDKFilterUnknownBatches, conflicts = gDKFilterConflicts;
+    NSUInteger insertCancels = gDKFilterInsertCancels, insertUnknown = gDKFilterInsertUnknown;
     DKFilterAdReason reasons = gDKFilterReasons;
     NSString *last = gDKFilterLastClass;
     os_unfair_lock_unlock(&gDKFilterStatsLock);
     NSMutableString *out = [NSMutableString stringWithFormat:
-        @"低赞=%@ 最低点赞=%lld 推荐直播移除=%@ 广告过滤=%@ 配置代际=%lu\n",
+        @"低赞=%@ 最低点赞=%lld 推荐直播移除=%@ 推荐音乐过滤=%@ 推荐热点过滤=%@ 广告过滤=%@ 配置代际=%lu\n",
         config.lowLikes ? @"开启" : @"关闭", config.minimumLikes,
-        config.removeLive ? @"开启" : @"关闭", config.removeAds ? @"开启" : @"关闭",
+        config.removeLive ? @"开启" : @"关闭", config.removeMusic ? @"开启" : @"关闭",
+        config.removeHotspot ? @"开启" : @"关闭", config.removeAds ? @"开启" : @"关闭",
         (unsigned long)config.generation];
     for (NSString *name in [hooks.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
         [out appendFormat:@"%@：%@ 命中=%lu\n", name, hooks[name], (unsigned long)[entries[name] unsignedIntegerValue]];
     }
-    [out appendFormat:@"各处理阶段累计输入=%lu 输出=%lu 移除低赞=%lu 直播=%lu 广告=%lu\n"
+    [out appendFormat:@"各处理阶段累计输入=%lu 输出=%lu 移除低赞=%lu 直播=%lu 音乐=%lu 热点=%lu 广告=%lu\n"
         @"未知点赞保留=%lu 未知来源条目保留=%lu 来源未知批次=%lu 来源冲突批次=%lu 全空阶段=%lu\n"
         @"广告模型／显示阻断=%lu 判据位=%lu 最近入口类=%@\n",
         (unsigned long)counts.input, (unsigned long)counts.output, (unsigned long)counts.likes,
-        (unsigned long)counts.live, (unsigned long)counts.ads, (unsigned long)counts.unknownLikes,
+        (unsigned long)counts.live, (unsigned long)counts.music, (unsigned long)counts.hotspot,
+        (unsigned long)counts.ads, (unsigned long)counts.unknownLikes,
         (unsigned long)counts.unknownSource, (unsigned long)unknown, (unsigned long)conflicts,
         (unsigned long)empty, (unsigned long)adModels, (unsigned long)reasons, last ?: @"(无)"];
+    [out appendFormat:@"热点插卡闸门：取消=%lu 来源未确认保留=%lu\n",
+        (unsigned long)insertCancels, (unsigned long)insertUnknown];
     [out appendString:@"判据位：1=作品标志 2=原始标志 4=广告载荷 8=内嵌广告\n"];
     return out;
 }

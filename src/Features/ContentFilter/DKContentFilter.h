@@ -13,6 +13,8 @@ typedef struct {
     BOOL lowLikes;
     BOOL removeLive;
     BOOL removeAds;
+    BOOL removeMusic;
+    BOOL removeHotspot;
     long long minimumLikes;
     NSUInteger generation;
 } DKFilterConfig;
@@ -28,7 +30,9 @@ typedef NS_OPTIONS(NSUInteger, DKFilterStage) {
     DKFilterStageAds = 1 << 0,
     DKFilterStageLive = 1 << 1,
     DKFilterStageLikes = 1 << 2,
-    DKFilterStageAll = DKFilterStageAds | DKFilterStageLive | DKFilterStageLikes
+    DKFilterStageMusic = 1 << 3,
+    DKFilterStageHotspot = 1 << 4,
+    DKFilterStageAll = DKFilterStageAds | DKFilterStageLive | DKFilterStageLikes | DKFilterStageMusic | DKFilterStageHotspot
 };
 
 typedef NS_OPTIONS(NSUInteger, DKFilterAdReason) {
@@ -39,8 +43,15 @@ typedef NS_OPTIONS(NSUInteger, DKFilterAdReason) {
     DKFilterAdEmbedded = 1 << 3
 };
 
+// 特殊卡插入闸门的判定结果。
+typedef NS_ENUM(NSUInteger, DKFilterInsertDecision) {
+    DKFilterInsertKeep,
+    DKFilterInsertCancel,
+    DKFilterInsertUnknownSource
+};
+
 typedef struct {
-    NSUInteger input, output, ads, live, likes, unknownLikes, unknownSource;
+    NSUInteger input, output, ads, live, music, hotspot, likes, unknownLikes, unknownSource;
     DKFilterAdReason adReasons;
 } DKFilterCounts;
 
@@ -52,6 +63,9 @@ BOOL DKFilterIsClass(id object, NSString *className);
 BOOL DKFilterParseInteger(NSString *text, long long *value);
 BOOL DKFilterLikeCount(id raw, long long *value);
 BOOL DKFilterIsLive(id model);
+BOOL DKFilterIsHotspotBusiness(id businessID);
+BOOL DKFilterIsHotspotCard(id model);
+DKFilterInsertDecision DKFilterHotspotInsert(id businessID, id model, DKFilterConfig config);
 DKFilterAdReason DKFilterAdModel(id model);
 DKFilterAdReason DKFilterAdRaw(id raw);
 id DKFilterApplyArray(id array, DKFilterConfig config, DKFilterSource source,
@@ -66,6 +80,7 @@ id DKFilterArray(id array, id controller, DKFilterStage stage);
 void DKFilterRegisterHook(NSString *name, BOOL installed, BOOL optional);
 void DKFilterEntry(NSString *name, id object);
 void DKFilterRecordAd(DKFilterAdReason reason);
+void DKFilterRecordInsert(DKFilterInsertDecision decision);
 NSString *DKContentFilterDiagnostics(void);
 
 #ifdef __cplusplus

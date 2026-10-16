@@ -42,6 +42,17 @@ BOOL DKFilterIsLive(id model) {
         && (DKFilterBool(model, @selector(isLive)) || DKFilterObject(model, @selector(cellRoom)) != nil);
 }
 
+// 热点卡的业务标识由服务端下发，热点业务统一以 hotspot 开头。
+BOOL DKFilterIsHotspotBusiness(id businessID) {
+    return [businessID isKindOfClass:NSString.class] && [businessID hasPrefix:@"hotspot"];
+}
+
+BOOL DKFilterIsHotspotCard(id model) {
+    if (!DKFilterIsClass(model, @"AWEAwemeModel")) return NO;
+    id card = DKFilterObject(model, @selector(hotSpotLynxCardModel));
+    return DKFilterIsHotspotBusiness(DKFilterObject(card, @selector(businessID)));
+}
+
 static BOOL DKFilterIsRecommended(id model, DKFilterSource source, DKFilterCounts *counts) {
     if (source == DKFilterSourceOther || source == DKFilterSourceConflict) return NO;
     id refer = DKFilterObject(model, @selector(referString));
@@ -52,6 +63,14 @@ static BOOL DKFilterIsRecommended(id model, DKFilterSource source, DKFilterCount
     return NO;
 }
 
+// 客户端插入的特殊卡没有页面批次来源，只按模型来源确认首页推荐。
+DKFilterInsertDecision DKFilterHotspotInsert(id businessID, id model, DKFilterConfig config) {
+    if (!config.removeHotspot || !DKFilterIsHotspotBusiness(businessID)) return DKFilterInsertKeep;
+    id refer = DKFilterObject(model, @selector(referString));
+    if (![refer isKindOfClass:NSString.class] || ![refer length]) return DKFilterInsertUnknownSource;
+    return [refer isEqualToString:@"homepage_hot"] ? DKFilterInsertCancel : DKFilterInsertKeep;
+}
+
 id DKFilterApplyArray(id array, DKFilterConfig config, DKFilterSource source,
                      DKFilterStage stage, DKFilterCounts *result) {
     DKFilterCounts counts = {0};
@@ -60,8 +79,10 @@ id DKFilterApplyArray(id array, DKFilterConfig config, DKFilterSource source,
     counts.input = counts.output = original.count;
     BOOL ads = config.removeAds && (stage & DKFilterStageAds);
     BOOL live = config.removeLive && (stage & DKFilterStageLive);
+    BOOL music = config.removeMusic && (stage & DKFilterStageMusic);
+    BOOL hotspot = config.removeHotspot && (stage & DKFilterStageHotspot);
     BOOL likes = config.lowLikes && config.minimumLikes > 0 && (stage & DKFilterStageLikes);
-    if (!ads && !live && !likes) { if (result) *result = counts; return array; }
+    if (!ads && !live && !music && !hotspot && !likes) { if (result) *result = counts; return array; }
 
     NSMutableIndexSet *removed = [NSMutableIndexSet indexSet];
     NSUInteger index = 0;
@@ -69,10 +90,14 @@ id DKFilterApplyArray(id array, DKFilterConfig config, DKFilterSource source,
         DKFilterAdReason reason = DKFilterAdModel(model);
         if (reason && ads) {
             [removed addIndex:index]; counts.ads++; counts.adReasons |= reason;
-        } else if (DKFilterIsClass(model, @"AWEAwemeModel") && (live || likes)
+        } else if (DKFilterIsClass(model, @"AWEAwemeModel") && (live || music || hotspot || likes)
                    && DKFilterIsRecommended(model, source, &counts)) {
             if (DKFilterIsLive(model)) {
                 if (live) { [removed addIndex:index]; counts.live++; }
+            } else if (music && DKFilterObject(model, @selector(musicCard))) {
+                [removed addIndex:index]; counts.music++;
+            } else if (hotspot && DKFilterIsHotspotCard(model)) {
+                [removed addIndex:index]; counts.hotspot++;
             } else if (likes && !reason) {
                 id statistics = DKFilterObject(model, @selector(statistics));
                 long long count = 0;
