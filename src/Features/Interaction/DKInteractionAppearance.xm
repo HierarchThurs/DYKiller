@@ -7,21 +7,14 @@
 
 #import "DKInteractionAppearance.h"
 #import "DouyinHeaders.h"
+#import "DKAdjustRange.h"
 #import "DKKeys.h"
 #import "DKUtils.h"
-
-#import <math.h>
-#import <objc/runtime.h>
+#import "DKViewAdjust.h"
 
 static const NSInteger kDKInteractionDisplayDefault = 0;
 static const NSInteger kDKInteractionDisplayHiddenClickable = 1;
 static const NSInteger kDKInteractionDisplayHiddenDisabled = 2;
-
-static char kDKInteractionBaseAlphaKey;
-static char kDKInteractionAppliedAlphaKey;
-static char kDKInteractionBaseTransformKey;
-static char kDKInteractionAppliedTransformKey;
-static char kDKInteractionFadeMaskKey;
 
 static NSHashTable<AWEElementStackView *> *gDKInteractionStacks;
 
@@ -42,13 +35,11 @@ static NSInteger DKInteractionStoredInteger(NSString *key, NSInteger defaultValu
 }
 
 static CGFloat DKInteractionAlpha(NSString *key) {
-    NSInteger value = MIN(100, MAX(0, DKInteractionStoredInteger(key, 100)));
-    return value / 100.0;
+    return DKPrefFraction(key, 100);
 }
 
 static CGFloat DKInteractionScale(NSString *key) {
-    NSInteger value = MIN(100, MAX(50, DKInteractionStoredInteger(key, 100)));
-    return value / 100.0;
+    return DKAdjustValue(key) / 100.0;
 }
 
 static NSInteger DKInteractionDisplay(NSString *key) {
@@ -57,15 +48,15 @@ static NSInteger DKInteractionDisplay(NSString *key) {
 }
 
 static CGFloat DKInteractionOffset(void) {
-    return MIN(100, MAX(0, DKInteractionStoredInteger(DKKeyInteractionOffset, 0)));
+    return DKAdjustValue(DKKeyInteractionOffset);
 }
 
-// 缩放或上移生效时，右侧栈的几何偏离抖音原位。
+// 缩放或位移生效时，右侧栈的几何偏离抖音原位。
 static BOOL DKInteractionGeometryActive(void) {
-    return DKInteractionOffset() > 0
-        || DKInteractionScale(DKKeyInteractionScale) < 1.0
-        || DKInteractionScale(DKKeyAvatarScale) < 1.0
-        || DKInteractionScale(DKKeyMusicScale) < 1.0;
+    return DKInteractionOffset() != 0
+        || DKInteractionScale(DKKeyInteractionScale) != 1.0
+        || DKInteractionScale(DKKeyAvatarScale) != 1.0
+        || DKInteractionScale(DKKeyMusicScale) != 1.0;
 }
 
 #pragma mark - 视图识别
@@ -97,18 +88,8 @@ static void DKInteractionCollectViews(UIView *root, NSString *className, NSMutab
     for (UIView *subview in root.subviews) DKInteractionCollectViews(subview, className, result);
 }
 
-static UIViewController *DKInteractionNearestController(UIView *view) {
-    UIResponder *responder = view.nextResponder;
-    Class interactionClass = NSClassFromString(@"AWEPlayInteractionViewController");
-    while (responder) {
-        if (interactionClass && [responder isKindOfClass:interactionClass]) return (UIViewController *)responder;
-        responder = responder.nextResponder;
-    }
-    return nil;
-}
-
 static BOOL DKInteractionIsRightStack(AWEElementStackView *stack) {
-    if (!stack || !DKInteractionNearestController(stack)) return NO;
+    if (!stack || !DKPlayInteractionControllerForView(stack)) return NO;
     if ([stack.accessibilityLabel isEqualToString:@"right"]) return YES;
     if (DKInteractionContainsClass(stack, @"AWEPlayInteractionUserProfileContainerView")) return YES;
     if (DKInteractionContainsClass(stack, @"AWEPlayInteractionListenFeedView")) return YES;
@@ -154,94 +135,6 @@ static BOOL DKInteractionViewInTargets(UIView *view, NSArray<UIView *> *targets)
     return NO;
 }
 
-#pragma mark - 可复位属性
-
-static void DKInteractionApplyAlpha(UIView *view, CGFloat factor) {
-    if (!view) return;
-    factor = MIN(1.0, MAX(0.0, factor));
-
-    NSNumber *applied = objc_getAssociatedObject(view, &kDKInteractionAppliedAlphaKey);
-    NSNumber *base = objc_getAssociatedObject(view, &kDKInteractionBaseAlphaKey);
-    CGFloat current = view.alpha;
-    CGFloat original = current;
-    if (applied && base && fabs(current - applied.doubleValue) < 0.005) {
-        original = base.doubleValue;
-    }
-
-    if (factor >= 0.9999) {
-        if (applied && base) view.alpha = original;
-        objc_setAssociatedObject(view, &kDKInteractionBaseAlphaKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(view, &kDKInteractionAppliedAlphaKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-
-    CGFloat target = original * factor;
-    if (fabs(current - target) >= 0.005) view.alpha = target;
-    objc_setAssociatedObject(view, &kDKInteractionBaseAlphaKey, @(original), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(view, &kDKInteractionAppliedAlphaKey, @(target), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-static BOOL DKInteractionTransformEqual(CGAffineTransform lhs, CGAffineTransform rhs) {
-    return fabs(lhs.a - rhs.a) < 0.0005 && fabs(lhs.b - rhs.b) < 0.0005
-        && fabs(lhs.c - rhs.c) < 0.0005 && fabs(lhs.d - rhs.d) < 0.0005
-        && fabs(lhs.tx - rhs.tx) < 0.05 && fabs(lhs.ty - rhs.ty) < 0.05;
-}
-
-// delta 叠加在宿主当前 transform 之后；delta 为单位矩阵时还原宿主值。
-static void DKInteractionApplyTransform(UIView *view, CGAffineTransform delta) {
-    if (!view) return;
-
-    NSValue *appliedValue = objc_getAssociatedObject(view, &kDKInteractionAppliedTransformKey);
-    NSValue *baseValue = objc_getAssociatedObject(view, &kDKInteractionBaseTransformKey);
-    CGAffineTransform current = view.transform;
-    CGAffineTransform original = current;
-    if (appliedValue && baseValue && DKInteractionTransformEqual(current, appliedValue.CGAffineTransformValue)) {
-        original = baseValue.CGAffineTransformValue;
-    }
-
-    if (DKInteractionTransformEqual(delta, CGAffineTransformIdentity)) {
-        if (appliedValue && baseValue) view.transform = original;
-        objc_setAssociatedObject(view, &kDKInteractionBaseTransformKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(view, &kDKInteractionAppliedTransformKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-
-    CGAffineTransform target = CGAffineTransformConcat(original, delta);
-    if (!DKInteractionTransformEqual(current, target)) view.transform = target;
-    objc_setAssociatedObject(view, &kDKInteractionBaseTransformKey,
-                             [NSValue valueWithCGAffineTransform:original], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(view, &kDKInteractionAppliedTransformKey,
-                             [NSValue valueWithCGAffineTransform:target], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-// 整个组件（含描边、底色）按 factor 淡出：用半透明 mask，不改 alpha，命中不受影响。
-// mask 向四周外扩 outset（右侧栈尺寸），覆盖超出 bounds 的子视图，也不依赖组件 bounds 是否已布局；
-// 宿主自带 mask 时不覆盖。
-static void DKInteractionApplyFade(UIView *view, CGFloat factor, CGSize outset) {
-    if (!view) return;
-    factor = MIN(1.0, MAX(0.0, factor));
-
-    CALayer *mask = objc_getAssociatedObject(view, &kDKInteractionFadeMaskKey);
-    BOOL owned = mask && view.layer.mask == mask;
-    if (factor >= 0.9999) {
-        if (owned) view.layer.mask = nil;
-        objc_setAssociatedObject(view, &kDKInteractionFadeMaskKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-    if (view.layer.mask && !owned) return;
-
-    if (!mask) {
-        mask = [CALayer layer];
-        objc_setAssociatedObject(view, &kDKInteractionFadeMaskKey, mask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    mask.frame = CGRectInset(view.bounds, -outset.width, -outset.height);
-    mask.backgroundColor = [UIColor colorWithWhite:1.0 alpha:factor].CGColor;
-    if (!owned) view.layer.mask = mask;
-    [CATransaction commit];
-}
-
 #pragma mark - 目标应用
 
 static UIImageView *DKInteractionButtonImage(AWEFeedVideoButton *button) {
@@ -270,26 +163,26 @@ static void DKInteractionApplyButton(AWEFeedVideoButton *button) {
     NSInteger display = DKInteractionDisplay(DKKeyInteractionDisplay);
     CGFloat visibleFactor = display == kDKInteractionDisplayDefault ? DKInteractionAlpha(DKKeyInteractionIconAlpha) : 0.0;
     CGFloat labelFactor = display == kDKInteractionDisplayDefault ? DKInteractionAlpha(DKKeyInteractionLabelAlpha) : 0.0;
-    DKInteractionApplyAlpha(DKInteractionButtonImage(button), visibleFactor);
-    DKInteractionApplyAlpha(DKInteractionButtonLabel(button), labelFactor);
+    DKAdjustAlpha(DKInteractionButtonImage(button), visibleFactor);
+    DKAdjustAlpha(DKInteractionButtonLabel(button), labelFactor);
 }
 
 static void DKInteractionApplyAvatar(AWEPlayInteractionUserProfileContainerView *avatar, CGSize outset) {
     if (!avatar) return;
     NSInteger display = DKInteractionDisplay(DKKeyAvatarDisplay);
     CGFloat factor = display == kDKInteractionDisplayDefault ? DKInteractionAlpha(DKKeyAvatarAlpha) : 0.0;
-    DKInteractionApplyFade(avatar, factor, outset);
+    DKAdjustFade(avatar, factor, outset);
 }
 
 static void DKInteractionApplyMusic(UIView *music, CGSize outset) {
     if (!music) return;
     NSInteger display = DKInteractionDisplay(DKKeyMusicDisplay);
     CGFloat factor = display == kDKInteractionDisplayDefault ? DKInteractionAlpha(DKKeyMusicAlpha) : 0.0;
-    DKInteractionApplyFade(music, factor, outset);
+    DKAdjustFade(music, factor, outset);
 }
 
 static void DKInteractionApplyMute(UIView *mute, CGSize outset) {
-    DKInteractionApplyFade(mute, DKInteractionAlpha(DKKeyMusicAlpha), outset);
+    DKAdjustFade(mute, DKInteractionAlpha(DKKeyMusicAlpha), outset);
 }
 
 static CGFloat DKInteractionRowScale(UIView *row) {
@@ -312,33 +205,7 @@ static CGFloat DKInteractionRowContentBottom(UIView *row) {
     return found ? MIN(bottom, CGRectGetMaxY(row.bounds)) : CGRectGetMaxY(row.bounds);
 }
 
-// 每行按所含元素的比例贴右缘缩小，自下而上累计各行缩掉的高度，上方各行依次下移，行内留白随行等比缩小。
-// 最底行以内容底边为锚：它下方的留白缩掉多少就整体上提多少，内容底边与进度条的间距保持 100% 时的值。
-static void DKInteractionApplyRowScales(AWEElementStackView *stack) {
-    NSArray<UIView *> *rows = stack.arrangedSubviews;
-    CGFloat shift = 0;
-    for (UIView *row in rows.reverseObjectEnumerator) {
-        if (row.hidden) continue;
-        CGFloat padding = CGRectGetMaxY(row.bounds) - DKInteractionRowContentBottom(row);
-        shift = -padding * (1.0 - DKInteractionRowScale(row));
-        break;
-    }
-
-    for (UIView *row in rows.reverseObjectEnumerator) {
-        if (row.hidden) {
-            DKInteractionApplyTransform(row, CGAffineTransformIdentity);
-            continue;
-        }
-        CGFloat scale = DKInteractionRowScale(row);
-        CGSize size = row.bounds.size;
-        DKInteractionApplyTransform(row, CGAffineTransformMake(scale, 0, 0, scale,
-                                                               size.width * (1.0 - scale) / 2.0,
-                                                               shift + size.height * (1.0 - scale) / 2.0));
-        shift += size.height * (1.0 - scale);
-    }
-}
-
-static void DKInteractionApplyStack(AWEElementStackView *stack) {
+void DKInteractionAppearanceApplyStack(AWEElementStackView *stack) {
     if (!DKInteractionIsRightStack(stack)) return;
     if (!gDKInteractionStacks) gDKInteractionStacks = [NSHashTable weakObjectsHashTable];
     [gDKInteractionStacks addObject:stack];
@@ -361,9 +228,12 @@ static void DKInteractionApplyStack(AWEElementStackView *stack) {
     DKInteractionCollectMute(stack, mutes);
     for (UIView *view in mutes) DKInteractionApplyMute(view, stack.bounds.size);
 
-    DKInteractionApplyRowScales(stack);
+    // 每行按所含元素的比例贴右缘缩放，最底行以内容底边为锚，内容底边与进度条的间距保持 100% 时的值。
+    DKAdjustStackRows(stack, DKStackEdgeRight,
+                      ^CGFloat(UIView *row) { return DKInteractionRowScale(row); },
+                      ^CGFloat(UIView *row) { return DKInteractionRowContentBottom(row); });
     // 上移整栈：栈的 bounds 随之上移，命中范围与显示一致；父视图不裁剪且高度覆盖上移范围。
-    DKInteractionApplyTransform(stack, CGAffineTransformMakeTranslation(0, -DKInteractionOffset()));
+    DKAdjustTransform(stack, CGAffineTransformMakeTranslation(0, -DKInteractionOffset()));
 }
 
 #pragma mark - 命中控制
@@ -434,14 +304,14 @@ NSString *DKInteractionAppearanceStatus(void) {
     [out appendFormat:@"互动按钮图标=%ld%% 数字=%ld%% 缩放=%ld%% 显示=%@\n",
         (long)DKInteractionStoredInteger(DKKeyInteractionIconAlpha, 100),
         (long)DKInteractionStoredInteger(DKKeyInteractionLabelAlpha, 100),
-        (long)DKInteractionStoredInteger(DKKeyInteractionScale, 100),
+        (long)DKAdjustValue(DKKeyInteractionScale),
         DKInteractionDisplayText(DKInteractionDisplay(DKKeyInteractionDisplay))];
     [out appendFormat:@"头像透明度=%ld%% 缩放=%ld%% 显示=%@ · 听音乐透明度=%ld%% 缩放=%ld%% 显示=%@\n",
         (long)DKInteractionStoredInteger(DKKeyAvatarAlpha, 100),
-        (long)DKInteractionStoredInteger(DKKeyAvatarScale, 100),
+        (long)DKAdjustValue(DKKeyAvatarScale),
         DKInteractionDisplayText(DKInteractionDisplay(DKKeyAvatarDisplay)),
         (long)DKInteractionStoredInteger(DKKeyMusicAlpha, 100),
-        (long)DKInteractionStoredInteger(DKKeyMusicScale, 100),
+        (long)DKAdjustValue(DKKeyMusicScale),
         DKInteractionDisplayText(DKInteractionDisplay(DKKeyMusicDisplay))];
     [out appendFormat:@"上移=%ldpt\n", (long)DKInteractionOffset()];
     [out appendFormat:@"可见交互栈=%lu\n", (unsigned long)gDKInteractionStacks.allObjects.count];
@@ -460,11 +330,6 @@ NSString *DKInteractionAppearanceStatus(void) {
 #pragma mark - Hook
 
 %hook AWEElementStackView
-
-- (void)layoutSubviews {
-    %orig;
-    DKInteractionApplyStack(self);
-}
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hit = %orig(point, event);

@@ -16,8 +16,8 @@ static AWESettingItemModel *DKInteractionAlphaItem(NSString *key, NSString *titl
 }
 
 static AWESettingItemModel *DKInteractionScaleItem(NSString *key, NSString *title, NSString *info) {
-    AWESettingItemModel *item = DKMakeRangeSlider(key, title, @"缩放：50% 为一半大小，100% 为原始大小。",
-                                                   50, 100, 100, ^(__unused NSInteger value) {
+    AWESettingItemModel *item = DKMakeAdjustSlider(key, title, @"缩放：50% 为一半大小，100% 为原始大小。",
+                                                   ^(__unused NSInteger value) {
         DKInteractionAppearanceRefresh();
     });
     return DKSettingsWithInfo(item, info);
@@ -66,9 +66,8 @@ static AWESettingItemModel *DKInteractionDisplayItem(NSString *key, NSString *ti
     });
 
     DKSettingsRegister(DKKeyInteractionOffset, ^AWESettingItemModel *{
-        AWESettingItemModel *item = DKMakeUnitSlider(DKKeyInteractionOffset, @"互动区域上移",
-                                                     @"上移：0 pt 为抖音原位，最大 100 pt。",
-                                                     0, 100, 0, @" pt", ^(__unused NSInteger value) {
+        AWESettingItemModel *item = DKMakeAdjustSlider(DKKeyInteractionOffset, @"互动区域上移",
+                                                       @"上移：0 pt 为抖音原位。", ^(__unused NSInteger value) {
             DKInteractionAppearanceRefresh();
         });
         return DKSettingsWithInfo(item, @"整体上移右侧头像、互动按钮和音乐，只增大音乐与进度条的间距；0 pt 为抖音原位。");
