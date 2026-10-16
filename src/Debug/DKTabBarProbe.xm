@@ -14,12 +14,15 @@
 #import "DKTabBarAppearance.h"
 #import "DKInteractionAppearance.h"
 #import "DKInfoAppearance.h"
+#import "DKPlaybackClean.h"
+#import "DKProgressAlwaysVisible.h"
 #import "DKAdjustRange.h"
 #import "DKTabBarBackdrop.h"
 #import "DKTopBarAlpha.h"
 #import "DKTabBarRemoval.h"
 #import "DouyinHeaders.h"
 #import "DKCommentGlass.h"
+#import "DKCommentHeaderClean.h"
 #import "DKGlassFlexView.h"
 #import "DKGlassTabBar.h"
 #import "DKKeys.h"
@@ -1101,6 +1104,9 @@ NSString *DKTabBarProbeReport(void) {
     [out appendString:@"\n----- 评论面板缩放 -----\n"];
     DKProbeAppendCommentZoom(out);
 
+    [out appendString:@"\n----- 评论区顶部 -----\n"];
+    [out appendString:DKCommentHeaderStatus()];
+
     [out appendString:@"\n----- 视频冻结 -----\n"];
     DKProbeAppendFrozenMedia(out);
 
@@ -1118,6 +1124,9 @@ NSString *DKTabBarProbeReport(void) {
     [out appendString:@"\n----- 进度条容器（黑垫层诊断）-----\n"];
     DKProbeAppendProgressContainer(out, DKDebugTargetWindow());
 
+    [out appendString:@"\n----- 进度条常显 -----\n"];
+    [out appendString:DKProgressAlwaysVisibleStatus()];
+
     [out appendString:@"\n----- 分享面板输入 -----\n"];
     DKProbeAppendShareInput(out);
 
@@ -1126,6 +1135,9 @@ NSString *DKTabBarProbeReport(void) {
 
     [out appendString:@"\n----- 昵称文案外观 -----\n"];
     [out appendString:DKInfoAppearanceStatus()];
+
+    [out appendString:@"\n----- 播放页精简 -----\n"];
+    [out appendString:DKPlaybackCleanStatus()];
 
     [out appendString:@"\n----- 顶栏透明度 -----\n"];
     [out appendString:DKTopBarAlphaStatus()];
