@@ -19,8 +19,14 @@ BOOL DKPrefBool(NSString *key);
 /// 读取某单选项（NSUserDefaults NSInteger）。未设置时为 0。
 NSInteger DKPrefInteger(NSString *key);
 
+/// 读取 0–100 的百分比设置并换算为 0–1；未设置时取 defaultPercent，越界按边界。
+CGFloat DKPrefFraction(NSString *key, NSInteger defaultPercent);
+
 /// 音频取样包装该不该开：「调试工具」或「音频可视化」任一开着。安装与开关都按这一条判定。
 BOOL DKAudioSamplingWanted(void);
+
+/// 从 view 起沿响应链找所属的播放交互层控制器（AWEPlayInteractionViewController）；不在交互层内返回 nil。
+UIViewController *DKPlayInteractionControllerForView(UIView *view);
 
 /// 沿 childViewControllers 递归找指定类名的子控制器。
 /// 抖音的面板类多是 Swift 类，类名带点，Logos 的 %hook 用不了，只能按名字取。

@@ -170,6 +170,12 @@
 @interface AWENormalModeTabBar : UITabBar
 @end
 
+// 底栏文字视图的配置（文字项为 TextViewUIConfig、首页为 FeedUIConfig，均继承此类）。抖音按选中状态与明暗进度
+// 算好的文字色同步写进 textColor，文字视图再经绑定延后同步到 label。
+@interface AWENormalModeTabBarInnerViewUIConfig : NSObject
+@property (nonatomic, strong) UIColor *textColor;
+@end
+
 #pragma mark - 评论区功能组用到的类
 
 @interface AWECommentContainerViewController : UIViewController
@@ -398,6 +404,9 @@
 @end
 
 #pragma mark - 顶栏入口功能组用到的类
+
+@interface AWEFeedTopBarContainer : UIView                         // 首页顶栏容器：左侧栏入口、频道与搜索槽位
+@end
 
 @interface AWEHPTopBarCTAItemView : UIView                         // 顶栏左右两侧的入口槽位（侧边栏 / 搜索）
 @end

@@ -20,11 +20,28 @@ NSInteger DKPrefInteger(NSString *key) {
     return [[NSUserDefaults standardUserDefaults] integerForKey:key];
 }
 
+CGFloat DKPrefFraction(NSString *key, NSInteger defaultPercent) {
+    id raw = [NSUserDefaults.standardUserDefaults objectForKey:key];
+    NSInteger percent = [raw respondsToSelector:@selector(integerValue)] ? [raw integerValue] : defaultPercent;
+    return MIN(100, MAX(0, percent)) / 100.0;
+}
+
 BOOL DKAudioSamplingWanted(void) {
     return DKPrefBool(DKKeyDebugInspectorEnabled) || DKPrefInteger(DKKeyAudioVizPosition) != 0;
 }
 
 #pragma mark - 控制器查找
+
+UIViewController *DKPlayInteractionControllerForView(UIView *view) {
+    static Class interactionClass;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ interactionClass = NSClassFromString(@"AWEPlayInteractionViewController"); });
+    if (!interactionClass) return nil;
+    for (UIResponder *responder = view.nextResponder; responder; responder = responder.nextResponder) {
+        if ([responder isKindOfClass:interactionClass]) return (UIViewController *)responder;
+    }
+    return nil;
+}
 
 static UIViewController *DKSearchChildController(UIViewController *controller, NSString *className, NSUInteger depth) {
     if (!controller || depth > 12) return nil;
