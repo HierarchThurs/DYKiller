@@ -10,6 +10,9 @@
 //   - 图标模式：按钮里插一层不接收触摸的覆盖层（图标，图标+文字时另加一行小字），位于文字视图之上、角标之下；
 //     文字视图挂空 mask 隐藏，alpha / hidden 仍归抖音，抖音显示特殊内容（隐藏文字视图）时覆盖层随之让位。
 //     着色取抖音为该按钮算好的文字色，选中（status == 2）用实心图。
+//   - 文字色以文字视图的 config.textColor 为准：抖音切页时先改选中状态、再分发明暗进度，配置对象在这两步里
+//     同步写 textColor，label 要等绑定稍后同步才变。读 label 会停在上一页的颜色，故取 config，
+//     并在 config 的 setTextColor: 写入点刷新对应按钮。
 //   - 拍摄按钮：抖音的图片视图挂空 mask，上面放照相机或自定义图片；颜色取选中 tab 的文字色。
 //   - 悬浮玻璃底栏开启时抖音按钮整体透明，覆盖层不可见；关掉玻璃后原样露出，不需要额外切换。
 //
@@ -170,6 +173,14 @@ static void DKSetFrame(UIView *view, CGRect frame) {
     if (!CGRectEqualToRect(view.frame, frame)) view.frame = frame;
 }
 
+// 抖音为文字视图算好的文字色：config.textColor 是同步写入的源头，label 经绑定延后才跟上，只作兜底。
+static UIColor *DKInnerTitleColor(UIView *inner) {
+    UIColor *color = DKAppearanceValue(DKAppearanceValue(inner, @"config"), @"textColor");
+    if ([color isKindOfClass:UIColor.class]) return color;
+    UILabel *label = DKAppearanceValue(inner, @"label");
+    return [label isKindOfClass:UILabel.class] ? label.textColor : nil;
+}
+
 static void DKApplyIconOverlay(UIView *button) {
     UIView *inner = DKAppearanceValue(button, @"innerView");
     if (![inner isKindOfClass:UIView.class]) inner = nil;
@@ -201,7 +212,7 @@ static void DKApplyIconOverlay(UIView *button) {
     if (overlay.isHidden == visible) overlay.hidden = !visible;
 
     UILabel *source = DKAppearanceValue(inner, @"label");
-    UIColor *color = [source isKindOfClass:UILabel.class] && source.textColor ? source.textColor : UIColor.whiteColor;
+    UIColor *color = DKInnerTitleColor(inner) ?: UIColor.whiteColor;
     BOOL selected = [DKAppearanceValue(button, @"status") longLongValue] == kDKSelectedStatus;
     BOOL withText = style == DKTabBarStyleIconText;
 
@@ -251,9 +262,8 @@ static void DKApplyIconOverlay(UIView *button) {
 static UIColor *DKSelectedTitleColor(AWENormalModeTabBar *bar) {
     for (id button in DKAppearanceValue(bar, @"tabBarButtons")) {
         if ([DKAppearanceValue(button, @"status") longLongValue] != kDKSelectedStatus) continue;
-        UILabel *label = DKAppearanceValue(DKAppearanceValue(button, @"innerView"), @"label");
-        if (![label isKindOfClass:UILabel.class] || !label.textColor) continue;
-        return [label.textColor colorWithAlphaComponent:1.0];
+        UIColor *color = DKInnerTitleColor(DKAppearanceValue(button, @"innerView"));
+        if (color) return [color colorWithAlphaComponent:1.0];
     }
     return UIColor.whiteColor;
 }
@@ -313,6 +323,17 @@ static void DKApplyBar(AWENormalModeTabBar *bar) {
         if (![button isKindOfClass:UIView.class]) continue;
         if (DKIsPlusButton(button)) DKApplyPlusOverlay(button, bar);
         else DKApplyIconOverlay(button);
+    }
+}
+
+// 某个文字配置换了颜色：刷新持有它的按钮；选中项的颜色还决定拍摄图标着色，拍摄按钮一并刷新。
+static void DKApplyConfigColor(AWENormalModeTabBarInnerViewUIConfig *config) {
+    AWENormalModeTabBar *bar = gAppearanceBar;
+    if (!bar) return;
+    for (id button in DKAppearanceValue(bar, @"tabBarButtons")) {
+        if (![button isKindOfClass:UIView.class]) continue;
+        if (DKIsPlusButton(button)) DKApplyPlusOverlay(button, bar);
+        else if (DKAppearanceValue(DKAppearanceValue(button, @"innerView"), @"config") == config) DKApplyIconOverlay(button);
     }
 }
 
@@ -400,6 +421,16 @@ NSString *DKTabBarAppearanceStatus(void) {
 - (void)setLightMode:(BOOL)lightMode {
     %orig;
     DKApplyPlusOverlay((UIView *)self, gAppearanceBar);
+}
+
+%end
+
+// 抖音换文字色的写入点：切页时选中状态与明暗进度分两步到达，每一步都同步写这里。
+%hook AWENormalModeTabBarInnerViewUIConfig
+
+- (void)setTextColor:(UIColor *)textColor {
+    %orig;
+    DKApplyConfigColor(self);
 }
 
 %end
