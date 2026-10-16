@@ -21,6 +21,8 @@ jobs:
     # Pinned on purpose: the glass tab bar needs an iOS 26 SDK, and the macos-latest label
     # migrates gradually — falling back to macOS 15 breaks the build on undeclared symbols.
     runs-on: macos-26
+    env:
+      THEOS_LOGOS_REV: a62370066a97e36d59b200a9fa10c5091f5e8972
 
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +43,7 @@ jobs:
         run: |
           theos_head=$(git ls-remote https://github.com/roothide/theos HEAD | cut -f 1)
           sdks_head=$(git ls-remote https://github.com/theos/sdks HEAD | cut -f 1)
-          echo "THEOS_CACHE_KEY=${{ runner.os }}-${theos_head}-${sdks_head}" >> "$GITHUB_ENV"
+          echo "THEOS_CACHE_KEY=${{ runner.os }}-${theos_head}-${sdks_head}-logos-${THEOS_LOGOS_REV}" >> "$GITHUB_ENV"
 
       - name: Cache DYKiller Theos toolchain
         uses: actions/cache@v4

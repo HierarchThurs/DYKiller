@@ -42,6 +42,11 @@ else
     git -C "${theos_dir}" submodule update --init --recursive
 fi
 
+# Use the Logos revision selected by the build workflow.
+git -C "${theos_dir}/vendor/logos" fetch origin "${THEOS_LOGOS_REV:?THEOS_LOGOS_REV must be set}"
+git -C "${theos_dir}/vendor/logos" checkout --detach "${THEOS_LOGOS_REV}"
+echo "DYKiller Logos revision: $(git -C "${theos_dir}/vendor/logos" rev-parse HEAD)"
+
 mkdir -p "${theos_dir}/sdks"
 if ! find "${theos_dir}/sdks" -maxdepth 1 -type d -name '*.sdk' | grep -q .; then
     work_dir=$(mktemp -d)
