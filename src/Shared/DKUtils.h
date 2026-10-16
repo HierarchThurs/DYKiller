@@ -8,6 +8,13 @@
 
 #import <UIKit/UIKit.h>
 
+/// 「显示 / 隐藏 / 移除」三档单选的取值。
+typedef NS_ENUM(NSInteger, DKDisplayMode) {
+    DKDisplayModeShow = 0,    // 抖音原样
+    DKDisplayModeHide = 1,    // 不显示，位置与点击保留
+    DKDisplayModeRemove = 2,  // 不显示、不可点击，按抖音原生排布收拢
+};
+
 // .xm 文件按 ObjC++ 编译、本工具按 ObjC(.m) 编译，需 extern "C" 统一为 C 链接以正确链接。
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +25,9 @@ BOOL DKPrefBool(NSString *key);
 
 /// 读取某单选项（NSUserDefaults NSInteger）。未设置时为 0。
 NSInteger DKPrefInteger(NSString *key);
+
+/// 读取「显示 / 隐藏 / 移除」三档单选；未设置或越界按显示。
+DKDisplayMode DKPrefDisplayMode(NSString *key);
 
 /// 读取 0–100 的百分比设置并换算为 0–1；未设置时取 defaultPercent，越界按边界。
 CGFloat DKPrefFraction(NSString *key, NSInteger defaultPercent);

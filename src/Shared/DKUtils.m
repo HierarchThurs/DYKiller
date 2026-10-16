@@ -20,6 +20,11 @@ NSInteger DKPrefInteger(NSString *key) {
     return [[NSUserDefaults standardUserDefaults] integerForKey:key];
 }
 
+DKDisplayMode DKPrefDisplayMode(NSString *key) {
+    NSInteger value = DKPrefInteger(key);
+    return (value == DKDisplayModeHide || value == DKDisplayModeRemove) ? (DKDisplayMode)value : DKDisplayModeShow;
+}
+
 CGFloat DKPrefFraction(NSString *key, NSInteger defaultPercent) {
     id raw = [NSUserDefaults.standardUserDefaults objectForKey:key];
     NSInteger percent = [raw respondsToSelector:@selector(integerValue)] ? [raw integerValue] : defaultPercent;

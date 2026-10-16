@@ -40,6 +40,35 @@
 @interface AWEPlayInteractionFollowPromptView : UIView
 @end
 
+#pragma mark - 播放页精简用到的类
+
+// 元素栈的一行；element 为元素对象（AWEBaseElement 子类）。
+@interface AWEBaseElementView : UIView
+@end
+
+// 播放页中部「全屏观看」入口及其控制器。
+@interface AWELandscapeFeedEntryView : UIView
+@end
+
+@interface AWEPlayInteractionLandscapeFeedController : NSObject
+- (BOOL)enableShowEntryView;
+@end
+
+// 作者元素的昵称右侧标签管理器；activedComponents 为当前显示的标签组件。
+@interface AWEVideoTagsPriorityManager : NSObject
+- (void)updateWithData:(id)data context:(id)context;
+@end
+
+// 标签元素（AWEPlayInteractionTagsElement）里的三类子视图。
+@interface AFDRecommendToFriendEntranceLabel : UIView
+@end
+
+@interface AWEFeedRelationView : UIView
+@end
+
+@interface AWEPlayInteractionGeneralTagView : UIView
+@end
+
 #pragma mark - 详情页视频功能组用到的类
 
 @class AWEAwemeDetailTableView;
@@ -336,6 +365,23 @@
 
 @interface AWEListenFeedPlayControlView : UIView
 - (void)commentButtonClicked:(id)sender;
+@end
+
+// 播放进度条（首页、朋友页共用）。progressSliderDelegate 为 AWEDProgressCoreContainer。
+@interface AWEFeedProgressSlider : UIView
+@end
+
+// 进度条常态是否透明的判定方：抖音按视频时长返回，短视频为 YES。
+@interface AWEDProgressHidePluginContainer : NSObject
+- (BOOL)shouldTransparentProgressSliderOnStableState;
+@end
+
+// 进度条状态机：常态 / 唤醒态的外观在这里套用；currentState 1 为常态、2 为唤醒态（暂停）。
+@interface AWEDProgressStateChangeContainer : NSObject
+- (long long)currentState;
+- (AWEFeedProgressSlider *)progressSlider;
+- (BOOL)shouldTransparentProgressSliderOnStableState;
+- (void)reapplyCurrentStateAppearance;
 @end
 
 #pragma mark - 内容过滤用到的类
