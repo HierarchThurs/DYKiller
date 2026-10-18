@@ -26,6 +26,7 @@
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKUtils.h"
+#import "DKViewAdjust.h"
 
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
@@ -1032,6 +1033,9 @@ static void DKGlassSetDouyinContentVisible(AWENormalModeTabBar *douyinBar, NSArr
         if (![button isKindOfClass:UIView.class]) continue;
         UIView *view = button;
         if (view.layer.opacity != opacity) view.layer.opacity = opacity;
+        // 抖音切换首页键内容时对整颗按钮做 alpha 0→1 动画（fillMode both），写回 model 值盖不住
+        // presentation；全透明 mask 不随动画变化。宿主自带 mask 时 DKAdjustFade 不覆盖。
+        if (DKAdjustFadeFactor(view) != opacity) DKAdjustFade(view, opacity, CGSizeZero);
         if (view.userInteractionEnabled != visible) view.userInteractionEnabled = visible;
     }
 }
