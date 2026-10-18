@@ -114,6 +114,8 @@ NSString *DKCleanKeyForRow(UIView *row) {
     if (DKCleanIsKind(element, @"AWEPlayInteractionNewDiversionBarBottomElement")) return DKKeyPlaybackAppDownloadMode;
     if (DKCleanIsKind(element, @"AWEPlayInteractionAnchorElement")) return DKCleanAnchorKey(row);
     if (DKCleanIsKind(element, @"AWETemplateNewBottomElement")) return DKCleanTemplateBarKey(element);
+    // 搜索详情等页的合集栏（identifier 固定为 compilation_detail），与模板底栏的 playlet_bar 同归视频合集。
+    if (DKCleanIsKind(element, @"AWEPlayInteractionNewMixVideoInfoElement")) return DKKeyPlaybackVideoCollectionMode;
     if (DKCleanIsKind(element, @"AWEPlayInteractionTagsElementV2")) {
         return [DKCleanString(element, @"businessID") isEqualToString:@"daily_recommend"] ? DKKeyPlaybackSelectedMode : nil;
     }
