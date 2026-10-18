@@ -2,8 +2,8 @@
 //  DKProgressUnderline.xm
 //  清除进度条底边压着的那条纯黑细垫层。视频撑满后它会横在视频与底栏之间形成割裂。
 //
-//  全项目唯一一处 AWEDPlayerProgressContainerView -layoutSubviews 的 hook：详情页全屏与首页/朋友页全屏
-//  面对的是同一条黑边、同一套识别与还原逻辑，只是作用域来源不同，故合并在此。
+//  由进度条容器的统一布局入口（Progress/DKProgressContainerHooks.xm）在每轮布局后调用：详情页全屏与
+//  首页/朋友页全屏面对的是同一条黑边、同一套识别与还原逻辑，只是作用域来源不同，故合并在此。
 //
 
 #import "DKVideoFullscreen.h"
@@ -62,21 +62,15 @@ static void DKRestoreUnderline(UIView *view) {
     objc_setAssociatedObject(view, &kDKUnderlineOpaqueKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-%hook AWEDPlayerProgressContainerView
-
-- (void)layoutSubviews {
-    %orig;
-
+void DKProgressUnderlineApply(UIView *container) {
     BOOL enabled = DKVideoFullscreenOn();
 
-    for (UIView *view in self.subviews) {
+    for (UIView *view in container.subviews) {
         // 已接管的视图只按开关决定去留：进度条收起时签名会漂移，据此还原会让黑边重现。
         if (objc_getAssociatedObject(view, &kDKUnderlineColorKey)) {
             enabled ? DKClearUnderline(view) : DKRestoreUnderline(view);
-        } else if (enabled && DKIsUnderlineView(view, self)) {
+        } else if (enabled && DKIsUnderlineView(view, container)) {
             DKClearUnderline(view);
         }
     }
 }
-
-%end

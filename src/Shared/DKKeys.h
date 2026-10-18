@@ -123,6 +123,8 @@ static NSString *const DKKeyDoubleTapOpenComment = @"DYKillerDoubleTapOpenCommen
 static NSString *const DKKeyDetailHideBottomBar = @"DYKillerHideChatVideoBottomBar";
 // 所有视频常态下都显示底部进度条。
 static NSString *const DKKeyProgressAlwaysVisible = @"DYKillerProgressAlwaysVisible";
+// 进度条旁的已播 / 总时长：0 关闭 / 1 两端（与进度条同一行）/ 2 右端 · 上方 / 3 右端 · 下方 / 4 两端 · 上方 / 5 两端 · 下方
+static NSString *const DKKeyProgressTimeStyle = @"DYKillerProgressTimeStyle";
 
 #pragma mark - 功能组：播放页精简
 

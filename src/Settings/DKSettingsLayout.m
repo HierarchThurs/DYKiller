@@ -223,6 +223,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
         DKSection(@"视频", @[
             DKRow(DKKeyVideoFullscreen, @"ic_fullscreen_outlined_16"),
             DKRow(DKKeyProgressAlwaysVisible, @"ic_playertime_outlined_20"),
+            DKRow(DKKeyProgressTimeStyle, @"ic_clock_outlined_20"),
         ]),
         DKSection(@"手势", @[
             DKRow(DKKeyDoubleTapOpenComment, @"ic_comment_outlined_20"),

@@ -11,13 +11,14 @@
 //   - 透明度：逐行挂半透明 mask，不改 alpha，命中不变；抖音打开文案面板时写的栈 alpha 与之相乘。
 //   - 缩放：贴左缘逐行缩放，最底行以行内可见内容（非空文本、有图的图片）的底边为锚，
 //     文案行文字下方的滚动余量不会把文字推进进度条触控区。
-//   - 上移：整栈叠 transform。
+//   - 上移：整栈叠 transform；视频时长显示在进度条上方时至少上移它要的让位高度。
 //
 
 #import "DKInfoAppearance.h"
 #import "DouyinHeaders.h"
 #import "DKAdjustRange.h"
 #import "DKKeys.h"
+#import "DKProgressTime.h"
 #import "DKUtils.h"
 #import "DKViewAdjust.h"
 
@@ -83,8 +84,9 @@ static CGFloat DKInfoScale(DKInfoRowKind kind) {
     }
 }
 
-static CGFloat DKInfoOffset(void) {
-    return DKAdjustValue(DKKeyInfoOffset);
+// 设置的上移量；视频时长显示在进度条上方时至少为它要的让位高度。
+static CGFloat DKInfoOffset(AWEElementStackView *stack) {
+    return MAX(DKAdjustValue(DKKeyInfoOffset), DKProgressTimeLift(stack));
 }
 
 #pragma mark - 内容底边
@@ -132,7 +134,7 @@ void DKInfoAppearanceApplyStack(AWEElementStackView *stack) {
     DKAdjustStackRows(stack, DKStackEdgeLeft,
                       ^CGFloat(UIView *row) { return DKInfoScale(DKInfoKindOfRow(row)); },
                       ^CGFloat(UIView *row) { return DKInfoRowContentBottom(row); });
-    DKAdjustTransform(stack, CGAffineTransformMakeTranslation(0, -DKInfoOffset()));
+    DKAdjustTransform(stack, CGAffineTransformMakeTranslation(0, -DKInfoOffset(stack)));
 }
 
 void DKInfoAppearanceRefresh(void) {

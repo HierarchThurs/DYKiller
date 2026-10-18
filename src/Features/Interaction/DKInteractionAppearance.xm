@@ -9,6 +9,7 @@
 #import "DouyinHeaders.h"
 #import "DKAdjustRange.h"
 #import "DKKeys.h"
+#import "DKProgressTime.h"
 #import "DKUtils.h"
 #import "DKViewAdjust.h"
 
@@ -38,13 +39,14 @@ static CGFloat DKInteractionScale(NSString *key) {
     return DKAdjustValue(key) / 100.0;
 }
 
-static CGFloat DKInteractionOffset(void) {
-    return DKAdjustValue(DKKeyInteractionOffset);
+// 设置的上移量；视频时长显示在进度条上方时至少为它要的让位高度。view 为右侧栈或进度条容器。
+static CGFloat DKInteractionOffset(UIView *view) {
+    return MAX(DKAdjustValue(DKKeyInteractionOffset), DKProgressTimeLift(view));
 }
 
 // 缩放或位移生效时，右侧栈的几何偏离抖音原位。
-static BOOL DKInteractionGeometryActive(void) {
-    return DKInteractionOffset() != 0
+static BOOL DKInteractionGeometryActive(UIView *view) {
+    return DKInteractionOffset(view) != 0
         || DKInteractionScale(DKKeyInteractionScale) != 1.0
         || DKInteractionScale(DKKeyAvatarScale) != 1.0
         || DKInteractionScale(DKKeyMusicScale) != 1.0;
@@ -216,7 +218,7 @@ void DKInteractionAppearanceApplyStack(AWEElementStackView *stack) {
                       ^CGFloat(UIView *row) { return DKInteractionRowScale(row); },
                       ^CGFloat(UIView *row) { return DKInteractionRowContentBottom(row); });
     // 上移整栈：栈的 bounds 随之上移，命中范围与显示一致；父视图不裁剪且高度覆盖上移范围。
-    DKAdjustTransform(stack, CGAffineTransformMakeTranslation(0, -DKInteractionOffset()));
+    DKAdjustTransform(stack, CGAffineTransformMakeTranslation(0, -DKInteractionOffset(stack)));
 }
 
 #pragma mark - 移除
@@ -242,7 +244,7 @@ BOOL DKInteractionRowRemoved(UIView *row) {
 // 缩放或上移生效时按 UIKit 的顺序问容器下方的兄弟：第一个接收该点的兄弟就是容器放手后的去处，
 // 只有它是右侧栈、命中可点目标且点位在该目标自身范围内时容器才放手；目标 bounds 外的扩展触控区仍归进度条。
 static BOOL DKInteractionStackClaimsPoint(UIView *container, CGPoint point, UIEvent *event) {
-    if (!DKInteractionGeometryActive()) return NO;
+    if (!DKInteractionGeometryActive(container)) return NO;
     NSArray<UIView *> *siblings = container.superview.subviews;
     NSUInteger index = [siblings indexOfObjectIdenticalTo:container];
     if (!siblings || index == NSNotFound) return NO;
@@ -300,7 +302,7 @@ NSString *DKInteractionAppearanceStatus(void) {
         (long)DKInteractionStoredInteger(DKKeyMusicAlpha, 100),
         (long)DKAdjustValue(DKKeyMusicScale),
         DKInteractionDisplayText(DKPrefDisplayMode(DKKeyMusicDisplay))];
-    [out appendFormat:@"上移=%ldpt\n", (long)DKInteractionOffset()];
+    [out appendFormat:@"上移=%ldpt\n", (long)DKAdjustValue(DKKeyInteractionOffset)];
     [out appendFormat:@"可见交互栈=%lu\n", (unsigned long)gDKInteractionStacks.allObjects.count];
     for (AWEElementStackView *stack in gDKInteractionStacks.allObjects) {
         NSMutableArray<UIView *> *music = [NSMutableArray array];

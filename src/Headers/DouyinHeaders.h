@@ -369,6 +369,50 @@
 
 // 播放进度条（首页、朋友页共用）。progressSliderDelegate 为 AWEDProgressCoreContainer。
 @interface AWEFeedProgressSlider : UIView
+@property (nonatomic, weak) id progressSliderDelegate;
+@end
+
+// 进度条章节点：按 progressWidth 把章节时间换成点位（加在进度条上），吸附区间与拖动换算同一口径。
+// shouldFollowSliderWidthForChapterPoints 为 NO 时章节控制器固定取屏宽 − 24；
+// progressTimingViewDidLayoutSubviews 是它自己的重排入口（重置章节缩略图索引、updateChapterSlider、openChapterLoopIfNeed）。
+@interface AWEDProgressChapterContainer : NSObject
+- (AWEFeedProgressSlider *)progressSlider;
+- (double)progressWidth;
+- (BOOL)shouldFollowSliderWidthForChapterPoints;
+- (BOOL)isChapterStyle;
+- (void)progressTimingViewDidLayoutSubviews;
+@end
+
+// 进度条各模块共用的共享数据中枢；sharedDataOfID: 按数据 ID 现取（不少为按需求值的块）。
+@interface AWEArchEventDataController : NSObject
+- (id)sharedDataOfID:(id)dataID;
+@end
+
+// 进度条共享数据的 ID；progressStatusVideoDuration 为作品时长（毫秒，NSNumber）。
+@interface AWEDProgressCoreDataID : NSObject
++ (id)progressStatusVideoDuration;
+@end
+
+// feed 页进度条布局策略：常态 / 唤醒 frame 与 progressWidth 都由左右边距 progressSliderLeftRightArea 算出
+// （progressWidth = 布局宽 − 2 × 边距，常态 frame = {边距, y, progressWidth, 2}），每次取 frame 都现取边距。
+@interface AWEDProgressLayoutFeedStrategy : NSObject
+- (AWEArchEventDataController *)edc;
+@end
+
+@class AWEDProgressStateChangeContainer;
+
+// 进度条的总控：播放进度经 updateProgressSliderWithTime:totalDuration: 送到这里（播放中约 0.5 s 一次），
+// setProgressState: 写 1 常态 / 2 唤醒态（暂停、拖动）。videoDuration 为作品时长（毫秒），
+// lastProgressDuration 为最近一次送来的播放时间（秒）。常态是否透明经它转问 AWEDProgressHidePluginContainer。
+// edc 与其布局策略的 edc 为同一个对象。
+@interface AWEDProgressCoreContainer : NSObject
+- (AWEFeedProgressSlider *)progressSlider;
+- (AWEDProgressChapterContainer *)chapterContainer;
+- (AWEDProgressStateChangeContainer *)stateChangeContainer;
+- (AWEArchEventDataController *)edc;
+- (double)videoDuration;
+- (double)lastProgressDuration;
+- (BOOL)shouldTransparentProgressSliderOnStableState;
 @end
 
 // 进度条常态是否透明的判定方：抖音按视频时长返回，短视频为 YES。
