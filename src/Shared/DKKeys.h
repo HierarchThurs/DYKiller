@@ -183,6 +183,19 @@ static NSString *const DKKeyBlockSideBarSwipe = @"DYKillerBlockSideBarSwipe";
 // 顶栏透明度：0–100，默认 100；作用于左侧栏入口、全部频道与搜索图标。
 static NSString *const DKKeyTopBarAlpha       = @"DYKillerTopBarAlpha";
 
+#pragma mark - 功能组：消息页精简
+
+// 每项单选，存整数：0 显示 / 1 隐藏（不显示、仍可点击，位置保留）/ 2 移除（不显示、不可点击，按抖音原生排布收拢）。
+// 顶栏
+static NSString *const DKKeyMessageSideBarMode      = @"DYKillerMessageSideBarMode";
+static NSString *const DKKeyMessageSlotMode         = @"DYKillerMessageSlotMode";
+static NSString *const DKKeyMessageSearchMode       = @"DYKillerMessageSearchMode";
+static NSString *const DKKeyMessagePlusMode         = @"DYKillerMessagePlusMode";
+// 列表顶部：头像行开头的业务入口、头像行里的好友头像、互动消息会话。
+static NSString *const DKKeyMessageDailyMode        = @"DYKillerMessageDailyMode";
+static NSString *const DKKeyMessageFriendAvatarMode = @"DYKillerMessageFriendAvatarMode";
+static NSString *const DKKeyMessageInteractionMode  = @"DYKillerMessageInteractionMode";
+
 #pragma mark - 功能组：个人主页
 
 static NSString *const DKKeyProfileHideUGCGuide = @"DYKillerHideProfileUGCGuide";

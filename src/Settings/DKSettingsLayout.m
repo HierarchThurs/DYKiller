@@ -135,6 +135,21 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             ]),
             DKRow(DKKeyDetailHideBottomBar, @"ic_xmark_outlined_20"),
         ]),
+        DKSection(@"消息页", @[
+            DKPage(@"消息页精简", @"ic_msg_outlined_20", @[
+                DKSection(@"顶栏", @[
+                    DKRow(DKKeyMessageSideBarMode, @"ic_hamburgernut_outlined_20"),
+                    DKRow(DKKeyMessageSlotMode, @"ic_bag_outlined_20"),
+                    DKRow(DKKeyMessageSearchMode, @"ic_videosearch_outlined_20"),
+                    DKRow(DKKeyMessagePlusMode, @"ic_pluscircle_outlined_20"),
+                ]),
+                DKSection(@"列表顶部", @[
+                    DKRow(DKKeyMessageDailyMode, @"ic_clock_outlined_20"),
+                    DKRow(DKKeyMessageFriendAvatarMode, @"ic_personcircleclean_outlined_20"),
+                    DKRow(DKKeyMessageInteractionMode, @"ic_msgheart_outlined_20"),
+                ]),
+            ]),
+        ]),
         DKSection(@"个人主页", @[
             DKRow(DKKeyProfileHideUGCGuide, @"ic_user_outlined_20"),
         ]),

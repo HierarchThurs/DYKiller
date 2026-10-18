@@ -516,6 +516,106 @@
 - (void)setupCopyFeedDiscoverEntranceView:(UIView *)view;
 @end
 
+#pragma mark - 消息页精简用到的类
+
+// 消息页导航栏组件。每个槽位是一组候选按钮组件，布局时取第一个 canShowInNaviBar 为真的组件；
+// 右一（加号位）是右侧容器的锚，右二（搜索位）挂在右一左边。
+@interface AWEIMMessageTabNaviBarComponent : NSObject
+@property (nonatomic, copy) NSArray *rightFirstBtnComponents;
+@property (nonatomic, copy) NSArray *rightSecondBtnComponents;
+- (void)reloadNaviBarButtons;
+@end
+
+// 导航栏按钮组件：左一侧边栏、左二运营位（装扮商店）、右二搜索、右一加号。
+@interface AWEIMMessageTabSideBarButtonComponent : NSObject
+- (BOOL)canShowInNaviBar;
+@end
+
+@interface AWEIMMessageTabNavBarResourceSlotComponent : NSObject
+- (BOOL)canShowInNaviBar;
+@end
+
+@interface AWEIMMessageTabNavBarResourceSlotComponentV2 : NSObject
+- (BOOL)canShowInNaviBar;
+@end
+
+@interface AWEIMMessageTabSearchComponent : NSObject
+- (BOOL)canShowInNaviBar;
+@end
+
+@interface AWEIMMessageTabPlusButtonComponent : NSObject
+- (BOOL)canShowInNaviBar;
+@end
+
+// 头像行的差异数据快照；条目标识即头像行的视图模型。
+@interface RxDiffableDataSourceSnapshot : NSObject
+- (NSArray *)sectionIdentifiers;
+- (NSArray *)itemIdentifiers;
+- (NSArray *)itemIdentifiersInSectionWithIdentifier:(id)sectionIdentifier;
+- (void)deleteItemsWithIdentifiers:(NSArray *)identifiers;
+@end
+
+@interface RxCollectionViewDiffableDataSource : NSObject
+- (RxDiffableDataSourceSnapshot *)snapshot;
+@end
+
+// 头像行条目：vmType 1 好友、4 状态设置、8 业务入口；业务入口为 AWEIMSkylightBizViewModel 及其子类。
+@interface AWEIMOnlineContactAvatarViewModel : NSObject
+@property (nonatomic, assign, readonly) NSUInteger vmType;
+@end
+
+@interface AWEIMSkylightBizViewModel : AWEIMOnlineContactAvatarViewModel
+@end
+
+@interface AWEIMSkylightCellViewModel : NSObject
+@property (nonatomic, strong, readonly) AWEIMOnlineContactAvatarViewModel *model;
+@end
+
+@interface AWEIMSkylightCommonCell : UICollectionViewCell
+- (void)renderWithViewModel:(AWEIMSkylightCellViewModel *)viewModel;
+@end
+
+// 头像行视图组件：所有数据写入最终都经 applySnapshot:animatingDifferences:completion:。
+@interface AWEIMSkylightViewComponent : NSObject
+@property (nonatomic, strong, readonly) RxCollectionViewDiffableDataSource *dataSource;
+@property (nonatomic, strong, readonly) UICollectionView *collectionView;
+- (void)applySnapshot:(RxDiffableDataSourceSnapshot *)snapshot animatingDifferences:(BOOL)animating completion:(id)completion;
+@end
+
+// 头像行数据组件：shouldHidden 为真时整行收起（列表视图经代理写 hidden 并重排表头）。
+@interface AWEIMSkylightDataComponent : NSObject
+- (BOOL)shouldHidden;
+@end
+
+@interface AWEIMSkylightListView : UIView
+@property (nonatomic, strong, readonly) AWEIMSkylightViewComponent *skylightInterface;
+- (void)refreshWithIgnoreFrequency:(BOOL)ignoreFrequency;
+- (void)performShouldHiddenDelegate;
+- (void)viewWillAppear;
+@end
+
+// 消息列表会话；互动消息为 AWEIMOfficialChatModel，type 1003、sessionId "-1003"。
+@interface AWEIMChatModel : NSObject
+@property (nonatomic, assign, readonly) NSInteger type;
+@property (nonatomic, copy, readonly) NSString *sessionId;
+@end
+
+@interface AWEIMChatCellViewModel : NSObject
+@property (nonatomic, strong, readonly) AWEIMChatModel *chat;
+@end
+
+@interface AWEIMChatListCommonCell : UITableViewCell
+@property (nonatomic, strong, readonly) AWEIMChatCellViewModel *cellViewModel;
+- (void)renderWithHolder:(id)holder;
+@end
+
+// 官方会话数据源。p_canShowOfficialChat: 为假时，upsert 里已在列表的会话转为删除。
+@interface IESIMOfficialChatDataSource : NSObject
+- (BOOL)p_canShowOfficialChat:(AWEIMChatModel *)chat;
+- (void)p_updateChatListWithUpsert:(NSArray *)upsert remove:(NSArray *)remove;
+- (AWEIMChatModel *)chatWithSession:(NSString *)sessionId;
+@end
+
 #pragma mark - 个人主页功能组用到的类
 
 @interface AWEUserProfileUGCContributionGuideEmptyCollectionViewCell : UICollectionViewCell
