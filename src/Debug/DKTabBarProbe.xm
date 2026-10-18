@@ -15,6 +15,7 @@
 #import "DKInteractionAppearance.h"
 #import "DKInfoAppearance.h"
 #import "DKPlaybackClean.h"
+#import "DKMessageClean.h"
 #import "DKProgressAlwaysVisible.h"
 #import "DKProgressTime.h"
 #import "DKAdjustRange.h"
@@ -1142,6 +1143,9 @@ NSString *DKTabBarProbeReport(void) {
 
     [out appendString:@"\n----- 播放页精简 -----\n"];
     [out appendString:DKPlaybackCleanStatus()];
+
+    [out appendString:@"\n----- 消息页精简 -----\n"];
+    [out appendString:DKMessageCleanStatus()];
 
     [out appendString:@"\n----- 顶栏透明度 -----\n"];
     [out appendString:DKTopBarAlphaStatus()];
