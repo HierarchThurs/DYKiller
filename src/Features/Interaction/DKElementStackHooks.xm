@@ -10,6 +10,7 @@
 #import "DKInfoAppearance.h"
 #import "DKInteractionAppearance.h"
 #import "DKPlaybackClean.h"
+#import "DKPublishInfo.h"
 
 %hook AWEElementStackView
 
@@ -19,6 +20,7 @@
     %orig;
     DKInteractionAppearanceApplyStack(self);
     DKInfoAppearanceApplyStack(self);
+    DKPublishInfoApplyStack(self);
 }
 
 %end
