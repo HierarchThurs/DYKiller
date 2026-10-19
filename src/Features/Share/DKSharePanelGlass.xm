@@ -11,6 +11,7 @@
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKShareSelectionHooks.h"
+#import "DKShareImagePlate.h"
 #import "DKUtils.h"
 
 #import <QuartzCore/QuartzCore.h>
@@ -39,10 +40,11 @@ static char kGlassMaterializingKey;
 static char kGlassFixedTintKey;
 static char kCloseOriginalConfigKey;
 static char kCloseOriginalImageKey;
+static char kCloseOriginalStyleKey;
+static char kCloseAppliedStyleKey;
 static char kCloseModeKey;
 static char kCloseGlassKey;
-static char kCellOriginalImageKey;
-static char kCellOriginalColorKey;
+static char kCellImageStateKey;
 static char kCellGlassKey;
 static char kDestainedCacheKey;
 static char kDestainedFlagKey;
@@ -69,9 +71,21 @@ static char kCardGlassKey;
 static char kCardDividerKey;
 static char kCardDividerHiddenKey;
 
+@interface DKShareCircleImageState : NSObject
+@property (nonatomic, strong) UIImage *nativeImage;
+@property (nonatomic, strong) UIImage *installedImage;
+@property (nonatomic, strong) UIColor *nativeColor;
+@property (nonatomic, strong) UIColor *installedColor;
+@end
+
+@implementation DKShareCircleImageState
+@end
+
 static NSHashTable *gGlassCarriers;
 static NSHashTable<AWESharePanelContainerViewController *> *gContainers;
 static NSHashTable<AWESharePanelFunctionCell *> *gCells;
+static NSHashTable<UIImageView *> *gCircleImages;
+static NSHashTable<UIButton *> *gCloseButtons;
 static NSHashTable<UIViewController *> *gCommentSheets;
 static NSHashTable<UICollectionViewCell *> *gCardCells;
 static NSHashTable<UIView *> *gSendButtons;
@@ -131,6 +145,12 @@ static UIUserInterfaceStyle DKShareStyleForView(UIView *view) {
 
 static UIUserInterfaceStyle DKShareOverrideStyle(BOOL clear, UIUserInterfaceStyle style) {
     return clear ? UIUserInterfaceStyleUnspecified : style;
+}
+
+static void DKShareApplyCloseStyle(UIButton *button, BOOL clear, UIUserInterfaceStyle style) {
+    UIUserInterfaceStyle override = DKShareOverrideStyle(clear, style);
+    if (button.overrideUserInterfaceStyle != override) button.overrideUserInterfaceStyle = override;
+    objc_setAssociatedObject(button, &kCloseAppliedStyleKey, @(override), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 static UIColor *DKShareTint(BOOL clear, UIUserInterfaceStyle style) {
@@ -203,6 +223,7 @@ static void DKShareApplyStyle(UIUserInterfaceStyle style, BOOL animated) API_AVA
     if (style == UIUserInterfaceStyleUnspecified) return;
     gGlassStyle = style;
     BOOL clear = DKShareUsesClear();
+    for (UIButton *button in gCloseButtons.allObjects) DKShareApplyCloseStyle(button, clear, style);
     BOOL needs = NO;
     for (UIVisualEffectView *glass in gGlassCarriers.allObjects) {
         if (DKShareGlassNeedsUpdate(glass, clear, style)) {
@@ -287,6 +308,20 @@ static void DKShareMaterialize(UIVisualEffectView *glass, UIViewController *cont
     });
 }
 
+// 圆钮玻璃随主图片槽参与同一轮 Auto Layout，材质等自身尺寸有效后生成。
+@interface DKShareCircleGlassView : DKGlassFlexView
+@end
+
+@implementation DKShareCircleGlassView
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if (!DKShareEnabled()) return;
+    if (@available(iOS 26.0, *)) DKShareMaterialize(self, nil);
+}
+
+@end
+
 #pragma mark - 去白底
 
 static UIImage *DKShareDestainPlate(UIImage *image) {
@@ -314,27 +349,8 @@ static UIImage *DKShareDestainPlate(UIImage *image) {
     }
     CGContextDrawImage(context, CGRectMake(0.0, 0.0, width, height), cgImage);
 
-    NSUInteger kept = 0;
-    size_t count = width * height;
-    for (size_t i = 0; i < count; i++) {
-        uint8_t *pixel = pixels + i * 4;
-        float red = pixel[0] / 255.0f;
-        float green = pixel[1] / 255.0f;
-        float blue = pixel[2] / 255.0f;
-        float alpha = pixel[3] / 255.0f;
-        if (alpha < 0.02f) continue;
-        float maximum = fmaxf(red, fmaxf(green, blue));
-        float minimum = fminf(red, fminf(green, blue));
-        float saturation = maximum > 0.001f ? (maximum - minimum) / maximum : 0.0f;
-        if (maximum >= kDKSharePlateLuma && saturation <= kDKSharePlateSat) {
-            pixel[0] = pixel[1] = pixel[2] = pixel[3] = 0;
-        } else {
-            kept += 1;
-        }
-    }
-
     UIImage *result = image;
-    if (kept > 0) {
+    if (DKShareRemoveImagePlate(pixels, width, height, stride)) {
         CGImageRef output = CGBitmapContextCreateImage(context);
         if (output) {
             result = [UIImage imageWithCGImage:output
@@ -347,7 +363,11 @@ static UIImage *DKShareDestainPlate(UIImage *image) {
     }
     CGContextRelease(context);
     free(pixels);
-    objc_setAssociatedObject(image, &kDestainedCacheKey, result, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (result == image) {
+        objc_setAssociatedObject(image, &kDestainedFlagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else {
+        objc_setAssociatedObject(image, &kDestainedCacheKey, result, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
     return result;
 }
 
@@ -398,41 +418,6 @@ static UIViewController *DKShareControllerForView(UIView *view) {
         if ([responder isKindOfClass:UIViewController.class]) return (UIViewController *)responder;
     }
     return nil;
-}
-
-// 圆底板：约 56×56、圆角裁成圆。图标可能画在这张图里，也可能只在 smallImageView 上。
-static BOOL DKShareIsCirclePlate(UIImageView *imageView) {
-    if (!imageView) return NO;
-    CGFloat width = CGRectGetWidth(imageView.bounds);
-    CGFloat height = CGRectGetHeight(imageView.bounds);
-    if (width >= 40.0 && fabs(width - height) <= 1.0) return YES;
-    return width < 1.0 && imageView.layer.cornerRadius >= 8.0;
-}
-
-static UIImageView *DKShareFindCircleImage(UIView *view, NSUInteger depth) {
-    if (!view || depth > 8) return nil;
-    if ([view isKindOfClass:UIImageView.class]
-        && DKShareIsCirclePlate((UIImageView *)view)) {
-        return (UIImageView *)view;
-    }
-    UIImageView *fallback = nil;
-    for (UIView *subview in view.subviews) {
-        UIImageView *found = DKShareFindCircleImage(subview, depth + 1);
-        if (!found) continue;
-        if (CGRectGetWidth(found.bounds) >= 40.0) return found;
-        if (!fallback) fallback = found;
-    }
-    return fallback;
-}
-
-static UIImageView *DKShareCircleImageView(AWESharePanelFunctionCell *cell) {
-    if ([cell respondsToSelector:@selector(imageView)] && cell.imageView
-        && (DKShareIsCirclePlate(cell.imageView)
-            || cell.imageView.image
-            || DKShareColorOpaque(cell.imageView.backgroundColor))) {
-        return cell.imageView;
-    }
-    return DKShareFindCircleImage(cell, 0);
 }
 
 #pragma mark - 面板
@@ -486,10 +471,8 @@ static void DKShareDetachPanel(UIView *slot) {
 #pragma mark - 关闭键
 
 static void DKShareRememberClose(UIButton *button) {
-    if (objc_getAssociatedObject(button, &kCloseOriginalImageKey)
-        || objc_getAssociatedObject(button, &kCloseOriginalConfigKey)) {
-        return;
-    }
+    if (objc_getAssociatedObject(button, &kCloseOriginalStyleKey)) return;
+    objc_setAssociatedObject(button, &kCloseOriginalStyleKey, @(button.overrideUserInterfaceStyle), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (button.configuration) {
         objc_setAssociatedObject(button, &kCloseOriginalConfigKey,
                                  button.configuration, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -510,6 +493,7 @@ static void DKShareRemoveCloseOverlay(UIButton *button) {
 
 static void DKShareRestoreClose(UIButton *button) {
     if (!button) return;
+    [gCloseButtons removeObject:button];
     DKShareRemoveCloseOverlay(button);
     UIButtonConfiguration *config = objc_getAssociatedObject(button, &kCloseOriginalConfigKey);
     UIImage *image = objc_getAssociatedObject(button, &kCloseOriginalImageKey);
@@ -519,6 +503,12 @@ static void DKShareRestoreClose(UIButton *button) {
         button.configuration = nil;
         if (image) [button setImage:image forState:UIControlStateNormal];
     }
+    NSNumber *originalStyle = objc_getAssociatedObject(button, &kCloseOriginalStyleKey);
+    NSNumber *appliedStyle = objc_getAssociatedObject(button, &kCloseAppliedStyleKey);
+    if (originalStyle && appliedStyle && button.overrideUserInterfaceStyle == appliedStyle.integerValue)
+        button.overrideUserInterfaceStyle = (UIUserInterfaceStyle)originalStyle.integerValue;
+    objc_setAssociatedObject(button, &kCloseOriginalStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(button, &kCloseAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(button, &kCloseOriginalConfigKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(button, &kCloseOriginalImageKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(button, &kCloseModeKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -569,6 +559,8 @@ static void DKShareApplyClose(UIButton *button, UIViewController *controller)
     API_AVAILABLE(ios(26.0)) {
     if (!button) return;
     DKShareRememberClose(button);
+    [gCloseButtons addObject:button];
+    DKShareApplyCloseStyle(button, DKShareUsesClear(), DKShareStyleForView(controller.view));
     if (DKShareUsesClear()) {
         DKShareApplyCloseOverlay(button, controller);
         return;
@@ -578,58 +570,65 @@ static void DKShareApplyClose(UIButton *button, UIViewController *controller)
 
 #pragma mark - 第三行圆钮
 
+// 在加载图片前登记主圆槽；异步图片与主题底色统一在写入点处理。
+static void DKShareTrackCircleImage(UIImageView *imageView) {
+    if (!imageView || objc_getAssociatedObject(imageView, &kCellImageStateKey)) return;
+    DKShareCircleImageState *state = [DKShareCircleImageState new];
+    state.nativeImage = imageView.image;
+    state.installedImage = DKShareDestainPlate(state.nativeImage);
+    state.nativeColor = imageView.backgroundColor;
+    state.installedColor = DKShareColorOpaque(state.nativeColor) ? UIColor.clearColor : state.nativeColor;
+    if (imageView.image != state.installedImage) imageView.image = state.installedImage;
+    if (imageView.backgroundColor != state.installedColor) imageView.backgroundColor = state.installedColor;
+    objc_setAssociatedObject(imageView, &kCellImageStateKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [gCircleImages addObject:imageView];
+    gEverAttached = YES;
+}
+
+static void DKShareRestoreCircleImage(UIImageView *imageView) {
+    DKShareCircleImageState *state = objc_getAssociatedObject(imageView, &kCellImageStateKey);
+    if (!state) return;
+    objc_setAssociatedObject(imageView, &kCellImageStateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [gCircleImages removeObject:imageView];
+    if (imageView.image == state.installedImage) imageView.image = state.nativeImage;
+    if (imageView.backgroundColor == state.installedColor
+        || [imageView.backgroundColor isEqual:state.installedColor]) {
+        imageView.backgroundColor = state.nativeColor;
+    }
+}
+
 static void DKShareRestoreCell(AWESharePanelFunctionCell *cell) {
-    UIImageView *imageView = DKShareCircleImageView(cell);
-    UIImage *original = objc_getAssociatedObject(cell, &kCellOriginalImageKey);
-    UIColor *color = objc_getAssociatedObject(cell, &kCellOriginalColorKey);
-    if (imageView && original) imageView.image = original;
-    if (imageView && color) imageView.backgroundColor = color;
+    DKShareRestoreCircleImage(cell.imageView);
     UIView *glass = objc_getAssociatedObject(cell, &kCellGlassKey);
     [glass removeFromSuperview];
     [gGlassCarriers removeObject:glass];
-    objc_setAssociatedObject(cell, &kCellOriginalImageKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(cell, &kCellOriginalColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(cell, &kCellGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [gCells removeObject:cell];
 }
 
-static void DKShareApplyCell(AWESharePanelFunctionCell *cell, UIViewController *controller)
-    API_AVAILABLE(ios(26.0)) {
-    UIImageView *imageView = DKShareCircleImageView(cell);
+static void DKShareApplyCell(AWESharePanelFunctionCell *cell) API_AVAILABLE(ios(26.0)) {
+    UIImageView *imageView = cell.imageView;
     if (!imageView) return;
-
-    // 底板两种画法：56×56 合成图，或白底 + smallImageView 图标。后一种没有 image。
-    if (DKShareColorOpaque(imageView.backgroundColor)) {
-        if (!objc_getAssociatedObject(cell, &kCellOriginalColorKey)) {
-            objc_setAssociatedObject(cell, &kCellOriginalColorKey,
-                                     imageView.backgroundColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        imageView.backgroundColor = UIColor.clearColor;
-    }
-
-    UIImage *current = imageView.image;
-    if (current && ![objc_getAssociatedObject(current, &kDestainedFlagKey) boolValue]) {
-        objc_setAssociatedObject(cell, &kCellOriginalImageKey,
-                                 current, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        UIImage *icon = DKShareDestainPlate(current);
-        if (icon != current) imageView.image = icon;
-    }
+    DKShareTrackCircleImage(imageView);
+    if (objc_getAssociatedObject(cell, &kCellGlassKey)) return;
 
     UIView *host = imageView.superview;
     if (!host) return;
-    UIVisualEffectView *glass = objc_getAssociatedObject(cell, &kCellGlassKey);
-    if (!glass) {
-        glass = DKShareMakeShell();
-        glass.autoresizingMask = UIViewAutoresizingNone;
-        glass.cornerConfiguration = [UICornerConfiguration capsuleConfiguration];
-        ((DKGlassFlexView *)glass).flexSourceView = cell;
-        objc_setAssociatedObject(cell, &kCellGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [gGlassCarriers addObject:glass];
-        [gCells addObject:cell];
-        gEverAttached = YES;
-    }
-    DKSharePlaceGlass(glass, imageView.frame, host, imageView);
-    DKShareMaterialize(glass, controller);
+    DKShareCircleGlassView *glass = [[DKShareCircleGlassView alloc] initWithEffect:nil];
+    glass.userInteractionEnabled = NO;
+    glass.translatesAutoresizingMaskIntoConstraints = NO;
+    glass.cornerConfiguration = [UICornerConfiguration capsuleConfiguration];
+    glass.flexSourceView = cell;
+    objc_setAssociatedObject(cell, &kCellGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [gGlassCarriers addObject:glass];
+    [gCells addObject:cell];
+    [host insertSubview:glass belowSubview:imageView];
+    [NSLayoutConstraint activateConstraints:@[
+        [glass.leadingAnchor constraintEqualToAnchor:imageView.leadingAnchor],
+        [glass.topAnchor constraintEqualToAnchor:imageView.topAnchor],
+        [glass.widthAnchor constraintEqualToAnchor:imageView.widthAnchor],
+        [glass.heightAnchor constraintEqualToAnchor:imageView.heightAnchor],
+    ]];
 }
 
 static void DKShareCollectFunctionCells(UIView *view,
@@ -650,7 +649,7 @@ static void DKShareApplyVisibleCells(AWESharePanelViewController *controller)
     if (!controller.isViewLoaded) return;
     NSMutableArray<AWESharePanelFunctionCell *> *cells = [NSMutableArray array];
     DKShareCollectFunctionCells(controller.view, cells, 0);
-    for (AWESharePanelFunctionCell *cell in cells) DKShareApplyCell(cell, controller);
+    for (AWESharePanelFunctionCell *cell in cells) DKShareApplyCell(cell);
 }
 
 #pragma mark - 输入覆盖层 / 发送按钮 / 表情栏
@@ -1364,6 +1363,9 @@ static void DKShareRestoreController(AWESharePanelContainerViewController *conta
         DKShareRestoreClose(DKShareCloseButton(content));
         DKShareDetachPanel(content.view);
     }
+    for (UIImageView *imageView in gCircleImages.allObjects) {
+        if (!content.view || [imageView isDescendantOfView:content.view]) DKShareRestoreCircleImage(imageView);
+    }
     for (AWESharePanelFunctionCell *cell in gCells.allObjects) {
         if (!content.view || [cell isDescendantOfView:content.view]) DKShareRestoreCell(cell);
     }
@@ -1371,6 +1373,7 @@ static void DKShareRestoreController(AWESharePanelContainerViewController *conta
 }
 
 static void DKShareRestoreAll(void) {
+    for (UIImageView *imageView in gCircleImages.allObjects) DKShareRestoreCircleImage(imageView);
     for (AWESharePanelFunctionCell *cell in gCells.allObjects) DKShareRestoreCell(cell);
     for (AWESharePanelContainerViewController *container in gContainers.allObjects) {
         AWESharePanelViewController *content = DKShareContentController(container);
@@ -1430,7 +1433,7 @@ static void DKShareRefreshVisible(void) {
     }
     for (AWESharePanelFunctionCell *cell in gCells.allObjects) {
         if (!enabled) continue;
-        if (@available(iOS 26.0, *)) DKShareApplyCell(cell, DKShareControllerForView(cell));
+        if (@available(iOS 26.0, *)) DKShareApplyCell(cell);
     }
 }
 
@@ -1488,30 +1491,61 @@ static void DKShareRefreshVisible(void) {
 
 %hook AWESharePanelFunctionCell
 
+- (void)setupViews {
+    %orig;
+    if (DKShareEnabled()) DKShareTrackCircleImage(self.imageView);
+}
+
 - (void)layoutSubviews {
     %orig;
     if (!DKShareEnabled()) {
-        if (objc_getAssociatedObject(self, &kCellGlassKey)) DKShareRestoreCell(self);
+        if (objc_getAssociatedObject(self, &kCellGlassKey)
+            || objc_getAssociatedObject(self.imageView, &kCellImageStateKey)) DKShareRestoreCell(self);
         return;
     }
-    if (@available(iOS 26.0, *)) DKShareApplyCell(self, DKShareControllerForView(self));
+    if (@available(iOS 26.0, *)) DKShareApplyCell(self);
 }
 
 - (void)updateWithViewModel:(id)viewModel bigFontAdapter:(id)adapter {
     %orig;
     if (!DKShareEnabled()) return;
-    if (@available(iOS 26.0, *)) DKShareApplyCell(self, DKShareControllerForView(self));
+    if (@available(iOS 26.0, *)) DKShareApplyCell(self);
 }
 
 - (void)updateImageViewWithViewModel:(id)viewModel {
+    if (DKShareEnabled()) DKShareTrackCircleImage(self.imageView);
     %orig;
     if (!DKShareEnabled()) return;
-    if (@available(iOS 26.0, *)) DKShareApplyCell(self, nil);
+    if (@available(iOS 26.0, *)) DKShareApplyCell(self);
 }
 
 - (void)prepareForReuse {
     %orig;
     if (!DKShareEnabled()) DKShareRestoreCell(self);
+}
+
+%end
+
+%hook UIImageView
+
+- (void)setImage:(UIImage *)image {
+    DKShareCircleImageState *state = objc_getAssociatedObject(self, &kCellImageStateKey);
+    if (state && DKShareEnabled()) {
+        state.nativeImage = image;
+        image = DKShareDestainPlate(image);
+        state.installedImage = image;
+    }
+    %orig(image);
+}
+
+- (void)setBackgroundColor:(UIColor *)color {
+    DKShareCircleImageState *state = objc_getAssociatedObject(self, &kCellImageStateKey);
+    if (state && DKShareEnabled()) {
+        state.nativeColor = color;
+        if (DKShareColorOpaque(color)) color = UIColor.clearColor;
+        state.installedColor = color;
+    }
+    %orig(color);
 }
 
 %end
@@ -1637,6 +1671,8 @@ static void DKShareRefreshVisible(void) {
     gGlassCarriers = [NSHashTable weakObjectsHashTable];
     gContainers = [NSHashTable weakObjectsHashTable];
     gCells = [NSHashTable weakObjectsHashTable];
+    gCircleImages = [NSHashTable weakObjectsHashTable];
+    gCloseButtons = [NSHashTable weakObjectsHashTable];
     gCommentSheets = [NSHashTable weakObjectsHashTable];
     gCardCells = [NSHashTable weakObjectsHashTable];
     gSendButtons = [NSHashTable weakObjectsHashTable];
