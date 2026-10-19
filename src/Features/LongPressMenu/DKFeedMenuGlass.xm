@@ -4,7 +4,7 @@
 //
 //  实现：
 //   - 面板外壳是 DUX 弹层的 DUXVisualEffectView（20pt 顶圆角、UIBlurEffect）；只处理装着
-//     AWEVideoLongPressPanelViewController 的那一个，其余 DUX 弹层不动。
+//     作品长按菜单或弹幕设置的外壳。
 //   - 外壳 effect 记下后清空，contentView 最底层挂一块玻璃，满幅的面板底色视图隐藏；原生行的卡片常态底色去掉，
 //     与玻璃融为一体，按下态保持原生高亮。
 //   - 抖音给弹层与外壳 contentView 设了深色主题偏好；接管时取消偏好、之后的深色偏好也拦下，
@@ -33,6 +33,10 @@ static char kDKShellPlateKey;      // 外壳里被隐藏的面板底色视图
 static char kDKGlassStateKey;      // 玻璃当前材质「清透|外观」
 static char kDKGlassEffectKey;     // 玻璃当前 effect；其它写入换回它
 static char kDKThemeFollowKey;     // 该视图的深色主题偏好已改为跟随全局主题
+static char kDKContentBackgroundKey;
+static char kDKCardFillKey;
+static char kDKShellCardsKey;
+static char kDKSettingsThemeKey;
 
 static NSHashTable<UIVisualEffectView *> *gShells;
 static NSString *gLastStatus = @"未接管";
@@ -51,17 +55,19 @@ static UIVisualEffectView *DKFeedShell(UIView *view) {
 
 // 菜单文字色是浅色时菜单是深色外观。
 static UIUserInterfaceStyle DKFeedPanelStyle(UIView *view) {
+    UITraitCollection *traits = view.traitCollection ?: UITraitCollection.currentTraitCollection;
     Class config = NSClassFromString(@"AWEModernLongPressPanelUIConfig");
     id color = [config respondsToSelector:@selector(itemTitleColor)]
         ? ((id (*)(id, SEL))objc_msgSend)(config, @selector(itemTitleColor)) : nil;
     if ([color isKindOfClass:UIColor.class]) {
-        UIColor *resolved = [(UIColor *)color resolvedColorWithTraitCollection:view.traitCollection];
-        CGFloat white = 0, alpha = 0;
-        if ([resolved getWhite:&white alpha:&alpha]) {
-            return white > 0.5 ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+        UIColor *resolved = [(UIColor *)color resolvedColorWithTraitCollection:traits];
+        CGFloat red = 0, green = 0, blue = 0, alpha = 0;
+        if ([resolved getRed:&red green:&green blue:&blue alpha:&alpha]) {
+            CGFloat luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+            return luminance > 0.5 ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
         }
     }
-    UIUserInterfaceStyle style = view.traitCollection.userInterfaceStyle;
+    UIUserInterfaceStyle style = traits.userInterfaceStyle;
     return style == UIUserInterfaceStyleUnspecified ? UIUserInterfaceStyleDark : style;
 }
 
@@ -83,16 +89,17 @@ static BOOL DKFeedCanFollowTheme(UIView *view) {
 static void DKFeedFollowTheme(UIView *view) {
     if (!DKFeedCanFollowTheme(view)) return;
     if (!objc_getAssociatedObject(view, &kDKThemeFollowKey)) {
-        objc_setAssociatedObject(view, &kDKThemeFollowKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, &kDKThemeFollowKey, @([view awe_hasPreferredTheme]), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if ([view awe_hasPreferredTheme]) [view awe_cancelPreferredTheme];
 }
 
-// 还原为抖音给这个菜单设的深色偏好。
+// 恢复接管前已有的深色偏好。
 static void DKFeedRestoreTheme(UIView *view) {
-    if (!view || !objc_getAssociatedObject(view, &kDKThemeFollowKey)) return;
+    NSNumber *preferred = objc_getAssociatedObject(view, &kDKThemeFollowKey);
+    if (!view || !preferred) return;
     objc_setAssociatedObject(view, &kDKThemeFollowKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [view awe_preferDarkTheme];
+    if (preferred.boolValue) [view awe_preferDarkTheme];
 }
 
 static BOOL DKFeedInGlassShell(UIView *view) {
@@ -100,10 +107,45 @@ static BOOL DKFeedInGlassShell(UIView *view) {
     return shell && objc_getAssociatedObject(shell, &kDKShellGlassKey) != nil;
 }
 
+// 只清除行背景中覆盖卡片面积的填充；分隔线、描边和控件内部图层保持原生。
+static void DKFeedClearCardFill(UIView *background, UIVisualEffectView *shell) {
+    if (!background || CGRectIsEmpty(background.bounds) || !shell || !objc_getAssociatedObject(shell, &kDKShellGlassKey)) return;
+    for (CALayer *layer in background.layer.sublayers) {
+        if (![layer isKindOfClass:CAShapeLayer.class]) continue;
+        CAShapeLayer *shape = (CAShapeLayer *)layer;
+        if (!shape.path || !shape.fillColor || CGColorGetAlpha(shape.fillColor) == 0) continue;
+        CGSize size = CGPathGetPathBoundingBox(shape.path).size;
+        if (size.width < background.bounds.size.width / 2 || size.height < background.bounds.size.height / 2) continue;
+        objc_setAssociatedObject(shape, &kDKCardFillKey, [UIColor colorWithCGColor:shape.fillColor], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        NSHashTable *cards = objc_getAssociatedObject(shell, &kDKShellCardsKey);
+        if (!cards) {
+            cards = NSHashTable.weakObjectsHashTable;
+            objc_setAssociatedObject(shell, &kDKShellCardsKey, cards, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        [cards addObject:shape];
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        shape.fillColor = UIColor.clearColor.CGColor;
+        [CATransaction commit];
+    }
+}
+
+static void DKFeedContentBackground(UIView *view, BOOL clear) {
+    id original = objc_getAssociatedObject(view, &kDKContentBackgroundKey);
+    if (clear) {
+        if (!original) objc_setAssociatedObject(view, &kDKContentBackgroundKey, view.backgroundColor ?: (id)NSNull.null, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        view.backgroundColor = UIColor.clearColor;
+    } else if (original) {
+        if (view.backgroundColor && CGColorGetAlpha(view.backgroundColor.CGColor) == 0) view.backgroundColor = original == NSNull.null ? nil : original;
+        objc_setAssociatedObject(view, &kDKContentBackgroundKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
 // 卡片在接管前就可能取过底色：对面板里可见的原生行按当前状态重取一次。
 static void DKFeedRefreshCards(UIView *root) {
     Class cellClass = NSClassFromString(@"AWELongPressPanelSettingCell");
-    if (!cellClass || !root) return;
+    if (!root) return;
+    UIVisualEffectView *shell = DKFeedShell(root);
     NSMutableArray<UIView *> *queue = [NSMutableArray arrayWithObject:root];
     while (queue.count) {
         UIView *view = queue.firstObject;
@@ -113,6 +155,7 @@ static void DKFeedRefreshCards(UIView *root) {
             continue;
         }
         for (UITableViewCell *cell in ((UITableView *)view).visibleCells) {
+            DKFeedClearCardFill(cell.backgroundView, shell);
             if (![cell isKindOfClass:cellClass]) continue;
             AWELongPressPanelSettingCell *row = (AWELongPressPanelSettingCell *)cell;
             UIView *card = row.sectionBackgroundView;
@@ -129,6 +172,13 @@ static void DKFeedRestoreShell(UIVisualEffectView *shell) {
     [glass removeFromSuperview];
     objc_setAssociatedObject(shell, &kDKShellGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(shell, &kDKShellEffectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSHashTable *cards = objc_getAssociatedObject(shell, &kDKShellCardsKey);
+    for (CAShapeLayer *shape in cards) {
+        UIColor *fill = objc_getAssociatedObject(shape, &kDKCardFillKey);
+        if (shape.fillColor && CGColorGetAlpha(shape.fillColor) == 0) shape.fillColor = fill.CGColor;
+        objc_setAssociatedObject(shape, &kDKCardFillKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    objc_setAssociatedObject(shell, &kDKShellCardsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     UIView *plate = objc_getAssociatedObject(shell, &kDKShellPlateKey);
     plate.hidden = NO;
     objc_setAssociatedObject(shell, &kDKShellPlateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -140,7 +190,7 @@ static void DKFeedRestoreShell(UIVisualEffectView *shell) {
     gLastStatus = @"已还原";
 }
 
-static void DKFeedApplyGlass(UIVisualEffectView *shell, UIView *anchor) API_AVAILABLE(ios(26.0)) {
+static void DKFeedApplyGlass(UIVisualEffectView *shell, UIView *anchor, BOOL followTheme) API_AVAILABLE(ios(26.0)) {
     UIView *host = shell.contentView;
     if (CGRectGetWidth(host.bounds) < 8.0 || CGRectGetHeight(host.bounds) < 8.0) return;
 
@@ -175,8 +225,11 @@ static void DKFeedApplyGlass(UIVisualEffectView *shell, UIView *anchor) API_AVAI
         objc_setAssociatedObject(shell, &kDKShellPlateKey, plate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (!plate.hidden) plate.hidden = YES;
     }
-    DKFeedFollowTheme(shell.superview);
-    DKFeedFollowTheme(host);
+    if (followTheme) {
+        DKFeedFollowTheme(shell.superview);
+        DKFeedFollowTheme(host);
+    }
+    DKFeedContentBackground(anchor, YES);
     DKFeedRefreshCards(anchor);
 
     UIUserInterfaceStyle override = clear ? UIUserInterfaceStyleUnspecified : style;
@@ -206,10 +259,12 @@ static void DKFeedSyncGlass(UIViewController *panel) {
     UIVisualEffectView *shell = DKFeedShell(panel.view);
     if (!shell) return;
     if (!DKFeedGlassEnabled()) {
+        DKFeedContentBackground(panel.view, NO);
         DKFeedRestoreShell(shell);
         return;
     }
-    if (@available(iOS 26.0, *)) DKFeedApplyGlass(shell, panel.view);
+    BOOL followTheme = [panel isKindOfClass:NSClassFromString(@"AWEVideoLongPressPanelViewController")];
+    if (@available(iOS 26.0, *)) DKFeedApplyGlass(shell, panel.view, followTheme);
 }
 
 NSString *DKFeedMenuGlassStatus(void) {
@@ -232,6 +287,46 @@ NSString *DKFeedMenuGlassStatus(void) {
 - (void)viewDidLayoutSubviews {
     %orig;
     DKFeedSyncGlass(self);
+}
+
+%end
+
+%hook AWEDanmakuSettingsPanelViewController
+
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    DKFeedSyncGlass(self);
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    DKFeedSyncGlass(self);
+}
+
+%end
+
+%hook AWEDanmakuSettingsPanelView
+
+// 原生标题与行模型在初始化时读取同一个主题，保留原生文字层级和控件颜色。
+- (instancetype)initWithDanmakuScene:(unsigned long long)scene config:(AWEDanmakuSettingsPanelConfig *)config delegate:(id)delegate {
+    if (DKFeedGlassEnabled()) objc_setAssociatedObject(config, &kDKSettingsThemeKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return %orig;
+}
+
+- (void)setSectionCornerRadiusAndLines:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
+    %orig;
+    if (DKFeedGlassEnabled()) DKFeedClearCardFill(cell.backgroundView, DKFeedShell(self));
+}
+
+%end
+
+%hook AWEDanmakuSettingsPanelConfig
+
+- (unsigned long long)themeColorType {
+    if (DKFeedGlassEnabled() && objc_getAssociatedObject(self, &kDKSettingsThemeKey)) {
+        return DKFeedPanelStyle(nil) == UIUserInterfaceStyleDark ? 1 : 0;
+    }
+    return %orig;
 }
 
 %end
@@ -292,7 +387,7 @@ NSString *DKFeedMenuGlassStatus(void) {
     DKSettingsRegister(DKKeyFeedMenuGlass, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeGlassChoice(DKKeyFeedMenuGlass, DKKeyFeedMenuGlassClear, @"长按菜单液态玻璃", nil);
         return DKSettingsWithInfo(item,
-            @"视频与图文长按菜单的材质：关闭时保持抖音原生样式；模糊玻璃使用系统 Regular；清透玻璃显示更多背后视频细节。"
+            @"视频与图文长按菜单及弹幕设置的材质：关闭时保持抖音原生样式；模糊玻璃使用系统 Regular；清透玻璃显示更多背后视频细节。"
             @"开启后菜单文字与图标跟随抖音的深浅色：浅色模式为黑色，深色模式为白色。"
             @"下次打开长按菜单时生效。评论的长按菜单跟随「分享面板液态玻璃」。");
     });
