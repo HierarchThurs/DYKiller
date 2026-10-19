@@ -183,6 +183,23 @@ static NSString *const DKKeyBlockSideBarSwipe = @"DYKillerBlockSideBarSwipe";
 // 顶栏透明度：0–100，默认 100；作用于左侧栏入口、全部频道与搜索图标。
 static NSString *const DKKeyTopBarAlpha       = @"DYKillerTopBarAlpha";
 
+#pragma mark - 功能组：朋友页精简
+
+// 每项单选，存整数：0 显示 / 1 隐藏（不显示、仍可点击，位置保留）/ 2 移除（不显示、不可点击，按抖音原生排布收拢）。
+// 顶栏：左上角头像和加号（日常相机）、中间「限时日常」胶囊（移除时天窗也不再展开）、右上角朋友按钮。
+static NSString *const DKKeyFriendAvatarEntryMode   = @"DYKillerFriendAvatarEntryMode";
+static NSString *const DKKeyFriendDailyMode         = @"DYKillerFriendDailyMode";
+static NSString *const DKKeyFriendButtonMode        = @"DYKillerFriendButtonMode";
+// 作品：文案上方「朋友」标记、文案下方「私信 xxx」面板、头像下方「私信」图标；凡出现处都生效。
+static NSString *const DKKeyFriendRelationTagMode   = @"DYKillerFriendRelationTagMode";
+static NSString *const DKKeyFriendFastReplyMode     = @"DYKillerFriendFastReplyMode";
+static NSString *const DKKeyFriendSendMessageMode   = @"DYKillerFriendSendMessageMode";
+// 作品：昵称右侧「日常」标签、文案上方关注标签（你的关注 / 互相关注等关系文案）。
+static NSString *const DKKeyFriendStoryTagMode      = @"DYKillerFriendStoryTagMode";
+static NSString *const DKKeyFriendFollowTagMode     = @"DYKillerFriendFollowTagMode";
+// 内容：移除朋友页内容流里的「看看朋友推荐的作品」卡片（开关）。
+static NSString *const DKKeyFriendRemoveRecommendCard = @"DYKillerFriendRemoveRecommendCard";
+
 #pragma mark - 功能组：消息页精简
 
 // 每项单选，存整数：0 显示 / 1 隐藏（不显示、仍可点击，位置保留）/ 2 移除（不显示、不可点击，按抖音原生排布收拢）。
@@ -195,6 +212,27 @@ static NSString *const DKKeyMessagePlusMode         = @"DYKillerMessagePlusMode"
 static NSString *const DKKeyMessageDailyMode        = @"DYKillerMessageDailyMode";
 static NSString *const DKKeyMessageFriendAvatarMode = @"DYKillerMessageFriendAvatarMode";
 static NSString *const DKKeyMessageInteractionMode  = @"DYKillerMessageInteractionMode";
+
+#pragma mark - 功能组：长按菜单
+
+// 作品长按菜单：每个原生菜单项一个 BOOL 键，前缀 + 抖音菜单项标识（panelBizVMIdentifier）。
+static NSString *const DKKeyFeedMenuHidePrefix    = @"DYKillerHideFeedMenu.";
+// 打开过的作品长按菜单里出现的原生菜单项：NSArray<NSDictionary>，每项含 id/title。
+static NSString *const DKKeyFeedMenuCatalog       = @"DYKillerFeedMenuCatalog";
+// 宫格排列（单选，整数）：0 每行 1 个（抖音原生列表）/ 1 每行 2 个 / 2 每行 3 个 / 3 每行 4 个。
+static NSString *const DKKeyFeedMenuColumns       = @"DYKillerFeedMenuColumns";
+// 设置子页入口的 identifier，NSUserDefaults 里不写值。
+static NSString *const DKKeyFeedMenu              = @"DYKillerFeedMenu";
+// 评论长按菜单：每项一个 BOOL 键，前缀 + 菜单项标识（元素 elementType 数字，或分享行 share）。
+static NSString *const DKKeyCommentMenuHidePrefix = @"DYKillerHideCommentMenu.";
+static NSString *const DKKeyCommentMenuCatalog    = @"DYKillerCommentMenuCatalog";
+static NSString *const DKKeyCommentMenuColumns    = @"DYKillerCommentMenuColumns";
+static NSString *const DKKeyCommentMenu           = @"DYKillerCommentMenu";
+// 作品长按菜单的材质单选（DKMakeGlassChoice）：总开关 + 清透档两个 BOOL，清透档关即系统 Regular。
+static NSString *const DKKeyFeedMenuGlass         = @"DYKillerFeedMenuGlass";
+static NSString *const DKKeyFeedMenuGlassClear    = @"DYKillerFeedMenuGlassClear";
+// 复制评论时去掉开头的「@用户名: 」，只复制评论内容。
+static NSString *const DKKeyCommentCopyWithoutName = @"DYKillerCommentCopyWithoutName";
 
 #pragma mark - 功能组：个人主页
 

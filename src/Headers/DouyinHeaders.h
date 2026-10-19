@@ -516,6 +516,61 @@
 - (void)setupCopyFeedDiscoverEntranceView:(UIView *)view;
 @end
 
+#pragma mark - 朋友页精简用到的类
+
+// 朋友页顶栏。左侧入口容器 publishEntranceView 内是日常相机（头像和加号），右侧为朋友申请按钮（含未读角标）。
+@interface AWEFamiliarNavView : UIView
+@property (nonatomic, strong, readonly) UIView *publishEntranceView;
+@property (nonatomic, strong, readonly) UIButton *friendsRequestButton;
+@end
+
+// 朋友页「限时日常 ▾」胶囊；显隐由天窗胶囊协调器写 hidden。
+@interface AWEFamiliarSkylightBubbleView : UIView
+@end
+
+@interface AFDFamiliarViewController : UIViewController
+- (void)showStorySkylightCapsuleIfNeeded;
+- (void)dismissStorySkylightCapsule;
+@end
+
+// 朋友页天窗（限时日常头像列表）。点胶囊、刷新后自动展开、下拉手势开始与拖动都先过 enableOpenWithEnterMethod:。
+@interface AWEFamiliarSkylightViewController : UIViewController
+- (BOOL)enableOpenWithEnterMethod:(id)enterMethod;
+- (BOOL)isOpening;
+@end
+
+// 头像下方「私信」图标的控制器。shouldShowSendMessageView: 决定是否显示，sendMessageView 内含阴影与图标。
+@interface AWEPlayInteractionUserAvatarContext : NSObject
+@property (nonatomic, strong, readonly) id model;
+@end
+
+@interface AWEPlayInteractionUserAvatarSendMsgController : NSObject
+@property (nonatomic, strong, readonly) AWEPlayInteractionUserAvatarContext *userAvatarContext;
+@property (nonatomic, strong, readonly) UIView *sendMessageView;
+- (BOOL)shouldShowSendMessageView:(id)model;
+- (void)showSendMessageViewWithAnimation:(BOOL)animated;
+- (void)hideSendMessageView;
+@end
+
+// 朋友页内容流响应的条目；type 8 为「看看朋友推荐的作品」卡片，其 aweme 带 friendRecommendCard。
+@interface AWEConcernCardModel : NSObject
+@property (nonatomic, assign, readonly) NSInteger type;
+@property (nonatomic, strong, readonly) AWEAwemeModel *aweme;
+@end
+
+@interface AWEAwemeModel (DKFriendRecommendCard)
+- (id)friendRecommendCard;
+@end
+
+// 朋友页内容流响应（网络与预加载）；数据控制器经 cardList 读取条目。
+@interface AWEFamiliarFeedResponseModel : NSObject
+- (NSArray *)cardList;
+@end
+
+@interface AWEFamiliarFeedPreloadResponse : NSObject
+- (NSArray *)cardList;
+@end
+
 #pragma mark - 消息页精简用到的类
 
 // 消息页导航栏组件。每个槽位是一组候选按钮组件，布局时取第一个 canShowInNaviBar 为真的组件；
@@ -632,6 +687,17 @@
 @property (nonatomic, strong) NSString *duxIconName;
 @property (nonatomic, strong) NSString *describeString;
 @property (nonatomic, copy) id action;
+// 以下为长按菜单精简用到的字段：原生项的语义标识（如 speed、dislike），插件项为 nil。
+- (NSString *)panelBizVMIdentifier;
+@property (nonatomic, strong) UIView *subView;            // 行右侧附件：开关、状态文字、箭头、缩略图
+@property (nonatomic, strong) UIView *totalView;          // 整行自绘控件，如倍速分段
+@property (nonatomic, strong) UIImage *iconImage;
+@property (nonatomic, assign) BOOL disableInteraction;
+@property (nonatomic, copy) id willAppearBlock;
+@property (nonatomic, copy) NSString *referString;
+- (void)trackCellShow;
+- (void)configVM;
+- (void)configVMIfNeeded;              // hasConfig 为假时调一次 configVM
 @end
 
 @interface AWELongPressPanelViewGroupModel : NSObject                 // 长按面板的一组
@@ -650,6 +716,56 @@
 
 @interface AWELongPressPanelTableViewController : UIViewController   // 推荐页视频与图文共用
 - (NSArray *)dataArray;
+- (void)setDataArray:(NSArray *)dataArray;
+- (UITableView *)tableView;
+// 行点击的原生入口：执行 action 并埋点。
+- (void)executeActionForViewModel:(id)viewModel;
+// 按行在分组里的位置画卡片底与分割线；非 AWELongPressPanelSettingCell 的 cell 走通用卡片底。
+- (void)setSectionCornreRadiusAndLines:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath;
+- (void)updateFirstScreenVisibleStatusForVMAtIndexPath:(NSIndexPath *)indexPath groupModel:(id)groupModel;
+@end
+
+// 作品长按菜单的普通行。
+@interface AWELongPressPanelSettingCell : UITableViewCell
+- (void)setLongPressPanelVM:(id)viewModel;
+- (UIView *)sectionBackgroundView;
+- (UIView *)sectionSeparatorView;
+- (UIView *)rightSubView;
+- (UIColor *)sectionBackgroundColorForHighlighted:(BOOL)highlighted;   // 卡片底色（sectionBackgroundView）
+@end
+
+@interface AWEModernLongPressPanelUIConfig : NSObject
++ (UIColor *)cellHighlightedColor;
++ (UIColor *)itemTitleColor;
+@end
+
+// 抖音列表框架：列表 VM 持有分区 VM，分区 VM 持有本分区的数据模型；评论长按面板基于它。
+@interface AWEBaseListViewModel : NSObject
+- (void)replaceBySectionViewModels:(NSArray *)sectionViewModels sync:(BOOL)sync;
+@end
+
+@interface AWEBaseListSectionViewModel : NSObject
+- (NSArray *)modelsArray;
+- (void)replaceByModels:(NSArray *)models animated:(BOOL)animated sync:(BOOL)sync;
+@end
+
+// 作品长按菜单的内容控制器，挂在 DUXContentSheet 的导航里，表格控制器是它的子控制器。
+@interface AWEVideoLongPressPanelViewController : UIViewController
+@end
+
+// 抖音的视图级主题偏好：设了偏好的视图及其子树按指定的深 / 浅主题取色，取消后跟随全局主题。
+@interface UIView (AWEThemePreference)
+- (void)awe_preferDarkTheme;
+- (void)awe_cancelPreferredTheme;
+- (BOOL)awe_hasPreferredTheme;
+@end
+
+// 抖音现代长按面板的格子：图标在上、文字在下，updateUI: 按菜单项配置。
+@interface AWEModernLongPressHorizontalSettingItemCell : UICollectionViewCell
+- (void)updateUI:(id)viewModel;
+- (UIImageView *)buttonIcon;
+- (UILabel *)buttonLabel;
+- (void)setSeparatorHidden:(BOOL)hidden;
 @end
 
 @interface AWEModernLongPressPanelTableViewController : UIViewController
@@ -728,6 +844,11 @@
 @property (nonatomic, copy) void (^cellTappedBlock)(void);
 @property (nonatomic, copy) void (^switchChangedBlock)(void);
 - (void)refreshCell;                 // 按当前属性重配所在 cell
+@end
+
+// 设置页分区页脚；说明文字的高度按比文字实际宽度更宽的宽度估算，长一些的文字会被截掉末行。
+@interface AWESettingsTableSectionFooterView : UITableViewHeaderFooterView
+- (UILabel *)footerNoticeLabel;
 @end
 
 @interface AWESettingSectionModel : NSObject
