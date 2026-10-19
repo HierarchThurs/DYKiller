@@ -23,12 +23,6 @@ NSArray<NSString *> *DKSettingsRegisteredKeys(void);
 /// page 上 identifier 对应的项；page 不是 DYKiller 设置页或没有该项时返回 nil。
 AWESettingItemModel *DKSettingsFindItem(UIViewController *page, NSString *identifier);
 
-/// 建一个卡片分区；footer 可空。
-AWESettingSectionModel *DKSettingsMakeSection(NSString *header, NSString *footer, NSArray<AWESettingItemModel *> *items);
-
-/// 从 presenter 所在导航栈推入一个多分区子设置页，各项按 DKSettingsPrepareItem 收尾（保留项上已设的图标）。
-void DKSettingsPushSections(UIViewController *presenter, NSString *title, NSArray<AWESettingSectionModel *> *sections);
-
 /// 当前显示的 DYKiller 设置页，弹窗与刷新都以它为宿主。
 UIViewController *DKSettingsCurrentPage(void);
 

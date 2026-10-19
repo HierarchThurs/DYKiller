@@ -10,6 +10,13 @@
 #import <objc/runtime.h>
 
 static char kDKViewModelKey;   // 手动创建的设置页把 viewModel 挂在这，有值即 DYKiller 页面
+static char kDKPageNoteKey;    // 页面顶部说明文字
+static char kDKPageNoteViewKey; // 承载顶部说明的表头视图
+
+// 顶部说明的排版：左右缩进与抖音分区页脚文字一致（卡片外边距 16 + 文字缩进 16）。
+static const CGFloat kDKNoteInset = 32.0;
+static const CGFloat kDKNoteTop = 12.0;
+static const CGFloat kDKNoteBottom = 4.0;
 
 static NSString *const kDKUnplacedHeader = @"未归类";
 static NSString *const kDKEmptyPlaceholder = @"暂无设置项";
@@ -150,6 +157,47 @@ static AWESettingBaseViewController *DKMakeSettingsPage(NSString *title, NSArray
     return page;
 }
 
+// 顶部说明文字：字体与颜色取抖音分区页脚的说明文字，取不到时用 13pt 次要文字色；行数不限。
+static UILabel *DKMakeNoteLabel(NSString *note) {
+    UILabel *label = [[UILabel alloc] init];
+    label.numberOfLines = 0;
+    label.font = [UIFont systemFontOfSize:13.0];
+    label.textColor = UIColor.secondaryLabelColor;
+    Class footerClass = NSClassFromString(@"AWESettingsTableSectionFooterView");
+    if ([footerClass instancesRespondToSelector:@selector(footerNoticeLabel)]) {
+        AWESettingsTableSectionFooterView *footer = [[footerClass alloc] initWithReuseIdentifier:nil];
+        UILabel *sample = footer.footerNoticeLabel;
+        if ([sample isKindOfClass:UILabel.class]) {
+            if (sample.font) label.font = sample.font;
+            if (sample.textColor) label.textColor = sample.textColor;
+        }
+    }
+    label.text = note;
+    return label;
+}
+
+// 顶部说明放在表头视图里，按表格宽度算出完整高度；宽度或高度变了才重设表头。
+static void DKLayoutPageNote(UIViewController *page) {
+    NSString *note = objc_getAssociatedObject(page, &kDKPageNoteKey);
+    UITableView *table = note.length ? DKPageTableView(page) : nil;
+    CGFloat width = CGRectGetWidth(table.bounds);
+    if (!table || width <= kDKNoteInset * 2.0) return;
+    UIView *header = objc_getAssociatedObject(page, &kDKPageNoteViewKey);
+    if (!header) {
+        header = [[UIView alloc] initWithFrame:CGRectZero];
+        [header addSubview:DKMakeNoteLabel(note)];
+        objc_setAssociatedObject(page, &kDKPageNoteViewKey, header, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    UILabel *label = header.subviews.firstObject;
+    CGFloat textWidth = width - kDKNoteInset * 2.0;
+    CGFloat textHeight = ceil([label sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)].height);
+    CGRect frame = CGRectMake(0.0, 0.0, width, kDKNoteTop + textHeight + kDKNoteBottom);
+    if (table.tableHeaderView == header && CGRectEqualToRect(header.frame, frame)) return;
+    label.frame = CGRectMake(kDKNoteInset, kDKNoteTop, textWidth, textHeight);
+    header.frame = frame;
+    table.tableHeaderView = header;
+}
+
 static void DKPushPage(UIViewController *presenter, AWESettingBaseViewController *page) {
     UINavigationController *nav = presenter.navigationController;
     if (nav && page) [nav pushViewController:page animated:YES];
@@ -246,11 +294,18 @@ static void DKShowSettings(UIViewController *rootVC) {
 }
 
 void DKSettingsPushSections(UIViewController *presenter, NSString *title, NSArray<AWESettingSectionModel *> *sections) {
+    DKSettingsPushNotedSections(presenter, title, nil, sections);
+}
+
+void DKSettingsPushNotedSections(UIViewController *presenter, NSString *title, NSString *note,
+                                 NSArray<AWESettingSectionModel *> *sections) {
     if (!presenter.navigationController || sections.count == 0) return;
     for (AWESettingSectionModel *section in sections) {
         for (AWESettingItemModel *item in section.itemArray) DKSettingsPrepareItem(item, nil);
     }
-    DKPushPage(presenter, DKMakeSettingsPage(title, sections));
+    AWESettingBaseViewController *page = DKMakeSettingsPage(title, sections);
+    if (note.length) objc_setAssociatedObject(page, &kDKPageNoteKey, [note copy], OBJC_ASSOCIATION_COPY_NONATOMIC);
+    DKPushPage(presenter, page);
 }
 
 void DKSettingsPushPage(UIViewController *presenter, NSString *title, NSString *sectionHeader,
@@ -285,6 +340,11 @@ static AWESettingItemModel *DKOwnItemAtIndexPath(AWESettingBaseViewController *p
     if (!DKPageViewModel(self)) return;
     gSettingsPresenter = self;
     DKSettingsReloadCurrentPage();
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    DKLayoutPageNote(self);
 }
 
 // 抖音点行时直接调 cellTappedBlock，不看 isEnable；灰显项在这里拦下。

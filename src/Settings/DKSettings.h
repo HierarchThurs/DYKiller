@@ -98,6 +98,17 @@ AWESettingItemModel *DKMakeAction(NSString *key, NSString *title, NSString *deta
 /// 重算当前设置页的联动灰显并刷新整页。改完某项的 detail 或写入取值后调用。
 void DKSettingsReloadCurrentPage(void);
 
+/// 建一个卡片分区；header、footer 可空。
+AWESettingSectionModel *DKSettingsMakeSection(NSString *header, NSString *footer, NSArray<AWESettingItemModel *> *items);
+
+/// 从 presenter 所在导航栈推入一个多分区子设置页，各项按 DKSettingsPrepareItem 收尾（保留项上已设的图标）。
+/// sections 为空时不推入；返回上一页时，上一页重新接管弹窗并刷新。
+void DKSettingsPushSections(UIViewController *presenter, NSString *title, NSArray<AWESettingSectionModel *> *sections);
+
+/// 同 DKSettingsPushSections，另在第一个分区之上显示一段说明文字（抖音页脚样式，按页面宽度完整换行）；note 为空时不显示。
+void DKSettingsPushNotedSections(UIViewController *presenter, NSString *title, NSString *note,
+                                 NSArray<AWESettingSectionModel *> *sections);
+
 /// 从 presenter 所在导航栈推入一个单分区子设置页，items 为空时不推入。
 /// 返回上一页时，上一页重新接管弹窗并刷新。
 void DKSettingsPushPage(UIViewController *presenter, NSString *title, NSString *sectionHeader,
