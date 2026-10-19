@@ -71,6 +71,8 @@ static NSString *DKCleanAnchorKey(UIView *row) {
             @"music_star":  DKKeyPlaybackMusicAnchorMode,
             @"poi_poi":     DKKeyPlaybackLocationMode,
             @"prop_effect": DKKeyPlaybackPropEffectMode,
+            // 模板 / AI 写真类拍同款（type 1003），与特效道具类同归拍同款。
+            @"prop_template": DKKeyPlaybackPropEffectMode,
             @"game_pad":    DKKeyPlaybackGameTagMode,
         };
     });
@@ -117,10 +119,19 @@ NSString *DKCleanKeyForRow(UIView *row) {
     // 搜索详情等页的合集栏（identifier 固定为 compilation_detail），与模板底栏的 playlet_bar 同归视频合集。
     if (DKCleanIsKind(element, @"AWEPlayInteractionNewMixVideoInfoElement")) return DKKeyPlaybackVideoCollectionMode;
     if (DKCleanIsKind(element, @"AWEPlayInteractionTagsElementV2")) {
-        return [DKCleanString(element, @"businessID") isEqualToString:@"daily_recommend"] ? DKKeyPlaybackSelectedMode : nil;
+        NSString *businessID = DKCleanString(element, @"businessID");
+        if ([businessID isEqualToString:@"daily_recommend"]) return DKKeyPlaybackSelectedMode;
+        // 朋友页文案上方的「朋友」标记与关注标签（你的关注、互相关注等，朋友页精简）。
+        if ([businessID isEqualToString:@"familiar_feed_mate_relation_tag"]) return DKKeyFriendRelationTagMode;
+        if ([businessID isEqualToString:@"familiar_feed_relation_tag"]) return DKKeyFriendFollowTagMode;
+        return nil;
     }
     if (DKCleanIsKind(element, @"AWEPlayInteractionBottomButtonElement")) {
-        return [DKCleanString(element, @"identifier") isEqualToString:@"unread_video_im"] ? DKKeyPlaybackQuickReplyMode : nil;
+        NSString *identifier = DKCleanString(element, @"identifier");
+        if ([identifier isEqualToString:@"unread_video_im"]) return DKKeyPlaybackQuickReplyMode;
+        // 朋友作品文案下方的「私信 xxx」面板（朋友页精简）。
+        if ([identifier isEqualToString:@"like_im"]) return DKKeyFriendFastReplyMode;
+        return nil;
     }
     return nil;
 }
@@ -159,6 +170,8 @@ static NSString *DKCleanTagComponentKey(id component) {
     if (DKCleanIsKind(component, @"AWECoCreatorTagComponent")) return DKKeyPlaybackCoCreatorMode;
     if (DKCleanIsKind(component, @"AWESlidesTagComponent")
         || DKCleanIsKind(component, @"AWERichAwemeTagComponent")) return DKKeyPlaybackSlidesTagMode;
+    // 日常作品昵称右侧的「日常」标签（朋友页精简）。
+    if (DKCleanIsKind(component, @"AWENewStoryTagComponent")) return DKKeyFriendStoryTagMode;
     return nil;
 }
 
