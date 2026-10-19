@@ -33,6 +33,7 @@ typedef NS_ENUM(NSInteger, DKSettingsValueKind) {
     DKSettingsValueKindIDSet,     // 「前缀 + ID」一族 BOOL 键（多选），值为选中的 ID
     DKSettingsValueKindImage,     // 沙盒内的图片文件，值为文件数据
     DKSettingsValueKindString,    // NSUserDefaults 字符串，限定显示宽度
+    DKSettingsValueKindColor,     // 单色或逗号分隔的颜色方案
 };
 
 /// 文字的显示宽度：按字形簇计，ASCII 字符计 1，其他（汉字、全角、emoji）计 2。
@@ -51,6 +52,7 @@ NSUInteger DKSettingsTextWidth(NSString *text);
 @property (nonatomic, readonly) NSUInteger minSide;                          // Image：像素
 @property (nonatomic, readonly) NSUInteger maxSide;                          // Image：像素
 @property (nonatomic, readonly) BOOL square;                                 // Image
+@property (nonatomic, readonly) NSUInteger minimumColorCount;             // Color：1 单色 / 2 渐变
 @property (nonatomic, readonly) NSUInteger maxWidth;                         // String：DKSettingsTextWidth 上限
 
 + (instancetype)boolWithKey:(NSString *)key;
@@ -58,6 +60,8 @@ NSUInteger DKSettingsTextWidth(NSString *text);
 + (instancetype)idSetWithPrefix:(NSString *)prefix;
 /// 单行文字：去掉首尾空白后存，空串视为未设置；不允许换行与控制字符。
 + (instancetype)stringWithKey:(NSString *)key maxWidth:(NSUInteger)maxWidth;
+/// 颜色方案：gradient=NO 为单色，YES 为 2–8 色渐变。八位 AARRGGBB 输入忽略 alpha。
++ (instancetype)colorWithKey:(NSString *)key gradient:(BOOL)gradient;
 /// 图片文件。types 为允许的 UTType 标识（如 public.png）；GIF 允许多帧，其余类型只允许单帧。
 + (instancetype)imageWithName:(NSString *)name path:(NSString *)path types:(NSArray<NSString *> *)types
                      maxBytes:(NSUInteger)maxBytes minSide:(NSUInteger)minSide maxSide:(NSUInteger)maxSide

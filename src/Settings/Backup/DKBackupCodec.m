@@ -5,6 +5,7 @@
 #import "DKBackupCodec.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <ImageIO/ImageIO.h>
+#import "DKSVGImage.h"
 
 NSString *const DKBackupErrorDomain = @"DYKiller.Backup";
 const unsigned long long DKBackupMaxFileBytes = 16ULL * 1024 * 1024;
@@ -71,6 +72,9 @@ static NSDictionary *DKFileRecord(DKSettingsValue *value, NSData *data) {
         type = [(__bridge NSString *)CGImageSourceGetType(source) copy];
         CFRelease(source);
     }
+    if (!type && [value.imageTypes containsObject:@"public.svg-image"] && DKSVGImageInspect(data, NULL, NULL)) {
+        type = @"public.svg-image";
+    }
     return @{
         @"type": type ?: value.imageTypes.firstObject ?: @"public.data",
         @"bytes": @(data.length),
@@ -108,6 +112,7 @@ NSData *DKBackupEncode(NSArray<DKBackupEntry *> *entries, id<DKSettingsStore> st
             switch (value.kind) {
                 case DKSettingsValueKindBool:
                 case DKSettingsValueKindInteger:
+                case DKSettingsValueKindColor:
                 case DKSettingsValueKindString: settings[value.key] = current; break;
                 case DKSettingsValueKindIDSet: sets[value.key] = current; break;
                 case DKSettingsValueKindImage:
@@ -282,6 +287,7 @@ DKBackupDocument *DKBackupDefaultsDocument(NSArray<DKBackupEntry *> *entries) {
             switch (value.kind) {
                 case DKSettingsValueKindBool:
                 case DKSettingsValueKindInteger:
+                case DKSettingsValueKindColor:
                 case DKSettingsValueKindString: settings[value.key] = NSNull.null; break;
                 case DKSettingsValueKindIDSet: sets[value.key] = @[]; break;
                 case DKSettingsValueKindImage: files[value.key] = NSNull.null; break;

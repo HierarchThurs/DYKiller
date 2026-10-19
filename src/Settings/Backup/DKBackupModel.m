@@ -22,6 +22,7 @@ static NSString *DKDefaultText(DKSettingsValue *value, id normalized, BOOL brief
         }
         case DKSettingsValueKindImage:
             return [normalized isKindOfClass:NSData.class] ? @"已自定义" : @"默认";
+        case DKSettingsValueKindColor:
         case DKSettingsValueKindString:
             return [normalized isKindOfClass:NSString.class] ? normalized : @"默认";
     }
@@ -146,6 +147,7 @@ static BOOL DKDocumentRawValue(DKBackupDocument *document, DKSettingsValue *valu
     switch (value.kind) {
         case DKSettingsValueKindBool:
         case DKSettingsValueKindInteger:
+        case DKSettingsValueKindColor:
         case DKSettingsValueKindString: section = document.settings; break;
         case DKSettingsValueKindIDSet: section = document.sets; break;
         case DKSettingsValueKindImage:
@@ -189,6 +191,7 @@ DKBackupPlan *DKBackupMakePlan(DKBackupDocument *document, NSArray<DKBackupEntry
             switch (value.kind) {
                 case DKSettingsValueKindBool:
                 case DKSettingsValueKindInteger:
+                case DKSettingsValueKindColor:
                 case DKSettingsValueKindString: [claimedSettings addObject:value.key]; break;
                 case DKSettingsValueKindIDSet: [claimedSets addObject:value.key]; break;
                 case DKSettingsValueKindImage: [claimedFiles addObject:value.key]; break;

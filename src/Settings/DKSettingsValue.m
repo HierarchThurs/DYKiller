@@ -5,6 +5,8 @@
 #import "DKSettingsValue.h"
 #import <ImageIO/ImageIO.h>
 #import <math.h>
+#import "DKColorHex.h"
+#import "DKSVGImage.h"
 
 // 多选一族键的条数上限与单个 ID 的长度上限。
 static const NSUInteger kDKMaxSetCount = 512;
@@ -127,6 +129,12 @@ NSUInteger DKSettingsTextWidth(NSString *text) {
     return value;
 }
 
++ (instancetype)colorWithKey:(NSString *)key gradient:(BOOL)gradient {
+    DKSettingsValue *value = [[self alloc] initWithKind:DKSettingsValueKindColor key:key];
+    value->_minimumColorCount = gradient ? 2 : 1;
+    return value;
+}
+
 + (instancetype)imageWithName:(NSString *)name path:(NSString *)path types:(NSArray<NSString *> *)types
                      maxBytes:(NSUInteger)maxBytes minSide:(NSUInteger)minSide maxSide:(NSUInteger)maxSide
                        square:(BOOL)square {
@@ -150,6 +158,7 @@ NSUInteger DKSettingsTextWidth(NSString *text) {
         case DKSettingsValueKindIDSet: return [self normalizeIDSet:raw reason:reason];
         case DKSettingsValueKindImage: return [self normalizeImage:raw reason:reason];
         case DKSettingsValueKindString: return [self normalizeString:raw reason:reason];
+        case DKSettingsValueKindColor: return DKColorHexNormalizeScheme(raw, self.minimumColorCount == 2, reason);
     }
     return nil;
 }
@@ -227,6 +236,17 @@ NSUInteger DKSettingsTextWidth(NSString *text) {
         return nil;
     }
 
+    CGSize svgSize;
+    if ([self.imageTypes containsObject:@"public.svg-image"] && DKSVGImageInspect(data, &svgSize, NULL)) {
+        CGSize size = svgSize;
+        // SVG 使用文档画布，像素尺寸约束留给位图；画布上限由 SVG 检查器统一处理。
+        if (self.square && size.width != size.height) {
+            DKSetReason(reason, @"图片尺寸不符");
+            return nil;
+        }
+        return data;
+    }
+
     CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data, NULL);
     if (!source) {
         DKSetReason(reason, @"不是有效的图片");
@@ -272,6 +292,7 @@ NSUInteger DKSettingsTextWidth(NSString *text) {
     switch (self.kind) {
         case DKSettingsValueKindBool:
         case DKSettingsValueKindInteger:
+        case DKSettingsValueKindColor:
         case DKSettingsValueKindString:
             return [self normalize:[store objectForKey:self.key] reason:NULL] ?: NSNull.null;
         case DKSettingsValueKindIDSet: {
@@ -296,6 +317,7 @@ NSUInteger DKSettingsTextWidth(NSString *text) {
     switch (self.kind) {
         case DKSettingsValueKindBool:
         case DKSettingsValueKindInteger:
+        case DKSettingsValueKindColor:
         case DKSettingsValueKindString:
             if (value == NSNull.null) [store removeObjectForKey:self.key];
             else [store setObject:value forKey:self.key];
