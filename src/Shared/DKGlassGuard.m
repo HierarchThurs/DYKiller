@@ -14,6 +14,8 @@ static NSSet<NSString *> *DKGlassGatedKeySet(void) {
                DKKeyCommentGlassClear,
                DKKeySharePanelGlass,
                DKKeySharePanelGlassClear,
+               DKKeyFeedMenuGlass,
+               DKKeyFeedMenuGlassClear,
                DKKeyInnerNotiGlass,
                DKKeyInnerNotiGlassClear,
                DKKeyInnerNotiCorner,
