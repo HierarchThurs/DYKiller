@@ -1,6 +1,8 @@
 #import "DKFlexKingProviderSDK.h"
 #import "DKBackupEntries.h"
 #import "DKMediaSaveDiagnostics.h"
+#import "DKInteractionIcons.h"
+#import "DKShareMenu.h"
 #import "DKTabBarProbe.h"
 #import "DKVideoFeedTable.h"
 #import "DKVideoFullscreen.h"
@@ -17,6 +19,8 @@ static NSDictionary *DKFKProviderSnapshot(void) {
     if(method){IMP imp=method_getImplementation(method);Dl_info info={0};dladdr((void *)imp,&info);result[@"detail_layout_hook"]=@{@"class":NSStringFromClass(detail),@"selector":NSStringFromSelector(selector),@"current_imp":[NSString stringWithFormat:@"%p",imp],@"image_path":info.dli_fname?@(info.dli_fname):@"",@"symbol":info.dli_sname?@(info.dli_sname):@"",@"encoding":@(method_getTypeEncoding(method))};}
     else result[@"detail_layout_hook"]=@{@"state":@"method_unavailable"};
     result[@"settings_backup"]=DKSettingsBackupDiagnostics() ?: @{};
+    result[@"interaction_icons"]=DKInteractionIconsStatus();
+    result[@"share_menu"]=DKShareMenuStatus();
     return result;
 }
 static void DKRegisterFLEXKingDebugProvider(void) {
