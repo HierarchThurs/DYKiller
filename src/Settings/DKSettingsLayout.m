@@ -135,6 +135,29 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             ]),
             DKRow(DKKeyDetailHideBottomBar, @"ic_xmark_outlined_20"),
         ]),
+        DKSection(@"长按菜单", @[
+            DKRow(DKKeyFeedMenu, @"ic_video_outlined_20"),
+            DKRow(DKKeyCommentMenu, @"ic_comment_outlined_20"),
+        ]),
+        DKSection(@"朋友页", @[
+            DKPage(@"朋友页精简", @"ic_user_outlined_20", @[
+                DKSection(@"顶栏", @[
+                    DKRow(DKKeyFriendAvatarEntryMode, @"ic_userplus_outlined_20"),
+                    DKRow(DKKeyFriendDailyMode, @"ic_clock_outlined_20"),
+                    DKRow(DKKeyFriendButtonMode, @"ic_userswitch_outlined_20"),
+                ]),
+                DKSection(@"作品", @[
+                    DKRow(DKKeyFriendRelationTagMode, @"ic_tag_outlined_20"),
+                    DKRow(DKKeyFriendStoryTagMode, @"ic_tag_outlined_20"),
+                    DKRow(DKKeyFriendFollowTagMode, @"ic_tag_outlined_20"),
+                    DKRow(DKKeyFriendFastReplyMode, @"ic_msg_outlined_20"),
+                    DKRow(DKKeyFriendSendMessageMode, @"ic_airplane_outlined_20"),
+                ]),
+                DKSection(@"内容", @[
+                    DKRow(DKKeyFriendRemoveRecommendCard, @"ic_user_outlined_20"),
+                ]),
+            ]),
+        ]),
         DKSection(@"消息页", @[
             DKPage(@"消息页精简", @"ic_msg_outlined_20", @[
                 DKSection(@"顶栏", @[
@@ -227,6 +250,9 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
         DKSection(@"分享面板", @[
             DKRow(DKKeySharePanelGlass, @"ic_share_outlined"),
         ]),
+        DKSection(@"长按菜单", @[
+            DKRow(DKKeyFeedMenuGlass, @"ic_squaresplit_outlined_20"),
+        ]),
         DKSection(@"应用内通知", @[
             DKRow(DKKeyInnerNotiGlass, @"ic_msg_outlined_20"),
             DKRow(DKKeyInnerNotiCorner, @"ic_circletop_outlined"),
@@ -242,6 +268,9 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
         ]),
         DKSection(@"手势", @[
             DKRow(DKKeyDoubleTapOpenComment, @"ic_comment_outlined_20"),
+        ]),
+        DKSection(@"评论区", @[
+            DKRow(DKKeyCommentCopyWithoutName, @"ic_text_outlined_20"),
         ]),
     ]);
 
