@@ -15,11 +15,16 @@
 @end
 
 @interface AWEFeedVideoButton : UIButton
+@property (nonatomic, copy) NSString *imageNameString;
 @property (nonatomic, readonly, strong) UIImageView *buttonImageView;
 @property (nonatomic, strong) UIImageView *aweImageView;
 @property (nonatomic, strong) UILabel *label;
 @property (nonatomic, strong) UILabel *buttonLabel;
 @property (nonatomic, strong) UIView *containerView;
+@end
+
+// AWEFeedVideoButton 的图片容器，buttonImageView 的尺寸在它布局时排出。
+@interface AWEFeedVideoButtonContainerView : UIView
 @end
 
 @interface AWEPlayInteractionListenFeedView : UIView
@@ -239,6 +244,53 @@
 - (BOOL)enableShowInnerPiPWhenFullScreen;
 @end
 
+// 弹幕渲染结构：正文与点赞数字都可能使用 AWEDanmakuContentLabel，调用方须通过 contentLabel 关系区分。
+@interface AWEDanmakuContentLabel : UILabel
+@property (nonatomic, assign) long long type;
+@property (nonatomic, copy) NSString *danmakuText;
+@property (nonatomic, copy) NSArray *danmakuStyleList;
+@property (nonatomic, strong) UIColor *strokeColor;
+@property (nonatomic, assign) double strokeWidth;
+- (id)initWithFrame:(CGRect)frame textColor:(UIColor *)textColor type:(long long)type;
+@end
+
+@interface AWEDanmakuItemDescriptor : NSObject
+@property (nonatomic, readonly) id danmakuModel;
+@end
+
+@interface AWEDanmakuDiggNumView : UIView
+@property (nonatomic, strong) UIImageView *diggImageView;
+@property (nonatomic, strong) AWEDanmakuContentLabel *diggNumLabel;
+- (void)updateDiggImageAndDiggLabel;
+- (void)configDanmakuDiggImageWithModel:(id)model;
+- (void)updateLayOutIfNeed;
+@end
+
+@interface AWEDanmakuItemCommonView : UIView
+@property (nonatomic, strong) AWEDanmakuContentLabel *contentLabel;
+@property (nonatomic, strong) AWEDanmakuDiggNumView *diggNumView;
+@property (nonatomic, strong) id danmaKuModel;
+- (void)updateWithDescriptor:(id)descriptor;
+- (void)prepareForReuse;
+- (void)updateDanmaKuUnitView;
+@end
+
+@interface AWEDanmakuItemAuthorView : AWEDanmakuItemCommonView
+@end
+@interface AWEDanmakuItemActivityView : AWEDanmakuItemCommonView
+@end
+@interface AWEDanmakuItemAdView : AWEDanmakuItemCommonView
+@end
+
+@interface AWEPlayInteractionDanmakuStylesInfo : NSObject
+@property (nonatomic, assign) double danmakuAlpha;
+@end
+@interface AWEDanmakuConfigSettingManager : NSObject
+@property (nonatomic, strong) AWEPlayInteractionDanmakuStylesInfo *verticalStylesInfo;
+@property (nonatomic, strong) AWEPlayInteractionDanmakuStylesInfo *landscapeStylesInfo;
++ (instancetype)sharedInstance;
+@end
+
 // 弹幕渲染层。抖音开评论面板时就是把这一层的 alpha 压成 0（实测半屏 / 全屏都是），
 // 容器与各条弹幕视图本身不动。
 @interface DDanmakuPlayerView : UIView
@@ -289,12 +341,23 @@
 - (void)awe_themeReload;
 @end
 
-// 第三行功能键。imageView 是 56×56 白圆+图标；smallImageView 导出里无图。
+// 功能圆钮：主 imageView 承载圆底或合成图，smallImageView 承载独立小图标。
 @interface AWESharePanelFunctionCell : UICollectionViewCell
 @property (nonatomic, strong) UIImageView *imageView;
 @property (nonatomic, strong) UIImageView *smallImageView;
+- (void)setupViews;
 - (void)updateWithViewModel:(id)viewModel bigFontAdapter:(id)adapter;
 - (void)updateImageViewWithViewModel:(id)viewModel;
+@end
+
+@interface AWEShareContext : NSObject
+@property (nonatomic, readonly) AWEAwemeModel *aweme;
+@end
+
+@interface AWESharePanelFunctionsDataManager : NSObject
+@property (nonatomic, copy) NSArray *dataSource;
+- (void)fetchSharePanelFunctionConfigWithScene:(id)scene shareContext:(AWEShareContext *)context
+                         customConfiguration:(id)configuration shareView:(id)shareView;
 @end
 
 // 分享评论面板里「复制该评论」「收藏」那种行。白卡片底不是 backgroundColor，
@@ -678,6 +741,181 @@
 + (double)viewHeight;
 @end
 
+// 个人主页的页面 context（顶栏条目、头像扩展、编辑主页格持有）；isCurrentUser 为真即自己的主页。
+@interface AWEProfileContext : NSObject
+- (BOOL)isCurrentUser;
+@end
+
+// 个人主页头部的 context（头部各分区、昵称区组件持有）。
+@interface AWEProfileHeaderContext : NSObject
+- (BOOL)isCurrentUser;
+@end
+
+// 顶栏条目控制器：canShow 为真才进入左右数据源，navigationItemView 是放进顶栏容器的视图。
+// 添加好友 / 侧栏 / 搜索 / 访客分别是下面四个类，navigationType 依次为 4 / 6 / 7 / 8。
+@interface AWEProfileNaviAddFriendItemController : NSObject
+- (BOOL)canShow;
+- (UIView *)navigationItemView;
+- (AWEProfileContext *)profileContext;
+- (id)delegate;
+@end
+
+@interface AWEProfileNavMoreFuncItemController : NSObject
+- (BOOL)canShow;
+- (UIView *)navigationItemView;
+- (AWEProfileContext *)profileContext;
+- (id)delegate;
+@end
+
+@interface AWEProfileNavSearchItemController : NSObject
+- (BOOL)canShow;
+- (UIView *)navigationItemView;
+- (AWEProfileContext *)profileContext;
+- (id)delegate;
+@end
+
+@interface AWEProfileNavVisitorItemController : NSObject
+- (BOOL)canShow;
+- (UIView *)navigationItemView;
+- (AWEProfileContext *)profileContext;
+- (id)delegate;
+@end
+
+// 顶栏组件：reloadData 重新取左右数据源（逐个询问 canShow）并重排。
+@interface AWEProfileNavigationBaseComponent : NSObject
+- (void)reloadData;
+- (AWEProfileContext *)profileContext;
+@end
+
+@interface AWEProfileNavigationContainerView : UIView
+@end
+
+// 头部分区来源：reloadSections 与 updateSections: 都从 sectionViewModelArray 取分区 VM。
+@interface AWEProfileHeaderSectionProviderManager : NSObject
+- (NSArray *)sectionViewModelArray;
+- (AWEProfileHeaderContext *)context;
+@end
+
+// 头部列表 VM（AWEBaseListViewModel 子类）；reloadSections 替换分区后重算头部高度并刷新分页栏位置。
+@interface AWEProfileHeaderViewModel : NSObject
+- (void)reloadSections;
+- (BOOL)isCurrentUser;
+@end
+
+@interface AWEProfileHeaderSocialStatisticCollectionViewCellV2 : UICollectionViewCell
+- (BOOL)isCurrentUser;
+@end
+
+@interface AWEProfileHeaderHomeShortcutCell : UICollectionViewCell
+- (AWEProfileContext *)profileContext;
+@end
+
+// 「记录下幸福瞬间」等发布引导横幅所在分区的 cell，内容是 Compose 视图。
+@interface AWEUserProfileUGCHeaderContributionGuideBannerSectionCell : UICollectionViewCell
+- (AWEProfileHeaderContext *)context;
+@end
+
+// 头像扩展 avatar_story_publish：头像右下角加号。canShow 决定是否显示并参与点击分派；
+// p_shouldAddHollowMasks 为真时在头像上给加号挖出镂空。
+@interface AWEProfileAvatarStoryPublishController : NSObject
+- (BOOL)canShow;
+- (BOOL)p_shouldAddHollowMasks;
+- (void)updateUIWithContainerView:(UIView *)containerView anchorView:(UIView *)anchorView;
+- (UIButton *)story25PublishButton;
+- (AWEProfileContext *)profileContext;
+@end
+
+@interface AWEProfileAvatarSectionControllerV2 : NSObject
+- (void)configCell:(id)cell index:(NSInteger)index model:(id)model;
+- (void)reloadAvatarExtension;
+- (AWEProfileContext *)profileContext;
+@end
+
+// 昵称一行：昵称、切换账号箭头（switchAccountButton）与多账号未读点
+// （noticeUnreadDotView、multiAccountNoticeUnreadDotView）。
+@interface AWEProfileHeaderNameLabelContainerView : UIView
+- (AWEProfileHeaderContext *)context;
+@end
+
+@interface AWEProfileHeaderNameAreaSectionCell_New : UICollectionViewCell
+- (AWEProfileHeaderContext *)context;
+@end
+
+// AWERL 组件的虚拟视图；mount 后 renderedView 是挂上去的真实视图。
+@interface AWERLVirtualView : NSObject
+- (UIView *)renderedView;
+@end
+
+// 抖音号下方的胶囊行（创建 AI 形象、原创角色及运营胶囊）。buildVirtualView: 返回 nil 时整行不参与排布。
+@interface AWEProfileHeaderGenericOperationComponent : NSObject
+- (id)buildVirtualView:(id)data;
+- (AWERLVirtualView *)containerNode;
+- (AWEProfileHeaderContext *)context;
+- (void)setNeedsUpdate;
+@end
+
+// 分页模型：profileTabType 作品 0 / 喜欢 2 / 收藏 16 / 日常 38 / 足迹 46。
+@interface AWEUserProfileTabModel : NSObject
+@property (nonatomic, assign) NSInteger profileTabType;
+@end
+
+// 分页数据：tabArray 懒构建并缓存（同时写 _numOfTab），tabTitles 由 tabArray 生成；
+// updateUser:shouldRefreshTab:YES 清空缓存。
+@interface AWEUserProfileTabHelper : NSObject
+- (NSArray<AWEUserProfileTabModel *> *)tabArray;
+- (BOOL)p_isCurrentUser;
+- (id)user;
+- (void)updateUser:(id)user shouldRefreshTab:(BOOL)shouldRefreshTab;
+@end
+
+// 个人主页的分页编排：p_updateTabView 比较分页是否变化，变化时按 landingTabType 重载分页。
+@interface AWEUIOrchestrationHomeComponent : NSObject
+- (AWEUserProfileTabHelper *)tabHelper;
+- (void)p_updateTabView;
+@end
+
+// 个人主页功能区（观看历史 … 全部功能）的卡片模型；cardType 120 为「全部功能」。
+@interface AWEProfileExtensionAreaCardModel : NSObject
+@property (nonatomic, assign) unsigned long long cardType;
+@property (nonatomic, copy) NSString *title;
+@end
+
+@interface AWEProfileExtensionAreaContext : NSObject
+- (id)userModel;
+- (AWEProfileHeaderContext *)profileHeaderContext;
+- (id)dataSource;
+@end
+
+// 功能区数据源：refreshUserModel: 生成卡片列表（setCardList:），按列表建卡片控制器与视图，再通知视图持有者刷新。
+@interface AWEProfileEAVajraDataSource : NSObject
+- (void)refreshUserModel:(id)userModel;
+- (AWEProfileExtensionAreaContext *)context;
+@end
+
+// 功能区视图持有者：setCardList: 后 computeLayout 按卡片标题算宽度与间距；cell 里的卡片视图按下标向数据源取。
+@interface AWEProfileEAVajraViewHolder : NSObject
+- (NSArray *)cardList;
+- (UIView *)cardViewWithCardModel:(AWEProfileExtensionAreaCardModel *)cardModel;
+- (AWEProfileExtensionAreaContext *)context;
+@end
+
+@interface AWEProfileExtensionAreaCell : UICollectionViewCell
+- (void)addCardView:(UIView *)cardView;
+@end
+
+// 功能区卡片视图：图标 imageView（按卡片模型里的亮 / 暗色图标地址加载）在上，标题 titleLabel 在下。
+@interface AWEProfileExtensionAreaVajraStyleCardView : UIView
+- (AWEProfileExtensionAreaCardModel *)cardModel;
+- (void)configWithCardModel:(AWEProfileExtensionAreaCardModel *)cardModel;
+- (UIImageView *)imageView;
+- (UILabel *)titleLabel;
+@end
+
+// 个人主页的 SVG 图标集（与设置页图标同名，如 ic_gearsimplify_outlined_20）。
+@interface UIImage (AWEProfileSVG)
++ (UIImage *)svg_userProfileImageWithName:(NSString *)name size:(CGSize)size color:(UIColor *)color;
+@end
+
 #pragma mark - 媒体保存功能组用到的类
 
 // 作品长按面板的一项；actionType 121 为原生「保存至相册」（AWELongPressPanelDownloadViewModel）。
@@ -751,6 +989,18 @@
 
 // 作品长按菜单的内容控制器，挂在 DUXContentSheet 的导航里，表格控制器是它的子控制器。
 @interface AWEVideoLongPressPanelViewController : UIViewController
+@end
+
+@interface AWEDanmakuSettingsPanelConfig : NSObject
+@property(nonatomic, assign) unsigned long long themeColorType;
+@end
+
+@interface AWEDanmakuSettingsPanelView : UIView
+- (instancetype)initWithDanmakuScene:(unsigned long long)scene config:(AWEDanmakuSettingsPanelConfig *)config delegate:(id)delegate;
+- (void)setSectionCornerRadiusAndLines:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath;
+@end
+
+@interface AWEDanmakuSettingsPanelViewController : UIViewController
 @end
 
 // 抖音的视图级主题偏好：设了偏好的视图及其子树按指定的深 / 浅主题取色，取消后跟随全局主题。
@@ -879,6 +1129,7 @@
 // 设置页的行。卡片样式下标题、开关等都在 containerView（即 realContentView）里，
 // 项不可用时抖音调暗的是这一层。
 @interface AWESettingsTableViewCell : UITableViewCell
+@property (nonatomic, strong) UIView *lineView;
 @property (nonatomic, strong, readonly) AWESettingItemModel *itemModel;
 @property (nonatomic, strong, readonly) UILabel *titleLabel;
 @property (nonatomic, strong, readonly) UIImageView *iconImageView;
@@ -888,6 +1139,30 @@
 
 @interface AWENavigationBar : UIView
 @property (nonatomic, strong) UILabel *titleLabel;
+@end
+
+#pragma mark - 发布时间与地区用到的类
+
+// 作品的发布字段：createTime 为秒级时间戳（JSON create_time），cityCode 为城市代码（JSON city），
+// region 为国家地区码，ipAttribution 为原生属地文字（JSON ip_attribution）。
+@interface AWEAwemeModel (DKPublishInfo)
+@property (nonatomic, strong) NSNumber *createTime;
+@property (nonatomic, copy) NSString *cityCode;
+@property (nonatomic, copy) NSString *region;
+@property (nonatomic, copy) NSString *ipAttribution;
+@end
+
+// 左侧栈的时间元素（AWEPlayInteractionLeftElement 子类）：原生只在部分页面显示「完整日期  IP属地：…」一行。
+// shouldActiveWithData:（data 为作品，context 为元素上下文）按页面判定是否加入左侧栈；
+// 换作品时先 setModel:，再由 layoutElementView 重写 timestampLabel 文字。
+@interface AWEPlayInteractionTimestampElement : NSObject
+@property (nonatomic, strong) AWEAwemeModel *model;
+@property (nonatomic, strong) UILabel *timestampLabel;
+@property (nonatomic, assign) BOOL appear;
++ (BOOL)shouldActiveWithData:(id)data context:(id)context;
++ (NSString *)formattedDateForFullTimestamp:(double)timestamp;
+- (id)context;
+- (void)layoutElementView;
 @end
 
 #endif /* DouyinHeaders_h */
