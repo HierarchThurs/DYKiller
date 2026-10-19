@@ -1,6 +1,7 @@
 //
 //  DKSettingsLayout.m
-//  新增设置项：功能里 DKSettingsRegister 登记后，在下面对应分区加一行 DKRow；有前置开关再补进 DKRequires。
+//  新增设置项：功能里 DKSettingsRegister 登记后，在下面对应分区加一行 DKRow；有前置开关再补进前置关系表
+//  （DKSettingsLayoutRequires 为全部生效、DKSettingsLayoutRequiresAny 为任一生效）。
 //  图标名取自抖音 IconSvgBundle.bundle（40.7.0 已核对存在）。
 //
 
@@ -17,10 +18,16 @@
 @implementation DKSettingsPage
 - (instancetype)initWithTitle:(NSString *)title icon:(NSString *)icon
                    identifier:(NSString *)identifier sections:(NSArray *)sections {
+    return [self initWithTitle:title icon:icon identifier:identifier note:nil sections:sections];
+}
+
+- (instancetype)initWithTitle:(NSString *)title icon:(NSString *)icon identifier:(NSString *)identifier
+                         note:(NSString *)note sections:(NSArray *)sections {
     if ((self = [super init])) {
         _title = [title copy];
         _icon = [icon copy];
         _identifier = [(identifier ?: title) copy];
+        _note = [note copy];
         _sections = [sections copy];
     }
     return self;
@@ -63,6 +70,11 @@ static DKSettingsSection *DKSectionWithFooter(NSString *header, NSString *footer
 
 static DKSettingsPage *DKPage(NSString *title, NSString *icon, NSArray *sections) {
     return [[DKSettingsPage alloc] initWithTitle:title icon:icon identifier:nil sections:sections];
+}
+
+// 带顶部说明的子页；identifier 给前置关系表引用入口。
+static DKSettingsPage *DKNotedPage(NSString *title, NSString *icon, NSString *identifier, NSString *note, NSArray *sections) {
+    return [[DKSettingsPage alloc] initWithTitle:title icon:icon identifier:identifier note:note sections:sections];
 }
 
 // 与 README「免责声明」一致。
@@ -133,6 +145,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyCommentMediaCleanBottomBar, @"ic_image_outlined_20"),
                 ]),
             ]),
+            DKRow(DKKeyShareMenu, @"ic_share_outlined"),
             DKRow(DKKeyDetailHideBottomBar, @"ic_xmark_outlined_20"),
         ]),
         DKSection(@"长按菜单", @[
@@ -174,7 +187,37 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             ]),
         ]),
         DKSection(@"个人主页", @[
-            DKRow(DKKeyProfileHideUGCGuide, @"ic_user_outlined_20"),
+            DKPage(@"个人主页精简", @"ic_personcircleclean_outlined_20", @[
+                DKSection(@"顶栏", @[
+                    DKRow(DKKeyProfileAddFriendMode, @"ic_userplus_outlined_20"),
+                    DKRow(DKKeyProfileVisitorMode, @"ic_user_outlined_20"),
+                    DKRow(DKKeyProfileSearchMode, @"ic_videosearch_outlined_20"),
+                    DKRow(DKKeyProfileSideBarMode, @"ic_hamburgernut_outlined_20"),
+                ]),
+                DKSection(@"头像与昵称", @[
+                    DKRow(DKKeyProfileAvatarPlusMode, @"ic_pluscircle_outlined_20"),
+                    DKRow(DKKeyProfileSwitchAccountMode, @"ic_userswitch_outlined_20"),
+                    DKRow(DKKeyProfileCapsuleMode, @"ic_magic_outlined_20"),
+                ]),
+                DKSection(@"数据与按钮", @[
+                    DKRow(DKKeyProfileStatsMode, @"ic_module_outlined_20"),
+                    DKRow(DKKeyProfileEditMode, @"ic_pensketch_outlined_20"),
+                ]),
+                DKSection(@"功能区", @[
+                    DKRow(DKKeyProfileRemoveServiceArea, @"ic_squaresplit_outlined_20"),
+                ]),
+                DKSection(@"内容", @[
+                    DKRow(DKKeyProfileGuideBannerMode, @"ic_cameralogo_outlined_20"),
+                    DKRow(DKKeyProfileHideUGCGuide, @"ic_user_outlined_20"),
+                ]),
+                DKSection(@"分页", @[
+                    DKRow(DKKeyProfileRemovePostTab, @"ic_video_outlined_20"),
+                    DKRow(DKKeyProfileRemoveDailyTab, @"ic_clock_outlined_20"),
+                    DKRow(DKKeyProfileRemoveFavoriteTab, @"ic_star_outlined_20"),
+                    DKRow(DKKeyProfileRemoveLikeTab, @"ic_msgheart_outlined_20"),
+                    DKRow(DKKeyProfileRemoveFootprintTab, @"ic_location_outlined_20"),
+                ]),
+            ]),
         ]),
     ]);
 
@@ -195,6 +238,22 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             ]),
         ]),
         DKSection(@"视频播放", @[
+            DKNotedPage(@"弹幕改色", @"ic_comment_outlined_20", nil,
+                        @"调整视频滚动弹幕的文字颜色，保留原有内容、速度与显示开关。置灰的设置会保留存值，切回对应模式后继续使用。", @[
+                DKSection(@"总开关", @[
+                    DKRow(DKKeyDanmakuColorEnabled, @"ic_comment_outlined_20"),
+                ]),
+                DKSection(@"颜色模式", @[
+                    DKRow(DKKeyDanmakuColorMode, @"ic_magic_outlined_20"),
+                ]),
+                DKSection(@"固定颜色", @[
+                    DKRow(DKKeyDanmakuFixedColor, @"ic_pensketch_outlined_20"),
+                    DKRow(DKKeyDanmakuHexColor, @"ic_text_outlined_20"),
+                ]),
+                DKSectionWithFooter(@"自定义渐变", @"关闭总开关时恢复抖音原生样式；开启后六种颜色模式互斥生效。随机颜色按每条弹幕生成，不按帧闪烁。固定色的两个入口共用一个值。透明度完全继承抖音，面板只读显示。", @[
+                    DKRow(DKKeyDanmakuGradientColors, @"ic_magic_outlined_20"),
+                ]),
+            ]),
             DKPage(@"互动按钮", @"ic_squaresplit_outlined_20", @[
                 DKSection(@"透明度", @[
                     DKRow(DKKeyInteractionIconAlpha, @"ic_module_outlined_20"),
@@ -215,6 +274,22 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyAvatarDisplay, @"ic_user_outlined_20"),
                     DKRow(DKKeyMusicDisplay, @"ic_quaver_outlined_20"),
                     DKRow(DKKeyFollowButtonDisplay, @"ic_userplus_outlined_20"),
+                ]),
+            ]),
+            DKPage(@"互动按钮更换图标", @"ic_module_outlined_20", @[
+                DKSectionWithFooter(@"图标", @"每个按钮可选：默认（抖音原样）/ 内置图标 / 自定义。首次选「自定义」时先选图。", @[
+                    DKRow(DKKeyInteractionLikeStyle, @"ic_module_outlined_20"),
+                    DKRow(DKKeyInteractionCommentStyle, @"ic_comment_outlined_20"),
+                    DKRow(DKKeyInteractionFavoriteStyle, @"ic_module_outlined_20"),
+                    DKRow(DKKeyInteractionShareStyle, @"ic_module_outlined_20"),
+                ]),
+                DKSectionWithFooter(@"自定义图片", @"支持 PNG 与 SVG。PNG 建议 108×108 像素、透明底；SVG 按画布等比显示。点赞、收藏的两种状态分别设置，未设置的状态保持抖音原样。", @[
+                    DKRow(DKKeyInteractionLikeBeforeIcon, @"ic_module_outlined_20"),
+                    DKRow(DKKeyInteractionLikeAfterIcon, @"ic_module_outlined_20"),
+                    DKRow(DKKeyInteractionCommentIcon, @"ic_comment_outlined_20"),
+                    DKRow(DKKeyInteractionFavoriteBeforeIcon, @"ic_module_outlined_20"),
+                    DKRow(DKKeyInteractionFavoriteAfterIcon, @"ic_module_outlined_20"),
+                    DKRow(DKKeyInteractionShareIcon, @"ic_module_outlined_20"),
                 ]),
             ]),
             DKPage(@"昵称文案", @"ic_text_outlined_20", @[
@@ -265,6 +340,44 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyVideoFullscreen, @"ic_fullscreen_outlined_16"),
             DKRow(DKKeyProgressAlwaysVisible, @"ic_playertime_outlined_20"),
             DKRow(DKKeyProgressTimeStyle, @"ic_clock_outlined_20"),
+            DKPage(@"发布时间与地区", @"ic_clock_outlined_20", @[
+                DKSection(@"显示内容", @[
+                    DKRow(DKKeyPublishTimeEnabled, @"ic_clock_outlined_20"),
+                    DKRow(DKKeyPublishLocationEnabled, @"ic_location_outlined_20"),
+                ]),
+                DKSection(@"文字颜色", @[
+                    DKNotedPage(@"文字颜色", @"ic_magic_outlined_20", DKKeyPublishTextColors,
+                                @"时间文字与地区文字使用独立的颜色配置。仅在「显示具体发布时间」或「显示发布地区」任一项开启时可用；颜色功能默认关闭。", @[
+                        DKSection(@"时间文字", @[
+                            DKRow(DKKeyPublishTimeColorEnabled, @"ic_text_outlined_20"),
+                            DKRow(DKKeyPublishTimeColorMode, @"ic_magic_outlined_20"),
+                        ]),
+                        DKSection(@"时间固定颜色", @[
+                            DKRow(DKKeyPublishTimeFixedColor, @"ic_pensketch_outlined_20"),
+                            DKRow(DKKeyPublishTimeHexColor, @"ic_text_outlined_20"),
+                        ]),
+                        DKSection(@"时间自定义渐变", @[
+                            DKRow(DKKeyPublishTimeGradientColors, @"ic_magic_outlined_20"),
+                        ]),
+                        DKSection(@"地区文字", @[
+                            DKRow(DKKeyPublishLocationColorEnabled, @"ic_location_outlined_20"),
+                            DKRow(DKKeyPublishLocationColorMode, @"ic_magic_outlined_20"),
+                        ]),
+                        DKSection(@"地区固定颜色", @[
+                            DKRow(DKKeyPublishLocationFixedColor, @"ic_pensketch_outlined_20"),
+                            DKRow(DKKeyPublishLocationHexColor, @"ic_text_outlined_20"),
+                        ]),
+                        DKSectionWithFooter(@"地区自定义渐变", @"时间文字与地区文字分别保存颜色配置，互不覆盖。置灰的设置保留存值，切回对应模式后继续使用。随机颜色按作品生成，不是逐帧动画。", @[
+                            DKRow(DKKeyPublishLocationGradientColors, @"ic_magic_outlined_20"),
+                        ]),
+                    ]),
+                ]),
+                DKSectionWithFooter(@"国外地区解析", @"国外地区解析使用 GeoNames 地名服务：先注册免费账号，再在账户管理页面启用 Free Web Services，然后在「国外解析账号」中填写用户名，无需提供密码。", @[
+                    DKRow(DKKeyGeoNamesUsername, @"ic_user_outlined_20"),
+                    DKRow(DKKeyGeoNamesRegister, @"ic_userplus_outlined_20"),
+                    DKRow(DKKeyGeoNamesWebServices, @"ic_switch_outlined"),
+                ]),
+            ]),
         ]),
         DKSection(@"手势", @[
             DKRow(DKKeyDoubleTapOpenComment, @"ic_comment_outlined_20"),
@@ -310,6 +423,10 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
     ]);
 
     DKSettingsPage *tools = DKPage(@"插件工具", @"ic_gearsimplify_outlined_20", @[
+        DKSection(@"快捷入口", @[
+            DKRow(DKKeyProfileSettingsEntry, @"ic_gearsimplify_outlined_20"),
+            DKRow(DKKeyProfileSettingsEntryName, @"ic_text_outlined_20"),
+        ]),
         DKSection(@"调试", @[
             DKRow(DKKeyDebugInspectorEnabled, @"ic_videosearch_outlined_20"),
         ]),
@@ -427,6 +544,31 @@ NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {
             DKKeyAudioVizStyle:          @[ DKKeyAudioVizPosition ],
             DKKeyInnerNotiCorner:        @[ DKKeyInnerNotiGlass ],
             DKKeyMinimumLikes:           @[ DKKeyFilterLowLikes ],
+            DKKeyProfileSettingsEntryName: @[ DKKeyProfileSettingsEntry ],
+            DKKeyDanmakuColorMode: @[ DKKeyDanmakuColorEnabled ],
+            DKKeyDanmakuFixedColor: @[ DKKeyDanmakuColorEnabled ],
+            DKKeyDanmakuHexColor: @[ DKKeyDanmakuColorEnabled ],
+            DKKeyDanmakuGradientColors: @[ DKKeyDanmakuColorEnabled ],
+            DKKeyGeoNamesUsername: @[ DKKeyPublishLocationEnabled ],
+            DKKeyPublishTimeColorMode: @[ DKKeyPublishTimeColorEnabled ],
+            DKKeyPublishTimeFixedColor: @[ DKKeyPublishTimeColorEnabled ],
+            DKKeyPublishTimeHexColor: @[ DKKeyPublishTimeColorEnabled ],
+            DKKeyPublishTimeGradientColors: @[ DKKeyPublishTimeColorEnabled ],
+            DKKeyPublishLocationColorMode: @[ DKKeyPublishLocationColorEnabled ],
+            DKKeyPublishLocationFixedColor: @[ DKKeyPublishLocationColorEnabled ],
+            DKKeyPublishLocationHexColor: @[ DKKeyPublishLocationColorEnabled ],
+            DKKeyPublishLocationGradientColors: @[ DKKeyPublishLocationColorEnabled ],
+        };
+    });
+    return (key ? requires[key] : nil) ?: @[];
+}
+
+NSArray<NSString *> *DKSettingsLayoutRequiresAny(NSString *key) {
+    static NSDictionary<NSString *, NSArray<NSString *> *> *requires;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        requires = @{
+            DKKeyPublishTextColors: @[ DKKeyPublishTimeEnabled, DKKeyPublishLocationEnabled ],
         };
     });
     return (key ? requires[key] : nil) ?: @[];
@@ -466,6 +608,16 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
             DKKeyTabTitleMall: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_mall"]),
             DKKeyTabTitleNotification: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_notification"]),
             DKKeyTabTitleProfile: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_profile"]),
+            DKKeyProfileSettingsEntry: @[ DKBlockOn(DKKeyProfileRemoveServiceArea, @"主页功能区已在「个人主页精简」中移除") ],
+            DKKeyDanmakuFixedColor: @[ DKBlockNotEqual(DKKeyDanmakuColorMode, 0, @"当前颜色模式不是「固定颜色」") ],
+            DKKeyDanmakuHexColor: @[ DKBlockNotEqual(DKKeyDanmakuColorMode, 0, @"当前颜色模式不是「固定颜色」") ],
+            DKKeyDanmakuGradientColors: @[ DKBlockNotEqual(DKKeyDanmakuColorMode, 4, @"当前颜色模式不是「自定义渐变」") ],
+            DKKeyPublishTimeFixedColor: @[ DKBlockNotEqual(DKKeyPublishTimeColorMode, 0, @"当前颜色模式不是「固定颜色」") ],
+            DKKeyPublishTimeHexColor: @[ DKBlockNotEqual(DKKeyPublishTimeColorMode, 0, @"当前颜色模式不是「固定颜色」") ],
+            DKKeyPublishTimeGradientColors: @[ DKBlockNotEqual(DKKeyPublishTimeColorMode, 4, @"当前颜色模式不是「自定义渐变」") ],
+            DKKeyPublishLocationFixedColor: @[ DKBlockNotEqual(DKKeyPublishLocationColorMode, 0, @"当前颜色模式不是「固定颜色」") ],
+            DKKeyPublishLocationHexColor: @[ DKBlockNotEqual(DKKeyPublishLocationColorMode, 0, @"当前颜色模式不是「固定颜色」") ],
+            DKKeyPublishLocationGradientColors: @[ DKBlockNotEqual(DKKeyPublishLocationColorMode, 4, @"当前颜色模式不是「自定义渐变」") ],
         };
     });
     return (key ? blockers[key] : nil) ?: @[];

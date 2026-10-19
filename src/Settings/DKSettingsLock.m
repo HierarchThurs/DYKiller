@@ -2,7 +2,7 @@
 //  DKSettingsLock.m
 //  建页收尾与两类锁：
 //  - 玻璃锁：低于 iOS 26 时守卫表里的项灰显、加「 (iOS26+)」、按关显示（偏好已被守卫清掉），运行期不会解除。
-//  - 联动锁：前置项未生效、或阻断条件成立时灰显，只改 isEnable、不动存值，条件解除后照原值显示。
+//  - 联动锁：前置项未生效（「任一」前置项全部未生效）、或阻断条件成立时灰显，只改 isEnable、不动存值，条件解除后照原值显示。
 //  灰显由抖音 cell 按 isEnable 完成（关开关交互、调暗 realContentView）；点击由页面 hook 拦截。
 //
 
@@ -53,7 +53,12 @@ static BOOL DKKeyLocked(NSString *key, NSUInteger depth) {
     for (NSString *parent in DKSettingsLayoutRequires(key)) {
         if (!DKKeyActive(parent, depth + 1)) return YES;
     }
-    return NO;
+    NSArray<NSString *> *anyOf = DKSettingsLayoutRequiresAny(key);
+    if (!anyOf.count) return NO;
+    for (NSString *parent in anyOf) {
+        if (DKKeyActive(parent, depth + 1)) return NO;
+    }
+    return YES;
 }
 
 // 低系统：标题加后缀、灰掉、掐掉点击。在 builder 返回之后调用，盖住功能自己包的回调。
@@ -115,6 +120,16 @@ NSString *DKSettingsLockReason(AWESettingItemModel *item) {
         AWESettingItemModel *source = DKSettingsBuildItem(parent);
         NSString *format = DKSettingsItemIsChoice(source) ? @"需先设置「%@」" : @"需先开启「%@」";
         [parts addObject:[NSString stringWithFormat:format, source.title ?: parent]];
+    }
+    NSArray<NSString *> *anyOf = DKSettingsLayoutRequiresAny(item.identifier);
+    BOOL anyActive = NO;
+    NSMutableArray<NSString *> *anyTitles = [NSMutableArray array];
+    for (NSString *parent in anyOf) {
+        if (DKKeyActive(parent, 1)) { anyActive = YES; break; }
+        [anyTitles addObject:[NSString stringWithFormat:@"「%@」", DKSettingsBuildItem(parent).title ?: parent]];
+    }
+    if (anyOf.count && !anyActive) {
+        [parts addObject:[NSString stringWithFormat:@"需先开启%@", [anyTitles componentsJoinedByString:@"或"]]];
     }
     for (DKSettingsBlocker *blocker in DKSettingsLayoutBlockers(item.identifier)) {
         if (DKBlockerHolds(blocker)) [parts addObject:blocker.reason];

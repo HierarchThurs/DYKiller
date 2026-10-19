@@ -274,33 +274,45 @@ AWESettingItemModel *DKMakeChoice(NSString *key, NSString *title, NSArray<NSStri
 
 #pragma mark - 文字输入
 
+// 输入弹窗的文案：message 为空时按长度上限生成说明；留空时行右侧显示 emptyDetail，清空按钮标题为 resetTitle。
+@interface _DKTextPrompt : NSObject
+@property (nonatomic, copy) NSString *placeholder;
+@property (nonatomic, copy) NSString *message;
+@property (nonatomic, copy) NSString *emptyDetail;
+@property (nonatomic, copy) NSString *resetTitle;
+@end
+
+@implementation _DKTextPrompt
+@end
+
 static NSString *DKTextCurrent(DKSettingsValue *value) {
     id current = [value currentValueInStore:NSUserDefaults.standardUserDefaults];
     return [current isKindOfClass:NSString.class] ? current : nil;
 }
 
-static void DKTextCommit(AWESettingItemModel *item, DKSettingsValue *value, id normalized, dispatch_block_t onChange) {
+static void DKTextCommit(AWESettingItemModel *item, DKSettingsValue *value, _DKTextPrompt *prompt, id normalized,
+                         dispatch_block_t onChange) {
     [value writeValue:normalized toStore:NSUserDefaults.standardUserDefaults];
-    item.detail = DKTextCurrent(value) ?: @"默认";
+    item.detail = DKTextCurrent(value) ?: prompt.emptyDetail;
     DKSettingsReloadCurrentPage();
     if (onChange) onChange();
 }
 
 // 超宽或含换行时保留输入、换上原因重新弹出，不让用户的输入丢掉。
 static void DKPresentTextInput(AWESettingItemModel *item, DKSettingsValue *value, NSString *title,
-                               NSString *placeholder, NSString *draft, NSString *problem) {
+                               _DKTextPrompt *prompt, NSString *draft, NSString *problem) {
     UIViewController *presenter = DKSettingsCurrentPage();
     if (!presenter) return;
     NSUInteger maxWidth = value.maxWidth;
-    NSString *hint = [NSString stringWithFormat:@"最多 %lu 个汉字或 %lu 个字母数字，留空为「%@」。",
-                      (unsigned long)(maxWidth / 2), (unsigned long)maxWidth, placeholder];
+    NSString *hint = prompt.message ?: [NSString stringWithFormat:@"最多 %lu 个汉字或 %lu 个字母数字，留空为「%@」。",
+                      (unsigned long)(maxWidth / 2), (unsigned long)maxWidth, prompt.placeholder];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
                                                                    message:problem ? [NSString stringWithFormat:@"%@\n%@", problem, hint] : hint
                                                             preferredStyle:UIAlertControllerStyleAlert];
     NSString *current = DKTextCurrent(value);
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
         field.text = draft ?: current;
-        field.placeholder = placeholder;
+        field.placeholder = prompt.placeholder;
         field.clearButtonMode = UITextFieldViewModeWhileEditing;
         field.returnKeyType = UIReturnKeyDone;
     }];
@@ -310,9 +322,9 @@ static void DKPresentTextInput(AWESettingItemModel *item, DKSettingsValue *value
     dispatch_block_t onChange = DKSettingsItemOnChange(item);
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     if (current) {
-        [alert addAction:[UIAlertAction actionWithTitle:@"恢复默认" style:UIAlertActionStyleDestructive
+        [alert addAction:[UIAlertAction actionWithTitle:prompt.resetTitle style:UIAlertActionStyleDestructive
                                                 handler:^(__unused UIAlertAction *action) {
-            DKTextCommit(weakItem, value, NSNull.null, onChange);
+            DKTextCommit(weakItem, value, prompt, NSNull.null, onChange);
         }]];
     }
     [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault
@@ -323,30 +335,49 @@ static void DKPresentTextInput(AWESettingItemModel *item, DKSettingsValue *value
         if (!normalized) {
             // 等这个弹窗收完再弹，present 不能压在 dismiss 动画上。
             dispatch_async(dispatch_get_main_queue(), ^{
-                DKPresentTextInput(weakItem, value, title, placeholder, text,
+                DKPresentTextInput(weakItem, value, title, prompt, text,
                                    [reason isEqualToString:@"文字过长"] ? @"文字超出长度。" : @"不能包含换行或控制字符。");
             });
             return;
         }
-        DKTextCommit(weakItem, value, normalized, onChange);
+        DKTextCommit(weakItem, value, prompt, normalized, onChange);
     }]];
     [presenter presentViewController:alert animated:YES completion:nil];
 }
 
-AWESettingItemModel *DKMakeTextInput(NSString *key, NSString *title, NSString *placeholder, NSUInteger maxWidth) {
+static AWESettingItemModel *DKMakeTextInputItem(NSString *key, NSString *title, NSUInteger maxWidth, _DKTextPrompt *prompt) {
     DKSettingsValue *value = [DKSettingsValue stringWithKey:key maxWidth:maxWidth];
     // cellType 26：可点击、右侧显示 detail 与箭头。
     AWESettingItemModel *item = DKMakeItem(key, title, 26);
-    item.detail = DKTextCurrent(value) ?: @"默认";
+    item.detail = DKTextCurrent(value) ?: prompt.emptyDetail;
 
     __weak AWESettingItemModel *weakItem = item;
     item.cellTappedBlock = ^{
         if (!weakItem.isEnable) return;
-        DKPresentTextInput(weakItem, value, title, placeholder, nil, nil);
+        DKPresentTextInput(weakItem, value, title, prompt, nil, nil);
     };
+    NSString *emptyDetail = prompt.emptyDetail;
     return DKSettingsWithValues(item, @[ value ], ^NSString *(NSArray *values, __unused BOOL brief) {
-        return [values[0] isKindOfClass:NSString.class] ? values[0] : @"默认";
+        return [values[0] isKindOfClass:NSString.class] ? values[0] : emptyDetail;
     });
+}
+
+AWESettingItemModel *DKMakeTextInput(NSString *key, NSString *title, NSString *placeholder, NSUInteger maxWidth) {
+    _DKTextPrompt *prompt = [_DKTextPrompt new];
+    prompt.placeholder = placeholder;
+    prompt.emptyDetail = @"默认";
+    prompt.resetTitle = @"恢复默认";
+    return DKMakeTextInputItem(key, title, maxWidth, prompt);
+}
+
+AWESettingItemModel *DKMakeTextInputWithPrompt(NSString *key, NSString *title, NSString *placeholder, NSUInteger maxWidth,
+                                               NSString *message, NSString *emptyDetail, NSString *resetTitle) {
+    _DKTextPrompt *prompt = [_DKTextPrompt new];
+    prompt.placeholder = placeholder;
+    prompt.message = message;
+    prompt.emptyDetail = emptyDetail ?: @"默认";
+    prompt.resetTitle = resetTitle ?: @"恢复默认";
+    return DKMakeTextInputItem(key, title, maxWidth, prompt);
 }
 
 AWESettingItemModel *DKMakeGlassChoice(NSString *key, NSString *clearKey, NSString *title, void (^onChange)(void)) {

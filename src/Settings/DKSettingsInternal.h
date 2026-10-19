@@ -23,6 +23,9 @@ NSArray<NSString *> *DKSettingsRegisteredKeys(void);
 /// page 上 identifier 对应的项；page 不是 DYKiller 设置页或没有该项时返回 nil。
 AWESettingItemModel *DKSettingsFindItem(UIViewController *page, NSString *identifier);
 
+/// 依次交出 page 上的每一项；page 不是 DYKiller 设置页时不调用。
+void DKSettingsEnumerateItems(UIViewController *page, void (^block)(AWESettingItemModel *item));
+
 /// 当前显示的 DYKiller 设置页，弹窗与刷新都以它为宿主。
 UIViewController *DKSettingsCurrentPage(void);
 

@@ -16,6 +16,14 @@
 /// 备份工具也会调用它来收集值声明，所以 builder 只建项，不改全局状态。
 typedef AWESettingItemModel *(^DKSettingItemBuilder)(void);
 
+/// 颜色设置的预览样例，色板与十六进制 / 渐变输入页共用。alpha 在打开编辑页时求值，未给为 1；
+/// alphaNote 由该不透明度给出说明文字（如「抖音原生不透明度 62%（只读）」），未给不显示。
+@interface DKColorSample : NSObject
+@property (nonatomic, copy) NSString *text;
+@property (nonatomic, copy) CGFloat (^alpha)(void);
+@property (nonatomic, copy) NSString *(^alphaNote)(CGFloat alpha);
+@end
+
 // 实现分散在 .xm（ObjC++）与 .m（ObjC）两种编译单元里，需统一为 C 链接以正确链接。
 #ifdef __cplusplus
 extern "C" {
@@ -67,6 +75,10 @@ AWESettingItemModel *DKMakeChoiceConfirm(NSString *key, NSString *title, NSArray
 /// placeholder 是留空时显示的默认文字；maxWidth 按 DKSettingsTextWidth 计。值自动声明为 String，空串即未设置。
 AWESettingItemModel *DKMakeTextInput(NSString *key, NSString *title, NSString *placeholder, NSUInteger maxWidth);
 
+/// 同 DKMakeTextInput，另指定输入弹窗的说明 message、留空时行右侧显示的 emptyDetail 与清空按钮标题 resetTitle。
+AWESettingItemModel *DKMakeTextInputWithPrompt(NSString *key, NSString *title, NSString *placeholder, NSUInteger maxWidth,
+                                               NSString *message, NSString *emptyDetail, NSString *resetTitle);
+
 /// 液态玻璃材质单选：关闭 / 模糊玻璃 / 清透玻璃。存成 key（开启）与 clearKey（清透）两个 BOOL，
 /// 前置联动按 key 判定。onChange 在选定并写入后、以及恢复写入后调用，可空。
 AWESettingItemModel *DKMakeGlassChoice(NSString *key, NSString *clearKey, NSString *title, void (^onChange)(void));
@@ -95,6 +107,18 @@ AWESettingItemModel *DKMakeAdjustSlider(NSString *key, NSString *title, NSString
 AWESettingItemModel *DKMakeAction(NSString *key, NSString *title, NSString *detail,
                                   void (^onTap)(AWESettingItemModel *item, UIViewController *presenter));
 
+/// 网页入口：点击用系统浏览器打开 url，不进备份。
+AWESettingItemModel *DKMakeWebLink(NSString *key, NSString *title, NSString *url);
+
+/// 固定颜色：点击打开色谱 / RGB 选色页，存为 #RRGGBB。值自动声明为单色。
+AWESettingItemModel *DKMakeColorPicker(NSString *key, NSString *title, DKColorSample *sample);
+
+/// 固定颜色的十六进制入口：identifier 只作行标识，读写 colorKey 的存值，不进备份。
+AWESettingItemModel *DKMakeColorHexInput(NSString *identifier, NSString *colorKey, NSString *title, DKColorSample *sample);
+
+/// 渐变颜色：2–8 个十六进制颜色，英文逗号分隔。值自动声明为渐变。
+AWESettingItemModel *DKMakeColorGradientInput(NSString *key, NSString *title, DKColorSample *sample);
+
 /// 重算当前设置页的联动灰显并刷新整页。改完某项的 detail 或写入取值后调用。
 void DKSettingsReloadCurrentPage(void);
 
@@ -113,6 +137,9 @@ void DKSettingsPushNotedSections(UIViewController *presenter, NSString *title, N
 /// 返回上一页时，上一页重新接管弹窗并刷新。
 void DKSettingsPushPage(UIViewController *presenter, NSString *title, NSString *sectionHeader,
                         NSArray<AWESettingItemModel *> *items);
+
+/// 从 presenter 所在导航栈推入 DYKiller 设置一级页（推入时隐藏底栏）；presenter 不在导航栈里时不推入。
+void DKSettingsOpenMain(UIViewController *presenter);
 
 #ifdef __cplusplus
 }

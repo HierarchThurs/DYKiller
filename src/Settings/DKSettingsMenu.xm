@@ -87,6 +87,13 @@ AWESettingItemModel *DKSettingsFindItem(UIViewController *page, NSString *identi
     return nil;
 }
 
+void DKSettingsEnumerateItems(UIViewController *page, void (^block)(AWESettingItemModel *item)) {
+    if (!block) return;
+    for (AWESettingSectionModel *section in DKPageViewModel(page).sectionDataArray) {
+        for (AWESettingItemModel *item in section.itemArray) block(item);
+    }
+}
+
 void DKSettingsReloadCurrentPage(void) {
     UIViewController *page = gSettingsPresenter;
     DKSettingsApplyLocks(DKPageViewModel(page).sectionDataArray);
@@ -223,7 +230,9 @@ static AWESettingItemModel *DKMakePageEntry(DKSettingsPage *spec) {
     item.cellTappedBlock = ^{
         UIViewController *presenter = DKSettingsCurrentPage();
         if (!presenter || !weakItem.isEnable) return;
-        DKPushPage(presenter, DKMakeSettingsPage(spec.title, DKBuildSections(spec.sections)));
+        AWESettingBaseViewController *page = DKMakeSettingsPage(spec.title, DKBuildSections(spec.sections));
+        if (spec.note.length) objc_setAssociatedObject(page, &kDKPageNoteKey, spec.note, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        DKPushPage(presenter, page);
     };
     return item;
 }
@@ -282,15 +291,26 @@ static AWESettingSectionModel *DKBuildUnplacedSection(void) {
     return items.count ? DKSettingsMakeSection(kDKUnplacedHeader, nil, items) : nil;
 }
 
-static void DKShowSettings(UIViewController *rootVC) {
-    if (!rootVC) return;
+static AWESettingBaseViewController *DKMakeMainPage(void) {
     NSMutableArray *sections = [DKBuildSections(DKSettingsLayoutMain()) mutableCopy];
     AWESettingSectionModel *unplaced = DKBuildUnplacedSection();
     if (unplaced) [sections addObject:unplaced];
 
     AWESettingBaseViewController *page = DKMakeSettingsPage(@"DYKiller", sections);
     gSettingsPresenter = page;
-    DKPushPage(rootVC, page);
+    return page;
+}
+
+static void DKShowSettings(UIViewController *rootVC) {
+    if (!rootVC) return;
+    DKPushPage(rootVC, DKMakeMainPage());
+}
+
+void DKSettingsOpenMain(UIViewController *presenter) {
+    if (!presenter.navigationController) return;
+    AWESettingBaseViewController *page = DKMakeMainPage();
+    page.hidesBottomBarWhenPushed = YES;
+    DKPushPage(presenter, page);
 }
 
 void DKSettingsPushSections(UIViewController *presenter, NSString *title, NSArray<AWESettingSectionModel *> *sections) {

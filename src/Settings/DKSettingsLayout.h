@@ -20,6 +20,7 @@
 @property (nonatomic, copy, readonly) NSString *title;
 @property (nonatomic, copy, readonly) NSString *icon;
 @property (nonatomic, copy, readonly) NSString *identifier;   // 入口项 identifier；玻璃守卫按它灰显
+@property (nonatomic, copy, readonly) NSString *note;         // 页面顶部说明，可空
 @property (nonatomic, copy, readonly) NSArray *sections;      // DKSettingsSection
 @end
 
@@ -75,6 +76,9 @@ NSString *DKSettingsLayoutIcon(NSString *key);
 
 /// 该键的前置项：任一前置项未生效时该行灰显。无前置项返回空数组。
 NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key);
+
+/// 该键的「任一」前置项：全部未生效时该行灰显，任一生效即可。无此类前置项返回空数组。
+NSArray<NSString *> *DKSettingsLayoutRequiresAny(NSString *key);
 
 /// 该键的阻断项，按原因展示顺序排列。任一阻断条件成立时该行灰显。无阻断项返回空数组。
 NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key);
