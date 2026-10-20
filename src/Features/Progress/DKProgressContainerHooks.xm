@@ -9,11 +9,13 @@
 #import "DouyinHeaders.h"
 #import "DKProgressTime.h"
 #import "DKVideoFullscreen.h"
+#import "DKPlaybackOverlay.h"
 
 %hook AWEDPlayerProgressContainerView
 
 - (void)layoutSubviews {
     %orig;
+    DKPlaybackOverlayLayoutProgress(self);
     DKProgressUnderlineApply(self);
     DKProgressTimeLayoutContainer(self);
 }

@@ -15,6 +15,7 @@
 //
 
 #import "DKGlassTabBar.h"
+#import "DKPlaybackOverlay.h"
 #import "DKAudioVisualizer.h"
 #import "DKPlusIcon.h"
 #import "DKTabBarAppearance.h"
@@ -1214,6 +1215,7 @@ void DKGlassTabBarRefresh(void) {
         AWESettingItemModel *item = DKMakeGlassChoice(DKKeyGlassTabBar, DKKeyGlassTabBarClear, @"悬浮玻璃底栏", ^{
             // 玻璃接管与否决定抖音底栏背景归谁管，背景让位跟着重判。
             DKTabBarBackdropSetNeedsUpdate();
+            DKPlaybackOverlayRefresh();
             AWENormalModeTabBar *bar = gDouyinBar;
             if (@available(iOS 26.0, *)) {
                 if (!bar) return;
@@ -1224,7 +1226,8 @@ void DKGlassTabBarRefresh(void) {
             }
         });
         return DKSettingsWithInfo(item,
-            @"悬浮底栏的材质：关闭时不显示悬浮玻璃底栏；模糊玻璃使用系统 Regular；清透玻璃显示更多背后视频细节。");
+            @"悬浮底栏、清屏按钮与长按倍速提示共用此材质；清屏按钮按原生分组悬浮，长视频的后退、暂停与前进共用胶囊。"
+            @"模糊玻璃使用系统 Regular；清透玻璃显示更多背后视频细节。");
     });
 
     if (DKGlassOSAvailable()) {
