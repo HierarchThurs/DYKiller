@@ -43,11 +43,13 @@ typedef NS_ENUM(NSInteger, DKSettingsBlockerMatch) {
 };
 
 /// 阻断项：条件成立时目标行灰显，reason 即灰显原因。
+/// shownValue 非空时，条件成立期间该行按此值显示（开关 0 / 1、单选下标），功能按同一条件取有效值；存值不动。
 @interface DKSettingsBlocker : NSObject
 @property (nonatomic, copy, readonly) NSString *key;
 @property (nonatomic, assign, readonly) DKSettingsBlockerMatch match;
 @property (nonatomic, assign, readonly) NSInteger value;
 @property (nonatomic, copy, readonly) NSString *reason;
+@property (nonatomic, strong, readonly) NSNumber *shownValue;
 @end
 
 /// 分区：rows 里可以是 DKSettingsRow、DKSettingsPage、DKSettingsLink。

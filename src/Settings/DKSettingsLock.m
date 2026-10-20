@@ -3,6 +3,7 @@
 //  建页收尾与两类锁：
 //  - 玻璃锁：低于 iOS 26 时守卫表里的项灰显、加「 (iOS26+)」、按关显示（偏好已被守卫清掉），运行期不会解除。
 //  - 联动锁：前置项未生效（「任一」前置项全部未生效）、或阻断条件成立时灰显，只改 isEnable、不动存值，条件解除后照原值显示。
+//    带显示值的阻断项（总开关）成立时，子项另按该值显示。
 //  灰显由抖音 cell 按 isEnable 完成（关开关交互、调暗 realContentView）；点击由页面 hook 拦截。
 //
 
@@ -25,11 +26,6 @@ static BOOL DKKeyGlassLocked(NSString *key) {
 
 static BOOL DKKeyLocked(NSString *key, NSUInteger depth);
 
-// 前置项生效：自身未被锁，且开关为开 / 单选不在第 0 项（BOOL 存值按 integer 读为 0/1）。
-static BOOL DKKeyActive(NSString *key, NSUInteger depth) {
-    return !DKKeyLocked(key, depth) && DKPrefInteger(key) != 0;
-}
-
 static BOOL DKBlockerHolds(DKSettingsBlocker *blocker) {
     switch (blocker.match) {
         case DKSettingsBlockerWhenOn: return DKPrefBool(blocker.key);
@@ -39,11 +35,33 @@ static BOOL DKBlockerHolds(DKSettingsBlocker *blocker) {
     return NO;
 }
 
+// 联动的有效值与总开关显示值一致；玻璃守卫优先于总开关。
+static BOOL DKKeyActive(NSString *key, NSUInteger depth) {
+    if (DKKeyGlassLocked(key)) return NO;
+    for (DKSettingsBlocker *blocker in DKSettingsLayoutBlockers(key)) {
+        if (blocker.shownValue && DKBlockerHolds(blocker)) return blocker.shownValue.integerValue != 0;
+    }
+    return !DKKeyLocked(key, depth) && DKPrefInteger(key) != 0;
+}
+
 static BOOL DKKeyBlocked(NSString *key) {
     for (DKSettingsBlocker *blocker in DKSettingsLayoutBlockers(key)) {
         if (DKBlockerHolds(blocker)) return YES;
     }
     return NO;
+}
+
+// 带显示值的阻断项（总开关的子项）：按「成立中的显示值，否则存值」刷新显示，返回显示是否有变化。
+// 未配置显示值的项由各自工厂与玻璃锁维护显示。
+static BOOL DKSyncShownValue(AWESettingItemModel *item) {
+    BOOL governed = NO;
+    NSNumber *shown = nil;
+    for (DKSettingsBlocker *blocker in DKSettingsLayoutBlockers(item.identifier)) {
+        if (!blocker.shownValue) continue;
+        governed = YES;
+        if (!shown && DKBlockerHolds(blocker)) shown = blocker.shownValue;
+    }
+    return governed && DKSettingsShowValue(item, shown);
 }
 
 static BOOL DKKeyLocked(NSString *key, NSUInteger depth) {
@@ -88,7 +106,8 @@ void DKSettingsSetItemEnabled(AWESettingItemModel *item, BOOL enabled) {
     if (!item) return;
     objc_setAssociatedObject(item, &kDKBaseEnableKey, @(enabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     BOOL enable = enabled && !DKKeyLocked(item.identifier, 0);
-    if (item.isEnable == enable) return;
+    BOOL shown = DKSyncShownValue(item);
+    if (item.isEnable == enable && !shown) return;
     item.isEnable = enable;
     if ([item respondsToSelector:@selector(refreshCell)]) [item refreshCell];
 }
@@ -104,7 +123,8 @@ NSArray<AWESettingItemModel *> *DKSettingsApplyLocks(NSArray *sections) {
             NSNumber *base = objc_getAssociatedObject(item, &kDKBaseEnableKey);
             if (!base) continue;
             BOOL enable = base.boolValue && !DKKeyLocked(item.identifier, 0);
-            if (item.isEnable == enable) continue;
+            BOOL shown = DKSyncShownValue(item);
+            if (item.isEnable == enable && !shown) continue;
             item.isEnable = enable;
             [changed addObject:item];
         }
@@ -112,16 +132,18 @@ NSArray<AWESettingItemModel *> *DKSettingsApplyLocks(NSArray *sections) {
     return changed;
 }
 
-NSString *DKSettingsLockReason(AWESettingItemModel *item) {
-    if (!DKSettingsIsOwnItem(item) || DKKeyGlassLocked(item.identifier)) return nil;
+BOOL DKSettingsKeyIsLocked(NSString *key) { return DKKeyLocked(key, 0); }
+
+NSString *DKSettingsKeyLockReason(NSString *key) {
+    if (DKKeyGlassLocked(key)) return @"需要 iOS 26 或更高版本";
     NSMutableArray<NSString *> *parts = [NSMutableArray array];
-    for (NSString *parent in DKSettingsLayoutRequires(item.identifier)) {
+    for (NSString *parent in DKSettingsLayoutRequires(key)) {
         if (DKKeyActive(parent, 1)) continue;
         AWESettingItemModel *source = DKSettingsBuildItem(parent);
         NSString *format = DKSettingsItemIsChoice(source) ? @"需先设置「%@」" : @"需先开启「%@」";
         [parts addObject:[NSString stringWithFormat:format, source.title ?: parent]];
     }
-    NSArray<NSString *> *anyOf = DKSettingsLayoutRequiresAny(item.identifier);
+    NSArray<NSString *> *anyOf = DKSettingsLayoutRequiresAny(key);
     BOOL anyActive = NO;
     NSMutableArray<NSString *> *anyTitles = [NSMutableArray array];
     for (NSString *parent in anyOf) {
@@ -131,8 +153,12 @@ NSString *DKSettingsLockReason(AWESettingItemModel *item) {
     if (anyOf.count && !anyActive) {
         [parts addObject:[NSString stringWithFormat:@"需先开启%@", [anyTitles componentsJoinedByString:@"或"]]];
     }
-    for (DKSettingsBlocker *blocker in DKSettingsLayoutBlockers(item.identifier)) {
+    for (DKSettingsBlocker *blocker in DKSettingsLayoutBlockers(key)) {
         if (DKBlockerHolds(blocker)) [parts addObject:blocker.reason];
     }
     return parts.count ? [parts componentsJoinedByString:@"；"] : nil;
+}
+
+NSString *DKSettingsLockReason(AWESettingItemModel *item) {
+    return DKSettingsIsOwnItem(item) ? DKSettingsKeyLockReason(item.identifier) : nil;
 }

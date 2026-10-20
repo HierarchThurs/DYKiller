@@ -43,9 +43,16 @@
 
 @implementation DKSettingsBlocker
 - (instancetype)initWithKey:(NSString *)key match:(DKSettingsBlockerMatch)match value:(NSInteger)value
-                     reason:(NSString *)reason {
-    if ((self = [super init])) { _key = [key copy]; _match = match; _value = value; _reason = [reason copy]; }
+                     reason:(NSString *)reason shownValue:(NSNumber *)shownValue {
+    if ((self = [super init])) {
+        _key = [key copy]; _match = match; _value = value; _reason = [reason copy]; _shownValue = shownValue;
+    }
     return self;
+}
+
+- (instancetype)initWithKey:(NSString *)key match:(DKSettingsBlockerMatch)match value:(NSInteger)value
+                     reason:(NSString *)reason {
+    return [self initWithKey:key match:match value:value reason:reason shownValue:nil];
 }
 @end
 
@@ -99,16 +106,20 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyPlaybackFullscreenMode, @"ic_fullscreen_outlined_16"),
                     DKRow(DKKeyPlaybackDanmakuMode, @"ic_comment_outlined_20"),
                 ]),
+                DKSection(@"锚点标签", @[
+                    DKRow(DKKeyPlaybackRemoveAllAnchors, @"ic_eyeslash_outlined_20"),
+                    DKRow(DKKeyPlaybackGameTagMode, @"ic_module_outlined_20"),
+                    DKRow(DKKeyPlaybackMusicAnchorMode, @"ic_quaver_outlined_20"),
+                    DKRow(DKKeyPlaybackPropEffectMode, @"ic_cameralogo_outlined_20"),
+                    DKRow(DKKeyPlaybackJianyingMode, @"ic_cameralogo_outlined_20"),
+                    DKRow(DKKeyPlaybackPaidContentMode, @"ic_bag_outlined_20"),
+                    DKRow(DKKeyPlaybackLocationMode, @"ic_location_outlined_20"),
+                ]),
                 DKSection(@"文案上方", @[
                     DKRow(DKKeyPlaybackOtherUserRecommendMode, @"ic_user_outlined_20"),
                     DKRow(DKKeyPlaybackFriendRecommendMode, @"ic_user_outlined_20"),
                     DKRow(DKKeyPlaybackFriendShareMode, @"ic_share_outlined"),
                     DKRow(DKKeyPlaybackSelectedMode, @"ic_magic_outlined_20"),
-                    DKRow(DKKeyPlaybackGameTagMode, @"ic_module_outlined_20"),
-                    DKRow(DKKeyPlaybackMusicAnchorMode, @"ic_quaver_outlined_20"),
-                    DKRow(DKKeyPlaybackPropEffectMode, @"ic_cameralogo_outlined_20"),
-                    DKRow(DKKeyPlaybackJianyingMode, @"ic_cameralogo_outlined_20"),
-                    DKRow(DKKeyPlaybackLocationMode, @"ic_location_outlined_20"),
                     DKRow(DKKeyPlaybackStoreMode, @"ic_module_outlined_20"),
                 ]),
                 DKSection(@"昵称右侧", @[
@@ -415,7 +426,18 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyMinimumLikes, @"ic_thumbsup_outlined_20"),
             DKRow(DKKeyRemoveRecommendedLive, @"ic_tv_outlined_20"),
             DKRow(DKKeyFilterRecommendedMusic, @"ic_quaver_outlined_20"),
+            DKRow(DKKeyFilterRecommendedArticle, @"ic_text_outlined_20"),
+            DKRow(DKKeyFilterRecommendedMerchantNote, @"ic_location_outlined_20"),
+        ]),
+        DKSection(@"特殊卡片", @[
+            DKRow(DKKeyFilterRecommendedSpecialCard, @"ic_squaresplit_outlined_20"),
             DKRow(DKKeyFilterRecommendedHotspot, @"ic_fire_outlined_20"),
+            DKRow(DKKeyFilterRecommendedCreation, @"ic_cameralogo_outlined_20"),
+            DKRow(DKKeyFilterRecommendedEcommerce, @"ic_bag_outlined_20"),
+            DKRow(DKKeyFilterRecommendedGame, @"ic_squaretriangle_outlined_20"),
+            DKRow(DKKeyFilterRecommendedSocial, @"ic_userplus_outlined_20"),
+            DKRow(DKKeyFilterRecommendedInterest, @"ic_star_outlined_20"),
+            DKRow(DKKeyFilterRecommendedMicroApp, @"ic_module_outlined_20"),
         ]),
         DKSection(@"广告", @[
             DKRow(DKKeyFilterAds, @"ic_ad_outlined_20"),
@@ -586,6 +608,20 @@ static DKSettingsBlocker *DKBlockNotEqual(NSString *key, NSInteger value, NSStri
     return [[DKSettingsBlocker alloc] initWithKey:key match:DKSettingsBlockerWhenNotEqual value:value reason:reason];
 }
 
+// 总开关：开启时子项锁定并按 shown 显示（子项的生效值由功能按总开关计算）。
+static DKSettingsBlocker *DKBlockOnShowing(NSString *key, NSInteger shown, NSString *reason) {
+    return [[DKSettingsBlocker alloc] initWithKey:key match:DKSettingsBlockerWhenOn value:0
+                                           reason:reason shownValue:@(shown)];
+}
+
+static void DKAddMasterBlockers(NSMutableDictionary *table, NSString *master, NSArray<NSString *> *children,
+                                NSInteger shown, NSString *reason) {
+    for (NSString *child in children) {
+        NSArray *existing = table[child] ?: @[];
+        table[child] = [existing arrayByAddingObject:DKBlockOnShowing(master, shown, reason)];
+    }
+}
+
 // 底栏文字：「单图标」不显示文字；该项被「移除底栏项目」移除时也无处显示。
 static NSArray<DKSettingsBlocker *> *DKTitleBlockers(NSString *removalKey) {
     NSMutableArray<DKSettingsBlocker *> *list = [NSMutableArray arrayWithObject:
@@ -599,7 +635,8 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         NSString *removedPlus = @"拍摄按钮已在「移除底栏项目」中移除";
-        blockers = @{
+        NSMutableDictionary *table = [NSMutableDictionary dictionary];
+        [table addEntriesFromDictionary:@{
             DKKeyPlusStyle: @[ DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
             DKKeyPlusIcon: @[ DKBlockNotEqual(DKKeyPlusStyle, 3, @"需先在「拍摄按钮」中选择「自定义图片」"),
                               DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
@@ -618,7 +655,17 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
             DKKeyPublishLocationFixedColor: @[ DKBlockNotEqual(DKKeyPublishLocationColorMode, 0, @"当前颜色模式不是「固定颜色」") ],
             DKKeyPublishLocationHexColor: @[ DKBlockNotEqual(DKKeyPublishLocationColorMode, 0, @"当前颜色模式不是「固定颜色」") ],
             DKKeyPublishLocationGradientColors: @[ DKBlockNotEqual(DKKeyPublishLocationColorMode, 4, @"当前颜色模式不是「自定义渐变」") ],
-        };
+        }];
+        DKAddMasterBlockers(table, DKKeyFilterRecommendedSpecialCard, @[
+            DKKeyFilterRecommendedHotspot, DKKeyFilterRecommendedCreation, DKKeyFilterRecommendedEcommerce,
+            DKKeyFilterRecommendedGame, DKKeyFilterRecommendedSocial, DKKeyFilterRecommendedInterest,
+            DKKeyFilterRecommendedMicroApp,
+        ], 1, @"已由「推荐过滤特殊卡片」统一开启");
+        DKAddMasterBlockers(table, DKKeyPlaybackRemoveAllAnchors, @[
+            DKKeyPlaybackGameTagMode, DKKeyPlaybackMusicAnchorMode, DKKeyPlaybackPropEffectMode,
+            DKKeyPlaybackJianyingMode, DKKeyPlaybackPaidContentMode, DKKeyPlaybackLocationMode,
+        ], 2, @"已由「移除全部昵称上方标签」统一移除");
+        blockers = [table copy];
     });
     return (key ? blockers[key] : nil) ?: @[];
 }

@@ -159,6 +159,34 @@ static void DKPresentFromSettings(UIViewController *presenter, UIViewController 
     [presenter presentViewController:controller animated:YES completion:nil];
 }
 
+#pragma mark - 锁定显示
+
+// 存值越界或未设置时按第 0 项显示，与 DKMakeChoiceItem 一致。
+static NSString *DKOptionText(NSArray<NSString *> *options, NSInteger index) {
+    return options[index >= 0 && index < (NSInteger)options.count ? index : 0];
+}
+
+BOOL DKSettingsShowValue(AWESettingItemModel *item, NSNumber *lockedValue) {
+    NSArray<DKSettingsValue *> *values = DKSettingsItemValues(item);
+    DKSettingsValue *spec = values.firstObject;
+    if (values.count != 1 || !((spec.kind == DKSettingsValueKindBool && item.cellType == 6)
+        || (spec.kind == DKSettingsValueKindInteger && DKSettingsItemIsChoice(item)))) return NO;
+    id raw = lockedValue ?: [spec currentValueInStore:NSUserDefaults.standardUserDefaults];
+    NSInteger value = raw == NSNull.null ? 0 : [raw integerValue];
+    if (DKSettingsItemIsChoice(item)) {
+        DKSettingsDescribe describe = DKSettingsItemDescribe(item);
+        if (!describe) return NO;
+        NSString *text = describe(@[ @(value) ], YES);
+        if ([item.detail isEqualToString:text]) return NO;
+        item.detail = text;
+        return YES;
+    }
+    BOOL on = value != 0;
+    if (item.isSwitchOn == on) return NO;
+    item.isSwitchOn = on;
+    return YES;
+}
+
 #pragma mark - 开关
 
 AWESettingItemModel *DKMakeSwitch(NSString *key, NSString *title, NSString *detail) {
@@ -247,11 +275,6 @@ static AWESettingItemModel *DKMakeChoiceItem(NSString *key, NSString *title, NSA
         DKPresentFromSettings(presenter, sheet, weakItem);
     };
     return item;
-}
-
-// 存值越界或未设置时按第 0 项显示，与 DKMakeChoiceItem 一致。
-static NSString *DKOptionText(NSArray<NSString *> *options, NSInteger index) {
-    return options[index >= 0 && index < (NSInteger)options.count ? index : 0];
 }
 
 AWESettingItemModel *DKMakeChoiceConfirm(NSString *key, NSString *title, NSArray<NSString *> *options,
