@@ -1,25 +1,6 @@
-//
-//  DKVideoFeedTable.xm
-//  「视频表被底栏压掉一个底栏高」这一类裁剪源头的修正：撑高表，再把 HUD 钉回撑高前的高度。
-//
-// 表与 Cell 的高度由视频表规则和详情页行高入口共同准备；HUD 按原高保留底部锚定位置。
-//
-//  作用域是基类 AWEFeedDataSafeTableView，不是某一页：
-//
-//      AWEFeedTableView        : AWEFeedDataSafeTableView   （首页 / 朋友页）
-//      AWEAwemeDetailTableView : AWEFeedDataSafeTableView   （好友聊天 / 搜索 / 其他用户主页）
-//
-//  同一个基类下这两种表都可能被压缩，也都可能本来就是满高，所以判据放在基类上，
-//  再由「容器比表更高」这个结构条件决定要不要撑——满高的表天然跳过，新增子类也自动覆盖。
-//
-//  视频容器本身不归本文件管：它在所有页面遵循同一条规则，定义与拦截都在 DKVideoGeometry.xm。
-//
-//  HUD 钉位保留两条路径，各有职责，缺一不可：
-//    · 拦 setFrame: —— 写入时就改值，抖音读回来即是钉后的值，不会逐帧拉扯，也没有闪烁；
-//    · 布局后兜底 —— HUD 有相当一部分 frame 写入发生在它还没进入视图层级、取不到原高的时刻，
-//      那些写入只能放行，靠这一步在布局结束后补正。
-//  （实测 setBounds:/setCenter: 两条通道命中数恒为 0，未挂。）
-//
+// 视频表撑高与 HUD 钉位：首页和详情页共用几何判据。
+// 原生控制器布局前后分别同步子表，写入入口处理宿主主动改高。
+// HUD 写入时取已保存的表原高；尚未入树的 HUD 在布局后同步。
 
 #import "DKVideoFeedTable.h"
 #import "DKVideoFullscreen.h"
@@ -41,11 +22,10 @@ static NSHashTable<UITableView *> *gStretchedTables = nil;
 
 #pragma mark - 命中统计
 
-// 这两个数一起看才有意义：写入时拦截 vs 布局后兜底。首页/朋友页实测比例约 130:6，
-// 是「写入时拦截不能砍成事后纠正」的直接依据。
+// HUD 写入时拦截与布局后同步分别计数。
 static NSUInteger gHitSetFrame = 0;
 static NSUInteger gHitFallback = 0;
-// 40.7.0 的旧表写入入口。与新版控制器布局补正分开统计，用于后续判断旧逻辑是否仍有贡献。
+// 表写入与控制器布局分别计数。
 static NSUInteger gHitTableSetFrame = 0;
 // 控制器布局完成后补正已进入视图树的子表，并分别统计首页与详情入口。
 static NSUInteger gHitTableLayout = 0;
@@ -55,11 +35,14 @@ struct DKFeedTableLayoutStats {
 };
 static DKFeedTableLayoutStats gFeedTableLayoutStats = {};
 static DKFeedTableLayoutStats gDetailTableLayoutStats = {};
+static DKFeedTableLayoutStats gFeedTableLayoutPreStats = {};
+static DKFeedTableLayoutStats gDetailTableLayoutPreStats = {};
 
 NSString *DKVideoFeedTableStats(void) {
     return [NSString stringWithFormat:
             @"HUD setFrame=%lu  HUD 布局后兜底=%lu  表 setFrame补正=%lu  表控制器布局补正=%lu  "
-             "首页控制器布局 跑=%lu 补正=%lu  详情控制器布局 跑=%lu 补正=%lu",
+             "首页控制器布局 跑=%lu 补正=%lu  详情控制器布局 跑=%lu 补正=%lu  "
+             "首页原生布局前 跑=%lu 补正=%lu  详情原生布局前 跑=%lu 补正=%lu",
             (unsigned long)gHitSetFrame,
             (unsigned long)gHitFallback,
             (unsigned long)gHitTableSetFrame,
@@ -67,7 +50,11 @@ NSString *DKVideoFeedTableStats(void) {
             (unsigned long)gFeedTableLayoutStats.runs,
             (unsigned long)gFeedTableLayoutStats.adjustments,
             (unsigned long)gDetailTableLayoutStats.runs,
-            (unsigned long)gDetailTableLayoutStats.adjustments];
+            (unsigned long)gDetailTableLayoutStats.adjustments,
+            (unsigned long)gFeedTableLayoutPreStats.runs,
+            (unsigned long)gFeedTableLayoutPreStats.adjustments,
+            (unsigned long)gDetailTableLayoutPreStats.runs,
+            (unsigned long)gDetailTableLayoutPreStats.adjustments];
 }
 
 #pragma mark - 目标判定
@@ -186,8 +173,8 @@ BOOL DKVideoFeedTablePrepareForController(UIViewController *controller, UITableV
 
 %end
 
-// 控制器完成原生布局后，子表已进入视图树，可以读取父容器高度。
-// 两套控制器共用撑高规则；仅在目标未满足时修改子表 frame。
+// Auto Layout 应用后、原生控制器布局前统一表高，使尺寸适配器按同一高度计算行高与滚动锚点。
+// 原生布局结束后沿用同一规则补正子表；两阶段分别计数。
 static void DKSyncFeedTableLayout(UITableView *table, DKFeedTableLayoutStats *stats) {
     stats->runs++;
     if (!table) return;
@@ -203,6 +190,7 @@ static void DKSyncFeedTableLayout(UITableView *table, DKFeedTableLayoutStats *st
 %hook AWEFeedTableViewController
 
 - (void)viewDidLayoutSubviews {
+    if (DKVideoFullscreenOn()) DKSyncFeedTableLayout(self.tableView, &gFeedTableLayoutPreStats);
     %orig;
     if (!DKVideoFullscreenOn()) return;
     DKSyncFeedTableLayout(self.tableView, &gFeedTableLayoutStats);
@@ -213,6 +201,7 @@ static void DKSyncFeedTableLayout(UITableView *table, DKFeedTableLayoutStats *st
 %hook AWEAwemeDetailTableViewController
 
 - (void)viewDidLayoutSubviews {
+    if (DKVideoFullscreenOn()) DKSyncFeedTableLayout(self.tableView, &gDetailTableLayoutPreStats);
     %orig;
     if (!DKVideoFullscreenOn()) return;
     DKSyncFeedTableLayout(self.tableView, &gDetailTableLayoutStats);
@@ -245,12 +234,7 @@ CGRect DKFeedHUDAdjustFrame(UIView *view, CGRect frame) {
     return frame;
 }
 
-// 补正那些在取不到原高的时刻被放行的写入，布局结束后拉回「顶边贴合、高度为原高」。
-// 不是冗余兜底：实测每页仍有 4~11 次命中，是 HUD 尚未进入视图层级那几次写入的唯一出路。
-//
-// DKVideoPageChrome.xm 也在同一个方法上挂了一层（顶部黑遮罩同步），这是有意分开的：
-// 两件事分属两个功能，各自跟着自己的模块走，删掉任一模块另一个都不受影响。多层 %hook 会
-// 正常串联，装机版本上两条同时生效。
+// HUD 已进入层级后按表的原高同步尺寸；顶部黑遮罩由页面修饰模块维护。
 %hook AWEPlayInteractionViewController
 
 - (void)viewDidLayoutSubviews {
