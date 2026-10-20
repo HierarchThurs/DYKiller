@@ -98,11 +98,14 @@ NSDictionary *DKInteractionIconsStatus(void) {
         DKInteractionIconSlot slot = DKInteractionIconSlotForName(button.imageNameString);
         BOOL inScope = slot != DKInteractionIconUnknown && DKIconButtonInScope(button);
         NSInteger style = slot != DKInteractionIconUnknown ? DKPrefInteger(DKInteractionIconStyleKey(slot)) : 0;
-        CGSize size = button.buttonImageView.bounds.size;
-        NSString *fallback = state.replacement ? @"" : !inScope ? @"outside_scope" : style == 0 ? @"default"
+        UIImageView *view = button.buttonImageView;
+        // 以视图上的实际图片为准：缓存的替换图被宿主覆写后不再算已替换。
+        BOOL applied = state.replacement != nil && view.image == state.replacement;
+        CGSize size = view.bounds.size;
+        NSString *fallback = applied ? @"" : !inScope ? @"outside_scope" : style == 0 ? @"default"
             : size.width <= 0 || size.height <= 0 ? @"image_view_unsized"
             : style == 3 ? @"custom_asset_missing_or_unrenderable" : @"render_unavailable";
-        [buttons addObject:@{ @"name": button.imageNameString ?: @"", @"replaced": @(state.replacement != nil),
+        [buttons addObject:@{ @"name": button.imageNameString ?: @"", @"replaced": @(applied),
             @"in_scope": @(inScope), @"fallback": fallback, @"view_size": NSStringFromCGSize(size) }];
     }
     return @{ @"assets": assets, @"buttons": buttons, @"svg_renderer_available": @(DKSVGImageAvailable()) };

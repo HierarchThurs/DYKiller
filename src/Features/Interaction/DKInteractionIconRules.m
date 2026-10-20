@@ -12,6 +12,17 @@ DKInteractionIconSlot DKInteractionIconSlotForName(NSString *name) {
     for (NSInteger slot = 0; slot < (NSInteger)families.count; slot++) {
         if (DKIconNameInFamily(name, families[slot])) return (DKInteractionIconSlot)slot;
     }
+    // 图文卡片的 mask 图标族分别映射到点赞、收藏和分享槽位。
+    static NSDictionary<NSString *, NSNumber *> *masks;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        masks = @{ @"img_like_mask": @(DKInteractionIconLikeBefore),
+                   @"img_collect_mask": @(DKInteractionIconFavoriteBefore),
+                   @"img_share_mask": @(DKInteractionIconShare) };
+    });
+    for (NSString *family in masks) {
+        if (DKIconNameInFamily(name, family)) return (DKInteractionIconSlot)masks[family].integerValue;
+    }
     if (DKIconNameInFamily(name, @"icon_home_favorite_active")) return DKInteractionIconFavoriteAfter;
     if (DKIconNameInFamily(name, @"icon_home_share_v2")) return DKInteractionIconShare;
     return DKInteractionIconUnknown;
