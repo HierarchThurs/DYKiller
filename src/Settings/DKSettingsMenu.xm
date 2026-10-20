@@ -7,6 +7,8 @@
 #import "DKSettingsInternal.h"
 #import "DKSettingsLayout.h"
 #import "DKKeys.h"
+#import "DKSearchOverlay.h"
+#import "DKSearchReveal.h"
 #import <objc/runtime.h>
 
 static char kDKViewModelKey;   // 手动创建的设置页把 viewModel 挂在这，有值即 DYKiller 页面
@@ -72,7 +74,7 @@ static AWESettingsViewModel *DKPageViewModel(UIViewController *page) {
     return page ? objc_getAssociatedObject(page, &kDKViewModelKey) : nil;
 }
 
-static UITableView *DKPageTableView(UIViewController *page) {
+UITableView *DKSettingsPageTableView(UIViewController *page) {
     if (![page respondsToSelector:@selector(tableView)]) return nil;
     UITableView *table = ((AWESettingBaseViewController *)page).tableView;
     return [table isKindOfClass:UITableView.class] ? table : nil;
@@ -97,7 +99,11 @@ void DKSettingsEnumerateItems(UIViewController *page, void (^block)(AWESettingIt
 void DKSettingsReloadCurrentPage(void) {
     UIViewController *page = gSettingsPresenter;
     DKSettingsApplyLocks(DKPageViewModel(page).sectionDataArray);
-    [DKPageTableView(page) reloadData];
+    [DKSettingsPageTableView(page) reloadData];
+}
+
+NSArray *DKSettingsPageSections(UIViewController *page) {
+    return DKPageViewModel(page).sectionDataArray;
 }
 
 void DKSettingsValuesChanged(void) {
@@ -105,7 +111,7 @@ void DKSettingsValuesChanged(void) {
     NSArray<AWESettingItemModel *> *changed = DKSettingsApplyLocks(DKPageViewModel(page).sectionDataArray);
     for (AWESettingItemModel *item in changed) {
         if ([item respondsToSelector:@selector(refreshCell)]) [item refreshCell];
-        else { [DKPageTableView(page) reloadData]; break; }
+        else { [DKSettingsPageTableView(page) reloadData]; break; }
     }
 }
 
@@ -134,7 +140,7 @@ static void DKSetNavigationTitle(UIViewController *page, NSString *title) {
 }
 
 static void DKShowEmptyPlaceholder(UIViewController *page) {
-    UITableView *table = DKPageTableView(page);
+    UITableView *table = DKSettingsPageTableView(page);
     if (!table) return;
     UILabel *label = [[UILabel alloc] init];
     label.text = kDKEmptyPlaceholder;
@@ -186,7 +192,7 @@ static UILabel *DKMakeNoteLabel(NSString *note) {
 // 顶部说明放在表头视图里，按表格宽度算出完整高度；宽度或高度变了才重设表头。
 static void DKLayoutPageNote(UIViewController *page) {
     NSString *note = objc_getAssociatedObject(page, &kDKPageNoteKey);
-    UITableView *table = note.length ? DKPageTableView(page) : nil;
+    UITableView *table = note.length ? DKSettingsPageTableView(page) : nil;
     CGFloat width = CGRectGetWidth(table.bounds);
     if (!table || width <= kDKNoteInset * 2.0) return;
     UIView *header = objc_getAssociatedObject(page, &kDKPageNoteViewKey);
@@ -230,8 +236,9 @@ static AWESettingItemModel *DKMakePageEntry(DKSettingsPage *spec) {
     item.cellTappedBlock = ^{
         UIViewController *presenter = DKSettingsCurrentPage();
         if (!presenter || !weakItem.isEnable) return;
-        AWESettingBaseViewController *page = DKMakeSettingsPage(spec.title, DKBuildSections(spec.sections));
-        if (spec.note.length) objc_setAssociatedObject(page, &kDKPageNoteKey, spec.note, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        AWESettingBaseViewController *page = DKSettingsBuildPage(spec);
+        NSArray<NSString *> *parentPath = DKSearchPagePath(presenter);
+        if (parentPath) DKSearchSetPagePath(page, [parentPath arrayByAddingObject:spec.identifier]);
         DKPushPage(presenter, page);
     };
     return item;
@@ -276,6 +283,13 @@ static NSArray<AWESettingSectionModel *> *DKBuildSections(NSArray<DKSettingsSect
     return sections;
 }
 
+AWESettingBaseViewController *DKSettingsBuildPage(DKSettingsPage *spec) {
+    if (!spec) return nil;
+    AWESettingBaseViewController *page = DKMakeSettingsPage(spec.title, DKBuildSections(spec.sections));
+    if (spec.note.length) objc_setAssociatedObject(page, &kDKPageNoteKey, spec.note, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    return page;
+}
+
 // 已登记却没写进布局表的键，放进一级页末尾，提醒补布局表。
 static AWESettingSectionModel *DKBuildUnplacedSection(void) {
     NSSet<NSString *> *placed = DKSettingsLayoutKeys();
@@ -297,6 +311,7 @@ static AWESettingBaseViewController *DKMakeMainPage(void) {
     if (unplaced) [sections addObject:unplaced];
 
     AWESettingBaseViewController *page = DKMakeSettingsPage(@"DYKiller", sections);
+    DKSearchSetPagePath(page, @[]);
     gSettingsPresenter = page;
     return page;
 }
@@ -360,11 +375,27 @@ static AWESettingItemModel *DKOwnItemAtIndexPath(AWESettingBaseViewController *p
     if (!DKPageViewModel(self)) return;
     gSettingsPresenter = self;
     DKSettingsReloadCurrentPage();
+    DKSearchAttach(self);
+}
+
+// 页面消失时撤掉搜索入口与为圆钮预留的底部占位。
+- (void)viewWillDisappear:(BOOL)animated {
+    %orig;
+    if (!DKPageViewModel(self)) return;
+    DKSearchDetach(self);
+}
+
+// 跨页跳转后定位到目标行并闪现。
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    if (!DKPageViewModel(self)) return;
+    DKSearchConsumePendingReveal(self);
 }
 
 - (void)viewDidLayoutSubviews {
     %orig;
     DKLayoutPageNote(self);
+    DKSearchUpdateInsets(self);
 }
 
 // 抖音点行时直接调 cellTappedBlock，不看 isEnable；灰显项在这里拦下。
