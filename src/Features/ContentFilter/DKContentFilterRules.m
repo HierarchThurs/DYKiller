@@ -1,4 +1,4 @@
-// 精确整数解析与保持数组契约的稳定筛选。
+// 内容类型判据、精确点赞解析与保持数组契约的稳定筛选。
 #import "DKContentFilter.h"
 #import <CoreFoundation/CoreFoundation.h>
 #import <limits.h>
@@ -42,15 +42,26 @@ BOOL DKFilterIsLive(id model) {
         && (DKFilterBool(model, @selector(isLive)) || DKFilterObject(model, @selector(cellRoom)) != nil);
 }
 
-// 热点卡的业务标识由服务端下发，热点业务统一以 hotspot 开头。
-BOOL DKFilterIsHotspotBusiness(id businessID) {
-    return [businessID isKindOfClass:NSString.class] && [businessID hasPrefix:@"hotspot"];
-}
-
-BOOL DKFilterIsHotspotCard(id model) {
+BOOL DKFilterSpecialCard(id model, DKFilterCardKind *kind) {
     if (!DKFilterIsClass(model, @"AWEAwemeModel")) return NO;
     id card = DKFilterObject(model, @selector(hotSpotLynxCardModel));
-    return DKFilterIsHotspotBusiness(DKFilterObject(card, @selector(businessID)));
+    if (!card) return NO;
+    if (kind) *kind = DKFilterCardKindForBusiness(DKFilterObject(card, @selector(businessID)));
+    return YES;
+}
+
+BOOL DKFilterIsArticle(id model) {
+    return DKFilterIsClass(model, @"AWEAwemeModel") && DKFilterObject(model, @selector(articleInfo)) != nil;
+}
+
+// 商家笔记由 POI 富内容的目标链接确认。
+BOOL DKFilterIsMerchantNote(id model) {
+    if (!DKFilterIsClass(model, @"AWEAwemeModel")) return NO;
+    id rich = DKFilterObject(model, @selector(specialRichAwemeModel));
+    if (!rich) return NO;
+    id scheme = DKFilterObject(rich, @selector(detailScheme));
+    BOOL poiScheme = [scheme isKindOfClass:NSString.class] && [scheme hasPrefix:@"aweme://poi/"];
+    return poiScheme;
 }
 
 static BOOL DKFilterIsRecommended(id model, DKFilterSource source, DKFilterCounts *counts) {
@@ -63,9 +74,11 @@ static BOOL DKFilterIsRecommended(id model, DKFilterSource source, DKFilterCount
     return NO;
 }
 
-// 客户端插入的特殊卡没有页面批次来源，只按模型来源确认首页推荐。
-DKFilterInsertDecision DKFilterHotspotInsert(id businessID, id model, DKFilterConfig config) {
-    if (!config.removeHotspot || !DKFilterIsHotspotBusiness(businessID)) return DKFilterInsertKeep;
+// 客户端插入的特殊卡没有页面批次来源，只按模型来源确认首页推荐。按业务号所属类别的开关判定；
+// 业务号不是字符串时交给宿主。
+DKFilterInsertDecision DKFilterSpecialCardInsert(id businessID, id model, DKFilterConfig config) {
+    if (![businessID isKindOfClass:NSString.class]) return DKFilterInsertKeep;
+    if (!(config.removeCards & DKFilterCardBit(DKFilterCardKindForBusiness(businessID)))) return DKFilterInsertKeep;
     id refer = DKFilterObject(model, @selector(referString));
     if (![refer isKindOfClass:NSString.class] || ![refer length]) return DKFilterInsertUnknownSource;
     return [refer isEqualToString:@"homepage_hot"] ? DKFilterInsertCancel : DKFilterInsertKeep;
@@ -80,24 +93,32 @@ id DKFilterApplyArray(id array, DKFilterConfig config, DKFilterSource source,
     BOOL ads = config.removeAds && (stage & DKFilterStageAds);
     BOOL live = config.removeLive && (stage & DKFilterStageLive);
     BOOL music = config.removeMusic && (stage & DKFilterStageMusic);
-    BOOL hotspot = config.removeHotspot && (stage & DKFilterStageHotspot);
+    NSUInteger cards = (stage & DKFilterStageCards) ? config.removeCards : 0;
+    BOOL article = config.removeArticles && (stage & DKFilterStageArticle);
+    BOOL notes = config.removeMerchantNotes && (stage & DKFilterStageMerchantNote);
     BOOL likes = config.lowLikes && config.minimumLikes > 0 && (stage & DKFilterStageLikes);
-    if (!ads && !live && !music && !hotspot && !likes) { if (result) *result = counts; return array; }
+    BOOL recommended = live || music || cards || article || notes || likes;
+    if (!ads && !recommended) { if (result) *result = counts; return array; }
 
     NSMutableIndexSet *removed = [NSMutableIndexSet indexSet];
     NSUInteger index = 0;
+    DKFilterCardKind kind = DKFilterCardOther;
     for (id model in original) {
         DKFilterAdReason reason = DKFilterAdModel(model);
         if (reason && ads) {
             [removed addIndex:index]; counts.ads++; counts.adReasons |= reason;
-        } else if (DKFilterIsClass(model, @"AWEAwemeModel") && (live || music || hotspot || likes)
+        } else if (DKFilterIsClass(model, @"AWEAwemeModel") && recommended
                    && DKFilterIsRecommended(model, source, &counts)) {
             if (DKFilterIsLive(model)) {
                 if (live) { [removed addIndex:index]; counts.live++; }
             } else if (music && DKFilterObject(model, @selector(musicCard))) {
                 [removed addIndex:index]; counts.music++;
-            } else if (hotspot && DKFilterIsHotspotCard(model)) {
-                [removed addIndex:index]; counts.hotspot++;
+            } else if (cards && DKFilterSpecialCard(model, &kind) && (cards & DKFilterCardBit(kind))) {
+                [removed addIndex:index]; counts.cards[kind]++;
+            } else if (article && DKFilterIsArticle(model)) {
+                [removed addIndex:index]; counts.articles++;
+            } else if (notes && DKFilterIsMerchantNote(model)) {
+                [removed addIndex:index]; counts.merchantNotes++;
             } else if (likes && !reason) {
                 id statistics = DKFilterObject(model, @selector(statistics));
                 long long count = 0;

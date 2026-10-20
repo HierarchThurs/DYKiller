@@ -3,8 +3,12 @@
 #import "DouyinHeaders.h"
 
 static BOOL DKFilterBatchEnabled(DKFilterConfig config) {
-    return config.lowLikes || config.removeLive || config.removeAds || config.removeMusic || config.removeHotspot;
+    return config.lowLikes || config.removeLive || config.removeAds || config.removeMusic
+        || config.removeCards || config.removeArticles || config.removeMerchantNotes;
 }
+
+// 原生转换之后执行的阶段：直播在转换前移除，其余规则看转换后的作品。
+static const DKFilterStage kDKFilterPostTransferStages = DKFilterStageAll & ~DKFilterStageLive;
 
 static id DKFilterTransfer(id controller, id array, NSString *entry, id (^native)(id)) {
     return DKFilterWithBatch(^id {
@@ -12,7 +16,7 @@ static id DKFilterTransfer(id controller, id array, NSString *entry, id (^native
         DKFilterEntry(entry, controller);
         id input = DKFilterArray(array, controller, DKFilterStageLive);
         id result = native(input);
-        return DKFilterArray(result, controller, DKFilterStageAds | DKFilterStageMusic | DKFilterStageHotspot | DKFilterStageLikes);
+        return DKFilterArray(result, controller, kDKFilterPostTransferStages);
     });
 }
 

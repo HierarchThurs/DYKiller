@@ -180,16 +180,20 @@ static NSString *const DKKeyProgressTimeStyle = @"DYKillerProgressTimeStyle";
 // 每项单选，存整数：0 显示 / 1 隐藏（不显示、仍可点击，位置保留）/ 2 移除（不显示、不可点击，按抖音原生排布收拢）。
 static NSString *const DKKeyPlaybackFullscreenMode         = @"DYKillerPlaybackFullscreenMode";
 static NSString *const DKKeyPlaybackDanmakuMode            = @"DYKillerPlaybackDanmakuMode";
+// 锚点标签：同一种锚点元素，按锚点业务号区分。
+// 总开关为 BOOL：开启后所有锚点行（含未登记的业务号）按「移除」处理，各锚点项锁定显示为「移除」，存值不动。
+static NSString *const DKKeyPlaybackRemoveAllAnchors       = @"DYKillerPlaybackRemoveAllAnchors";
+static NSString *const DKKeyPlaybackGameTagMode            = @"DYKillerPlaybackGameTagMode";
+static NSString *const DKKeyPlaybackMusicAnchorMode        = @"DYKillerPlaybackMusicAnchorMode";
+static NSString *const DKKeyPlaybackPropEffectMode         = @"DYKillerPlaybackPropEffectMode";
+static NSString *const DKKeyPlaybackJianyingMode           = @"DYKillerPlaybackJianyingMode";
+static NSString *const DKKeyPlaybackPaidContentMode        = @"DYKillerPlaybackPaidContentMode";
+static NSString *const DKKeyPlaybackLocationMode           = @"DYKillerPlaybackLocationMode";
 // 文案上方
 static NSString *const DKKeyPlaybackOtherUserRecommendMode = @"DYKillerPlaybackOtherUserRecommendMode";
 static NSString *const DKKeyPlaybackFriendRecommendMode    = @"DYKillerPlaybackFriendRecommendMode";
 static NSString *const DKKeyPlaybackFriendShareMode        = @"DYKillerPlaybackFriendShareMode";
 static NSString *const DKKeyPlaybackSelectedMode           = @"DYKillerPlaybackSelectedMode";
-static NSString *const DKKeyPlaybackGameTagMode            = @"DYKillerPlaybackGameTagMode";
-static NSString *const DKKeyPlaybackMusicAnchorMode        = @"DYKillerPlaybackMusicAnchorMode";
-static NSString *const DKKeyPlaybackPropEffectMode         = @"DYKillerPlaybackPropEffectMode";
-static NSString *const DKKeyPlaybackJianyingMode           = @"DYKillerPlaybackJianyingMode";
-static NSString *const DKKeyPlaybackLocationMode           = @"DYKillerPlaybackLocationMode";
 static NSString *const DKKeyPlaybackStoreMode              = @"DYKillerPlaybackStoreMode";
 // 昵称右侧
 static NSString *const DKKeyPlaybackChapterHighlightsMode  = @"DYKillerPlaybackChapterHighlightsMode";
@@ -210,7 +214,18 @@ static NSString *const DKKeyFilterLowLikes = @"DYKillerFilterLowLikes";
 static NSString *const DKKeyMinimumLikes = @"DYKillerMinimumLikes";
 static NSString *const DKKeyRemoveRecommendedLive = @"DYKillerRemoveRecommendedLive";
 static NSString *const DKKeyFilterRecommendedMusic = @"DYKillerFilterRecommendedMusic";
+static NSString *const DKKeyFilterRecommendedArticle = @"DYKillerFilterRecommendedArticle";
+// 商家笔记：图文作品上的 POI 富内容卡片（店铺/团购笔记）。
+static NSString *const DKKeyFilterRecommendedMerchantNote = @"DYKillerFilterRecommendedMerchantNote";
+// 特殊卡片：总开关开启时全部类别（含未单独分类的业务）过滤，各类别开关锁定显示为开启，存值不动。
+static NSString *const DKKeyFilterRecommendedSpecialCard = @"DYKillerFilterRecommendedSpecialCard";
 static NSString *const DKKeyFilterRecommendedHotspot = @"DYKillerFilterRecommendedHotspot";
+static NSString *const DKKeyFilterRecommendedCreation = @"DYKillerFilterRecommendedCreation";
+static NSString *const DKKeyFilterRecommendedEcommerce = @"DYKillerFilterRecommendedEcommerce";
+static NSString *const DKKeyFilterRecommendedGame = @"DYKillerFilterRecommendedGame";
+static NSString *const DKKeyFilterRecommendedSocial = @"DYKillerFilterRecommendedSocial";
+static NSString *const DKKeyFilterRecommendedInterest = @"DYKillerFilterRecommendedInterest";
+static NSString *const DKKeyFilterRecommendedMicroApp = @"DYKillerFilterRecommendedMicroApp";
 static NSString *const DKKeyFilterAds = @"DYKillerFilterAds";
 
 #pragma mark - 功能组：顶部频道

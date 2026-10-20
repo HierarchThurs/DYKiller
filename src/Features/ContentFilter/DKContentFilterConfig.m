@@ -29,6 +29,17 @@ static void DKFilterInitializeConfig(void) {
     });
 }
 
+// 总开关覆盖全部类别；关闭时按各类别自己的开关组合。
+static NSUInteger DKFilterReadCardSwitches(void) {
+    if (DKPrefBool(DKKeyFilterRecommendedSpecialCard)) return DKFilterCardAll;
+    NSUInteger cards = 0;
+    for (NSUInteger kind = 0; kind < DKFilterCardKindCount; kind++) {
+        NSString *key = DKFilterCardKindKey((DKFilterCardKind)kind);
+        if (key && DKPrefBool(key)) cards |= DKFilterCardBit(kind);
+    }
+    return cards;
+}
+
 DKFilterConfig DKFilterCurrentConfig(void) {
     DKFilterInitializeConfig();
     DKFilterBatch *batch = pthread_getspecific(gDKBatchKey);
@@ -44,7 +55,9 @@ DKFilterConfig DKFilterCurrentConfig(void) {
         next.removeLive = DKPrefBool(DKKeyRemoveRecommendedLive);
         next.removeAds = DKPrefBool(DKKeyFilterAds);
         next.removeMusic = DKPrefBool(DKKeyFilterRecommendedMusic);
-        next.removeHotspot = DKPrefBool(DKKeyFilterRecommendedHotspot);
+        next.removeArticles = DKPrefBool(DKKeyFilterRecommendedArticle);
+        next.removeMerchantNotes = DKPrefBool(DKKeyFilterRecommendedMerchantNote);
+        next.removeCards = DKFilterReadCardSwitches();
         id raw = [NSUserDefaults.standardUserDefaults objectForKey:DKKeyMinimumLikes];
         DKFilterLikeCount(raw, &next.minimumLikes);
         next.generation = generation;

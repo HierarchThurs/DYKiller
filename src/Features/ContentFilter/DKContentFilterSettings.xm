@@ -1,4 +1,4 @@
-// 内容过滤独立开关与精确整数阈值输入。
+// 内容过滤开关、特殊卡类别与精确整数阈值输入。
 #import "DKContentFilter.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
@@ -78,10 +78,27 @@ static AWESettingItemModel *DKFilterThresholdItem(void) {
     DKSettingsRegister(DKKeyFilterRecommendedMusic, ^AWESettingItemModel *{
         return DKFilterSwitch(DKKeyFilterRecommendedMusic, @"推荐过滤音乐", @"过滤首页推荐中的音乐卡片；从后续新载入批次生效，普通配乐作品保留。");
     });
-    DKSettingsRegister(DKKeyFilterRecommendedHotspot, ^AWESettingItemModel *{
-        return DKFilterSwitch(DKKeyFilterRecommendedHotspot, @"推荐过滤热点",
-            @"过滤首页推荐中的「抖音热点」卡片（如 24 小时精选热点）；从后续新载入批次生效，普通视频保留。");
+    DKSettingsRegister(DKKeyFilterRecommendedArticle, ^AWESettingItemModel *{
+        return DKFilterSwitch(DKKeyFilterRecommendedArticle, @"推荐过滤文章",
+            @"过滤首页推荐中的文章作品（带「阅读文章」按钮的长文）；从后续新载入批次生效，视频与图文保留。");
     });
+    DKSettingsRegister(DKKeyFilterRecommendedMerchantNote, ^AWESettingItemModel *{
+        return DKFilterSwitch(DKKeyFilterRecommendedMerchantNote, @"推荐过滤商家笔记",
+            @"过滤首页推荐中的商家笔记（带店铺与团购信息的图文卡片，如「XX店笔记」）；"
+            @"从后续新载入批次生效，普通图文与带地点的视频保留。");
+    });
+    DKSettingsRegister(DKKeyFilterRecommendedSpecialCard, ^AWESettingItemModel *{
+        return DKFilterSwitch(DKKeyFilterRecommendedSpecialCard, @"推荐过滤特殊卡片",
+            @"过滤首页推荐中的全部整屏卡片：下方各类卡片，以及未单独列出的同类卡片（含抖音新下发的类型）。"
+            @"开启后下方各项锁定为开启；关闭后各项按自己的设置生效。从后续新载入批次生效。");
+    });
+    for (NSUInteger kind = 0; kind < DKFilterCardOther; kind++) {
+        NSString *key = DKFilterCardKindKey((DKFilterCardKind)kind);
+        DKSettingsRegister(key, ^AWESettingItemModel *{
+            return DKFilterSwitch(key, DKFilterCardKindTitle((DKFilterCardKind)kind),
+                                  DKFilterCardKindInfo((DKFilterCardKind)kind));
+        });
+    }
     DKSettingsRegister(DKKeyFilterAds, ^AWESettingItemModel *{
         return DKFilterSwitch(DKKeyFilterAds, @"抖音过滤广告", @"过滤新载入的广告作品、搜索卡片及启动广告");
     });
