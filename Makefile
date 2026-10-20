@@ -79,11 +79,11 @@ endif
 
 after-package::
 	@mkdir -p packages
-	@DEB=$$(cat .theos/last_package 2>/dev/null || true); \
+	@DEB=$$(cat "$(_THEOS_LOCAL_DATA_DIR)/last_package" 2>/dev/null || true); \
 	 OUT="packages/DYKiller_$(DK_VERSION)_$(DYKILLER_PACKAGE_SUFFIX).deb"; \
 	 if [ -n "$$DEB" ] && [ -f "$$DEB" ]; then mv -f "$$DEB" "$$OUT"; fi
 	@if [ "$(DYKILLER_PACKAGE_SCHEME)" = "rootful" ]; then \
-		DYLIB=$$(find .theos/obj -name 'DYKiller.dylib' 2>/dev/null | head -1); \
+		DYLIB="$(THEOS_OBJ_DIR)/DYKiller.dylib"; \
 		if [ -n "$$DYLIB" ]; then cp -f "$$DYLIB" packages/DYKiller.dylib; fi; \
 	fi
 	@echo "==> 成品: packages/DYKiller_$(DK_VERSION)_$(DYKILLER_PACKAGE_SUFFIX).deb"
