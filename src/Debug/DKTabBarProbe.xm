@@ -36,6 +36,7 @@
 #import "DKKeys.h"
 #import "DKShareSelectionHooks.h"
 #import "DKUtils.h"
+#import "DKFeedCardFit.h"
 #import "DKVideoFeedTable.h"
 #import "DKVideoFullscreen.h"
 #import "DKDebugCapture.h"
@@ -1048,6 +1049,7 @@ static void DKProbeAppendFeed(NSMutableString *out) {
     }
     [out appendFormat:@"HUD 钉位命中统计: %@\n", DKVideoFeedTableStats()];
     [out appendFormat:@"详情行高命中统计: %@\n", DKVideoDetailTableStats()];
+    [out appendFormat:@"非视频条目让位统计: %@\n", DKFeedCardStats()];
 }
 
 // 直播预览的 chrome 挂在 4 层容器的高度上，表被撑高后整体下移一个底栏高，靠 transform 抬回。
