@@ -23,6 +23,12 @@ UIView *DKCleanRowForView(UIView *view);
 /// 整行由一个设置项管理时返回该设置键，否则返回 nil。
 NSString *DKCleanKeyForRow(UIView *row);
 
+/// 是否锚点行（游戏标签、汽水音乐、付费内容等，按锚点业务号区分；含没有单独设置项的业务号）。
+BOOL DKCleanIsAnchorRow(UIView *row);
+
+/// 锚点行的业务号（templateAnchorInfo.name），供诊断使用；取不到返回 nil。
+NSString *DKCleanAnchorName(UIView *row);
+
 /// 元素是否为标签元素（其他用户推荐、好友推荐、好友分享所在的行）。
 BOOL DKCleanIsTagsElement(id element);
 

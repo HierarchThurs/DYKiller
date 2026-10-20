@@ -3,6 +3,7 @@
 //  DYKiller
 //
 //  播放页精简：显示 / 隐藏 / 移除。
+//  「移除全部昵称上方标签」开启时，锚点行（含没有单独设置项的业务号）一律按移除处理，各锚点项的存值不动。
 //
 //  实现：
 //   - 隐藏：对目标挂透明 mask（DKAdjustFade 系数 0），不改 alpha / hidden，命中与位置不变。整行项淡出行的直接子视图，
@@ -34,11 +35,18 @@ static CGFloat DKCleanFadeFactor(DKDisplayMode mode) {
     return mode == DKDisplayModeHide ? 0.0 : 1.0;
 }
 
+#pragma mark - 行档位
+
+// 行的有效档位：总开关开启时锚点行一律移除；其余按所属设置项，不归任何设置项的行按显示。
+static DKDisplayMode DKCleanRowMode(UIView *row, NSString *key) {
+    if (DKPrefBool(DKKeyPlaybackRemoveAllAnchors) && DKCleanIsAnchorRow(row)) return DKDisplayModeRemove;
+    return key ? DKPrefDisplayMode(key) : DKDisplayModeShow;
+}
+
 #pragma mark - 整行淡出
 
-// key 为 nil 时行不归任何设置项管理（如锚点换成了其他类型），已挂的淡出一并摘掉。
-static void DKCleanFadeRowContent(UIView *row, NSString *key) {
-    DKDisplayMode mode = key ? DKPrefDisplayMode(key) : DKDisplayModeShow;
+// 行不再隐藏时（如锚点换成了其他类型、档位改回），已挂的淡出一并摘掉。
+static void DKCleanFadeRowContent(UIView *row, DKDisplayMode mode) {
     BOOL hide = mode == DKDisplayModeHide;
     BOOL faded = objc_getAssociatedObject(row, &kDKCleanRowFadedKey) != nil;
     if (!hide && !faded) return;
@@ -142,7 +150,7 @@ BOOL DKPlaybackCleanRowRemoved(UIView *row) {
     id element = DKCleanRowElement(row);
     if (!element) return NO;
     NSString *key = DKCleanKeyForRow(row);
-    if (key) return DKPrefDisplayMode(key) == DKDisplayModeRemove;
+    if (key || DKCleanIsAnchorRow(row)) return DKCleanRowMode(row, key) == DKDisplayModeRemove;
     return DKCleanIsTagsElement(element) && DKCleanTagsRowRemoved(row, element);
 }
 
@@ -154,7 +162,7 @@ void DKPlaybackCleanApplyStack(AWEElementStackView *stack) {
     for (UIView *row in stack.arrangedSubviews) {
         id element = DKCleanRowElement(row);
         if (element) {
-            DKCleanFadeRowContent(row, DKCleanKeyForRow(row));
+            DKCleanFadeRowContent(row, DKCleanRowMode(row, DKCleanKeyForRow(row)));
             DKCleanEnumerateTagsElementViews(element, ^(UIView *view, NSString *key) { DKCleanSyncSubview(view, key); });
             DKCleanEnumerateAuthorTags(element, ^(UIView *tagView, NSString *key) { DKCleanApplyAuthorTag(tagView, key); });
         }
@@ -198,11 +206,12 @@ NSString *DKPlaybackCleanStatus(void) {
     NSArray<NSString *> *keys = [NSUserDefaults.standardUserDefaults.dictionaryRepresentation.allKeys
         sortedArrayUsingSelector:@selector(compare:)];
     for (NSString *key in keys) {
-        if (![key hasPrefix:kDKCleanKeyPrefix]) continue;
+        if (![key hasPrefix:kDKCleanKeyPrefix] || ![key hasSuffix:@"Mode"]) continue;
         DKDisplayMode mode = DKPrefDisplayMode(key);
         if (mode != DKDisplayModeShow) [changed addObject:[NSString stringWithFormat:@"%@=%@", DKCleanShortName(key), DKCleanModeText(mode)]];
     }
-    [out appendFormat:@"非默认：%@\n", changed.count ? [changed componentsJoinedByString:@" "] : @"无"];
+    [out appendFormat:@"移除全部昵称上方标签=%@\n", DKPrefBool(DKKeyPlaybackRemoveAllAnchors) ? @"开启" : @"关闭"];
+    [out appendFormat:@"非默认存值：%@\n", changed.count ? [changed componentsJoinedByString:@" "] : @"无"];
 
     for (UIView *entry in gDKCleanEntries.allObjects) {
         [out appendFormat:@"全屏观看入口 frame=%@ hidden=%d 淡出=%.2f\n",
@@ -215,9 +224,11 @@ NSString *DKPlaybackCleanStatus(void) {
         for (UIView *row in stack.arrangedSubviews) {
             id element = DKCleanRowElement(row);
             NSString *key = DKCleanKeyForRow(row);
+            NSString *owner = key ? DKCleanShortName(key) : (DKCleanIsAnchorRow(row)
+                ? [NSString stringWithFormat:@"未登记锚点 %@", DKCleanAnchorName(row) ?: @"?"] : nil);
             [out appendFormat:@"    %@ → %@ hidden=%d 移除=%d 高=%.1f\n",
                 element ? NSStringFromClass([element class]) : NSStringFromClass(row.class),
-                key ? [NSString stringWithFormat:@"%@(%@)", DKCleanShortName(key), DKCleanModeText(DKPrefDisplayMode(key))] : @"-",
+                owner ? [NSString stringWithFormat:@"%@(%@)", owner, DKCleanModeText(DKCleanRowMode(row, key))] : @"-",
                 row.isHidden, DKElementRowShouldRemove(row), CGRectGetHeight(row.bounds)];
             DKCleanEnumerateTagsElementViews(element, ^(UIView *view, NSString *subKey) {
                 [out appendFormat:@"      子视图 %@ → %@(%@) hidden=%d 淡出=%.2f\n", NSStringFromClass(view.class),

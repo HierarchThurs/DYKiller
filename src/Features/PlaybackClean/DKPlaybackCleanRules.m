@@ -62,6 +62,11 @@ UIView *DKCleanRowForView(UIView *view) {
     return nil;
 }
 
+NSString *DKCleanAnchorName(UIView *row) {
+    UIView *anchorView = DKCleanFindView(row, NSClassFromString(@"AWEFeedTemplateAnchorViewV2"), 4);
+    return DKCleanString(DKCleanValue(anchorView, @"templateAnchorInfo"), @"name");
+}
+
 // 锚点：templateAnchorInfo.name，拍同款的名字末尾带空格，比对前去空白。
 static NSString *DKCleanAnchorKey(UIView *row) {
     static NSDictionary<NSString *, NSString *> *map;
@@ -74,6 +79,8 @@ static NSString *DKCleanAnchorKey(UIView *row) {
             // 模板 / AI 写真类拍同款（type 1003），与特效道具类同归拍同款。
             @"prop_template": DKKeyPlaybackPropEffectMode,
             @"game_pad":    DKKeyPlaybackGameTagMode,
+            // 付费视频与付费合集共用此锚点业务号。
+            @"entertainment_product": DKKeyPlaybackPaidContentMode,
         };
     });
     UIView *anchorView = DKCleanFindView(row, NSClassFromString(@"AWEFeedTemplateAnchorViewV2"), 4);
@@ -134,6 +141,10 @@ NSString *DKCleanKeyForRow(UIView *row) {
         return nil;
     }
     return nil;
+}
+
+BOOL DKCleanIsAnchorRow(UIView *row) {
+    return DKCleanIsKind(DKCleanRowElement(row), @"AWEPlayInteractionAnchorElement");
 }
 
 BOOL DKCleanIsTagsElement(id element) {

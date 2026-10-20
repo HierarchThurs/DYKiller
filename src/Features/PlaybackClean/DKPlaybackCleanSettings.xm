@@ -3,6 +3,7 @@
 //  DYKiller
 //
 //  播放页精简各项的设置登记：三档单选（显示 / 隐藏 / 移除），改值后立即刷新当前页面。
+//  锚点标签另有总开关「移除全部昵称上方标签」，开启时各锚点项的锁定显示由设置布局的阻断表给出。
 //
 
 #import "DKPlaybackClean.h"
@@ -16,12 +17,31 @@ static AWESettingItemModel *DKCleanSettingItem(NSString *key, NSString *title, N
 }
 
 %ctor {
+    DKSettingsRegister(DKKeyPlaybackRemoveAllAnchors, ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeSwitch(DKKeyPlaybackRemoveAllAnchors, @"移除全部昵称上方标签",
+            @"昵称上方的锚点标签（游戏标签、汽水音乐、拍同款、剪映、付费内容、地理定位，以及抖音新增的同类标签）一律移除，"
+            @"下方各项锁定为「移除」；关闭后各项按自己的设置生效。");
+        return DKSettingsOnChange(item, ^{ DKPlaybackCleanRefresh(); });
+    });
     NSArray<NSArray<NSString *> *> *items = @[
         // 播放页元素
         @[ DKKeyPlaybackFullscreenMode, @"全屏观看",
            @"播放页中部的「全屏观看」按钮。隐藏可点击只隐藏按钮内容，保留原位置和点击命中；移除不可点击不显示、不响应点击，并移除按钮占位。" ],
         @[ DKKeyPlaybackDanmakuMode, @"弹幕按钮",
            @"播放页左下信息区的弹幕入口。隐藏可点击保留原位置和点击命中；移除不可点击同时移除入口并阻止点击。" ],
+        // 锚点标签
+        @[ DKKeyPlaybackGameTagMode, @"游戏标签",
+           @"文案上方的游戏标签。隐藏可点击保留原位置和点击入口；移除不可点击同时移除标签及其布局占位。" ],
+        @[ DKKeyPlaybackMusicAnchorMode, @"汽水音乐",
+           @"文案上方的汽水音乐入口。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该入口及其布局占位。" ],
+        @[ DKKeyPlaybackPropEffectMode, @"拍同款",
+           @"文案上方的拍同款入口。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该入口及其布局占位。" ],
+        @[ DKKeyPlaybackJianyingMode, @"剪映标签",
+           @"文案上方的剪映模板入口。隐藏保留原位置和点击；移除同时移除入口及其布局占位。" ],
+        @[ DKKeyPlaybackPaidContentMode, @"付费内容",
+           @"昵称上方的「视频｜xxx的付费视频」等付费内容标签。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该标签及其布局占位。" ],
+        @[ DKKeyPlaybackLocationMode, @"地理定位",
+           @"文案上方的地理定位信息。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该信息及其布局占位。" ],
         // 文案上方
         @[ DKKeyPlaybackOtherUserRecommendMode, @"其他用户推荐",
            @"文案上方的其他用户推荐入口。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该入口及其布局占位。" ],
@@ -31,16 +51,6 @@ static AWESettingItemModel *DKCleanSettingItem(NSString *key, NSString *title, N
            @"文案上方的「xxx分享给你」标签。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该标签及其布局占位。" ],
         @[ DKKeyPlaybackSelectedMode, @"抖音精选",
            @"文案上方的抖音精选入口。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该入口及其布局占位。" ],
-        @[ DKKeyPlaybackGameTagMode, @"游戏标签",
-           @"文案上方的游戏标签。隐藏可点击保留原位置和点击入口；移除不可点击同时移除标签及其布局占位。" ],
-        @[ DKKeyPlaybackMusicAnchorMode, @"汽水音乐",
-           @"文案上方的汽水音乐入口。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该入口及其布局占位。" ],
-        @[ DKKeyPlaybackPropEffectMode, @"拍同款",
-           @"文案上方的拍同款入口。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该入口及其布局占位。" ],
-        @[ DKKeyPlaybackJianyingMode, @"剪映标签",
-           @"文案上方的剪映模板入口。隐藏保留原位置和点击；移除同时移除入口及其布局占位。" ],
-        @[ DKKeyPlaybackLocationMode, @"地理定位",
-           @"文案上方的地理定位信息。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该信息及其布局占位。" ],
         @[ DKKeyPlaybackStoreMode, @"作者店铺",
            @"昵称下方的「TA的店铺」入口。隐藏可点击保留原位置和点击入口；移除不可点击同时移除该入口及其布局占位。" ],
         // 昵称右侧
