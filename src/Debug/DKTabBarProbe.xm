@@ -33,6 +33,7 @@
 #import "DKCommentHeaderClean.h"
 #import "DKGlassFlexView.h"
 #import "DKGlassTabBar.h"
+#import "DKGlassPadElements.h"
 #import "DKKeys.h"
 #import "DKShareSelectionHooks.h"
 #import "DKUtils.h"
@@ -222,6 +223,7 @@ static void DKProbeAppendGlassBar(NSMutableString *out, UITabBarController *cont
     [out appendFormat:@"  platter 玻璃       = %@\n", DKGlassPlatterGlassStatus()];
     // 胶囊宽度与整组居中的读数：目标与实测应一致，内缩应为「实测」。
     [out appendFormat:@"  胶囊几何           = %@\n", DKGlassGeometryStatus()];
+    [out appendFormat:@"  iPad 两侧按钮      = %@\n", DKGlassPadElementsStatus()];
     // 内容取色的唯一读数：极性判定、写下去的两个色、判定依据。
     [out appendFormat:@"  内容取色           = %@\n", DKGlassInkStatus()];
     // 悬浮底栏把每个 tab 画两遍：SelectedContentView 那份是选中样子（只在透镜内可见），
