@@ -40,6 +40,7 @@
 
 #import "DouyinHeaders.h"
 #import "DKCommentGlass.h"
+#import "DKCommentPadBackdrop.h"
 #import "DKGlassFlexView.h"
 #import "DKGlassGuard.h"
 #import "DKKeys.h"
@@ -834,11 +835,18 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
 
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
+    DKCommentPadBackdropSync(self);
     if (@available(iOS 26.0, *)) DKCommentGlassSync(self);
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    DKCommentPadBackdropSync(self);
 }
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    DKCommentPadBackdropSync(self);
     if (@available(iOS 26.0, *)) DKCommentGlassSync(self);
 }
 
@@ -958,6 +966,7 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
     DKSettingsRegister(DKKeyCommentGlass, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeGlassChoice(DKKeyCommentGlass, DKKeyCommentGlassClear, @"评论区液态玻璃", ^{
             void (^refresh)(void) = ^{
+                DKCommentPadBackdropRefresh();
                 UIView *slot = gLastPanelSlot;
                 UIUserInterfaceStyle current = gGlassStyle;
                 if (slot.window.windowScene) current = DKGlassStyleForView(slot);
