@@ -15,6 +15,7 @@
 //
 
 #import "DKGlassTabBar.h"
+#import "DKGlassPadElements.h"
 #import "DKPlaybackOverlay.h"
 #import "DKAudioVisualizer.h"
 #import "DKPlusIcon.h"
@@ -174,6 +175,10 @@ static UIGlassEffect *DKGlassMakeGlassEffect(UIUserInterfaceStyle style, BOOL in
     if (clear) effect.tintColor = DKGlassTintForStyle(style);
     effect.interactive = interactive;
     return effect;
+}
+
+UIGlassEffect *DKGlassTabBarMakeEffect(UIUserInterfaceStyle style, BOOL interactive) {
+    return DKGlassMakeGlassEffect(style, interactive);
 }
 
 // 悬浮胶囊的材质由 _UITabBarItemPlatterView 自己持有的 glassEffect 决定——
@@ -995,10 +1000,14 @@ static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar, NSUInteger refere
     gGeometryMeasured = capsule;
 
     CGFloat group = capsule + (available ? kDKPlusKeyGap + diameter : 0.0);
-    CGFloat left = (size.width - group) / 2.0;
+    CGRect groupFrame = CGRectMake((size.width - group) / 2.0, gMetrics.top, group, diameter);
+    // iPad 可把玻璃组靠到左端 / 右端，两侧元素按钮随之重排（见 DKGlassPadElements.xm）。
+    groupFrame.origin.x = DKGlassPadGroupLeft(douyinBar, groupFrame);
+    CGFloat left = CGRectGetMinX(groupFrame);
     CGRect barFrame = gBar.frame;
     barFrame.origin.x = left - capsuleX;
     if (!CGRectEqualToRect(gBar.frame, barFrame)) gBar.frame = barFrame;
+    DKGlassPadElementsLayout(douyinBar, groupFrame);
     if (!available) return;
 
     CGRect keyFrame = CGRectMake(left + capsule + kDKPlusKeyGap, gMetrics.top, diameter, diameter);
@@ -1029,6 +1038,11 @@ static void DKGlassSetDouyinContentVisible(AWENormalModeTabBar *douyinBar, NSArr
         if (![backdrop isKindOfClass:UIView.class]) continue;
         CALayer *layer = ((UIView *)backdrop).layer;
         if (layer.opacity != opacity) layer.opacity = opacity;
+    }
+    // iPad 紧凑底板沿用可复位遮罩，保留宿主的透明度与取色更新。
+    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+        UIView *compactBackground = DKGlassValue(douyinBar, @"compactModeBackgroundView");
+        DKAdjustFade(compactBackground, visible ? 1.0 : 0.0, compactBackground.bounds.size);
     }
     for (id button in buttons) {
         if (![button isKindOfClass:UIView.class]) continue;
@@ -1065,6 +1079,7 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
     if (previousBar && previousBar != douyinBar && gBar) {
         DKGlassSetDouyinContentVisible(
             previousBar, DKGlassValue(previousBar, @"tabBarButtons"), YES);
+        DKGlassPadElementsLayout(previousBar, CGRectNull);
     }
     gDouyinBar = douyinBar;
 
@@ -1096,6 +1111,7 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
         gPlatterGlassInstalled = nil;
         // 玻璃底栏是可视化的落位基准，它一撤可视化必须跟着撤，否则会留下一层孤儿视图。
         DKAudioVisualizerLayout(douyinBar);
+        DKGlassPadElementsLayout(douyinBar, CGRectNull);
         return;
     }
     // 场景监听不撤：handler 只在 gBar 存在时才动手，重新开启开关后照旧生效。

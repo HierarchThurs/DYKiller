@@ -29,6 +29,9 @@ CGFloat DKGlassPlusIconInset(void);
 /// 当前挂载中的拍摄圆键；功能关闭时为 nil。
 UIVisualEffectView *DKGlassPlusKeyCurrent(void);
 
+/// 底栏玻璃的材质：模糊 / 清透档与深色染色跟胶囊、拍摄圆键一致。供底栏上的其他玻璃共用。
+UIGlassEffect *DKGlassTabBarMakeEffect(UIUserInterfaceStyle style, BOOL interactive) API_AVAILABLE(ios(26.0));
+
 /// 悬浮胶囊本体（_UITabBarItemPlatterView）。音频可视化的环绕轮廓以它为准。
 UIView *DKGlassPlatterCurrent(void);
 
