@@ -13,6 +13,7 @@
 //     切换样式或作品时长晚到时，常态下请状态机重新套用当前外观以重新取边距；唤醒态（暂停、拖动）期间不动，
 //     抖音拖动按手指在进度条自身坐标里的位移换算，进度条在手指下平移会被当成拖动。
 //   - 「两端」下的章节点：章节控制器默认固定取屏宽 − 24，让它走抖音自带的「跟随进度条宽度」分支，宽度即收短后的 progressWidth。
+//   - iPad 的原生约束让位与章节点宽度由 DKProgressPadTime 管理，复用本文件的文字宽度与状态刷新。
 //   - 数据：AWEDProgressCoreContainer 的 updateProgressSliderWithTime:totalDuration: 送来播放时间（播放中约 0.5 s 一次）；
 //     总长取作品时长 videoDuration（毫秒）向下取整，与抖音拖动读数同一口径。进度条 setValue:0（换视频、重播）时归零。
 //   - 显隐跟随进度条的 alpha / hidden：抖音拖动时把进度条写成 alpha 0，读数随之让给原生的大号读数。
@@ -23,6 +24,7 @@
 //
 
 #import "DKProgressTime.h"
+#import "DKProgressPadTime.h"
 #import <objc/runtime.h>
 #import "DouyinHeaders.h"
 #import "DKInfoAppearance.h"
@@ -202,6 +204,7 @@ static void DKProgressTimeReapplyBar(AWEFeedProgressSlider *slider) {
 // 进度条边距多让出的宽度与应有值不一致时（切换样式、作品时长晚到）请抖音重新取边距。
 // 唤醒态不动；同一目标只请求一次，布局策略不经本 Hook（非 feed 布局）时不会反复重排。
 static void DKProgressTimeSyncMargin(AWEFeedProgressSlider *slider, CGFloat desired, BOOL wakeup) {
+    if (DKProgressPadTimeSync(slider, desired, wakeup)) return;
     AWEArchEventDataController *edc = DKProgressTimeEDCOf(DKProgressTimeCore(slider));
     if (!edc) return;
     CGFloat applied = [objc_getAssociatedObject(edc, DKProgressTimeAppliedInsetKey) doubleValue];
@@ -418,7 +421,7 @@ NSString *DKProgressTimeStatus(void) {
                 AWEArchEventDataController *edc = DKProgressTimeEDCOf(core);
                 NSNumber *applied = edc ? objc_getAssociatedObject(edc, DKProgressTimeAppliedInsetKey) : nil;
                 NSNumber *requested = edc ? objc_getAssociatedObject(edc, DKProgressTimeRequestedInsetKey) : nil;
-                [out appendFormat:@"    两端 边距让位 已应用=%@ 应有=%.1fpt 待重取=%@ 读数位置=%@\n",
+                [out appendFormat:@"    两端 策略附加边距=%@ 目标让位=%.1fpt 待重取=%@ 读数位置=%@\n",
                     applied ? [NSString stringWithFormat:@"%.1fpt", applied.doubleValue] : @"未取",
                     DKProgressTimeInlineInset(view.total), requested ?: @"无", view.inlineFits ? @"同行" : @"下方（进度条未收短）"];
                 AWEDProgressChapterContainer *chapter = [core respondsToSelector:@selector(chapterContainer)]
