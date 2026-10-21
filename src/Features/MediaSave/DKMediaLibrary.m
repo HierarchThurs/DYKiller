@@ -1,4 +1,5 @@
 #import "DKMediaLibrary.h"
+#import "DKPrompt.h"
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
 
@@ -70,26 +71,23 @@ void DKMediaComposeAudio(NSURL *video, NSURL *audio, NSURL *output, void (^done)
 }
 
 UIWindow *DKMediaForegroundWindow(void) {
-    UIWindow *fallback = nil;
-    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
-        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-            if (window.isKeyWindow) return window;
-            if (!fallback && !window.hidden && window.alpha > 0 && window.windowLevel == UIWindowLevelNormal
-                && window.bounds.size.width > 1) fallback = window;
-        }
-    }
-    return fallback;
+    return DKPromptWindowForScene(nil);
 }
 
-static UIViewController *DKTopController(void) {
-    UIViewController *top = DKMediaForegroundWindow().rootViewController;
+static UIViewController *DKTopController(UIWindowScene *scene) {
+    UIViewController *top = DKPromptWindowForScene(scene).rootViewController;
     while (top.presentedViewController && !top.presentedViewController.isBeingDismissed) top = top.presentedViewController;
     return top;
 }
 
-void DKMediaShareFile(NSURL *file, dispatch_block_t dismissed) {
-    UIViewController *top = DKTopController();
+void DKMediaShareFile(NSURL *file, UIWindowScene *scene, dispatch_block_t dismissed) {
+    // 原场景消失或不在前台时不转移到其他窗口。
+    if (!scene || scene.activationState != UISceneActivationStateForegroundActive
+        || ![UIApplication.sharedApplication.connectedScenes containsObject:scene]) {
+        if (dismissed) dismissed();
+        return;
+    }
+    UIViewController *top = DKTopController(scene);
     if (!top) { if (dismissed) dismissed(); return; }
     UIActivityViewController *share = [[UIActivityViewController alloc] initWithActivityItems:@[file] applicationActivities:nil];
     share.completionWithItemsHandler = ^(UIActivityType type, BOOL completed, NSArray *items, NSError *error) {

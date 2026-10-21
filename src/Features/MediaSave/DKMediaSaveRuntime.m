@@ -1,5 +1,6 @@
 #import "DKMediaSaveRuntime.h"
 #import "DKMediaLibrary.h"
+#import "DKPrompt.h"
 #import <objc/runtime.h>
 #import <string.h>
 
@@ -41,6 +42,11 @@ static UIViewController *DKSearch(UIViewController *controller, NSString *prefix
     return DKSearch(controller.presentedViewController, prefix, visited);
 }
 
+UIViewController *DKMediaFindControllerInScene(NSString *prefix, UIWindowScene *scene) {
+    if (!scene) return nil;
+    return DKSearch(DKPromptWindowForScene(scene).rootViewController, prefix, [NSHashTable weakObjectsHashTable]);
+}
+
 UIViewController *DKMediaFindController(NSString *prefix) {
-    return DKSearch(DKMediaForegroundWindow().rootViewController, prefix, [NSHashTable weakObjectsHashTable]);
+    return DKMediaFindControllerInScene(prefix, DKMediaForegroundWindow().windowScene);
 }

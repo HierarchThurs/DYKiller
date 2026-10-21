@@ -37,12 +37,12 @@ static NSArray<DKMediaSaveItem *> *DKFeedItems(id aweme, DKFeedSaveKind kind) {
 }
 
 // 先收起面板再开始保存；收起回调缺失时延时兜底，只执行一次。
-static void DKFeedRun(id aweme, DKFeedSaveKind kind, NSString *source) {
+static void DKFeedRun(id aweme, DKFeedSaveKind kind, NSString *source, UIWindowScene *scene) {
     __block BOOL started = NO;
     void (^run)(void) = ^{
         if (started) return;
         started = YES;
-        DKMediaSaveRun(DKFeedItems(aweme, kind), source);
+        DKMediaSaveRun(DKFeedItems(aweme, kind), source, scene);
     };
     Class managerClass = NSClassFromString(@"AWELongPressPanelManager");
     AWELongPressPanelManager *manager = [managerClass respondsToSelector:@selector(shareInstance)] ? [managerClass shareInstance] : nil;
@@ -52,7 +52,7 @@ static void DKFeedRun(id aweme, DKFeedSaveKind kind, NSString *source) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), run);
 }
 
-static AWELongPressPanelBaseViewModel *DKFeedViewModel(id aweme, NSString *title, unsigned long long action, DKFeedSaveKind kind) {
+static AWELongPressPanelBaseViewModel *DKFeedViewModel(id aweme, NSString *title, unsigned long long action, DKFeedSaveKind kind, UIViewController *panel) {
     Class cls = NSClassFromString(@"AWELongPressPanelBaseViewModel");
     if (!cls) return nil;
     AWELongPressPanelBaseViewModel *model = [cls new];
@@ -61,7 +61,8 @@ static AWELongPressPanelBaseViewModel *DKFeedViewModel(id aweme, NSString *title
     model.duxIconName = @"ic_boxarrowdownhigh_outlined";
     model.describeString = title;
     NSString *source = [@"长按面板·" stringByAppendingString:title];
-    model.action = ^{ DKFeedRun(aweme, kind, source); };
+    __weak UIViewController *weakPanel = panel;
+    model.action = ^{ DKFeedRun(aweme, kind, source, DKPromptSceneForResponder(weakPanel)); };
     return model;
 }
 
@@ -143,7 +144,7 @@ static NSArray *DKFeedPanelData(UIViewController *panel, NSArray *original, DKMe
     NSMutableArray *added = [NSMutableArray array];
     BOOL removeNative = NO;
     void (^add)(NSString *, NSUInteger, DKFeedSaveKind) = ^(NSString *title, NSUInteger offset, DKFeedSaveKind kind) {
-        AWELongPressPanelBaseViewModel *model = DKFeedViewModel(aweme, title, DKFeedActionBase + offset, kind);
+        AWELongPressPanelBaseViewModel *model = DKFeedViewModel(aweme, title, DKFeedActionBase + offset, kind, panel);
         if (model) [added addObject:model];
     };
     if (!album && video && DKSelectAwemeMain(dict)) { add(DKSelectMainTitle(dict), 0, DKFeedSaveMain); removeNative = YES; }

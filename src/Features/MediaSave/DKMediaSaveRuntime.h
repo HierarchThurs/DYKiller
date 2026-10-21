@@ -16,6 +16,8 @@ BOOL DKMediaClassHasPrefix(id object, NSString *prefix);
 UIViewController *DKMediaControllerForResponder(UIResponder *responder, NSString *prefix);
 // 从前台窗口根控制器沿 presented 链与子控制器查找类名以 prefix 开头的控制器。
 UIViewController *DKMediaFindController(NSString *prefix);
+// 限定到已知场景；scene 为空时返回 nil。
+UIViewController *DKMediaFindControllerInScene(NSString *prefix, UIWindowScene *scene);
 
 #ifdef __cplusplus
 }

@@ -70,7 +70,7 @@ static id DKCommentForCell(UICollectionViewCell *cell) {
     DKMediaSaveHit(DKMediaSaveEntryStickerCell);
     id comment = DKCommentForCell(self);
     DKMediaSaveItem *item = comment ? DKSelectCommentSticker(DKResolveComment(comment)) : nil;
-    DKMediaSaveRun(item ? @[item] : @[], @"评论表情长按");
+    DKMediaSaveRun(item ? @[item] : @[], @"评论表情长按", DKPromptSceneForResponder(self));
 }
 %end
 %end

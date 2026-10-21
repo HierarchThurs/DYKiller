@@ -66,11 +66,13 @@ static NSArray *DKChatMenuWithSave(AWEIMCustomMenuComponent *component, NSArray 
     save.darkImageURL = DKChatIconURL(YES);
     __weak AWEIMCustomMenuComponent *weakComponent = component;
     __weak id weakMessage = message;
+    __weak UIResponder *weakCell = [cell isKindOfClass:UIResponder.class] ? cell : nil;
     save.willPerformMenuActionSelectorBlock = ^{
+        UIWindowScene *scene = DKPromptSceneForResponder(weakCell);
         AWEIMCustomMenuComponent *strongComponent = weakComponent;
         if ([strongComponent respondsToSelector:@selector(msg_dismissMenu)]) [strongComponent msg_dismissMenu];
         DKMediaSaveItem *item = DKSelectStickerItem(DKResolveStickerURLGroups(weakMessage));
-        DKMediaSaveRun(item ? @[item] : @[], @"私信表情菜单");
+        DKMediaSaveRun(item ? @[item] : @[], @"私信表情菜单", scene);
     };
     NSMutableArray *extended = [items mutableCopy];
     [extended insertObject:save atIndex:MIN(at, extended.count)];

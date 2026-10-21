@@ -17,7 +17,7 @@ void DKMediaLibrarySaveLivePhoto(NSURL *photo, NSURL *movie, DKMediaLibraryDone 
 // 视频轨来自 video、音轨来自 audio（截到视频时长），passthrough 输出 MOV。
 void DKMediaComposeAudio(NSURL *video, NSURL *audio, NSURL *output, void (^done)(NSURL *result, NSString *error));
 // 在当前最上层页面弹出系统分享面板；dismissed 在面板关闭后回调。
-void DKMediaShareFile(NSURL *file, dispatch_block_t dismissed);
+void DKMediaShareFile(NSURL *file, UIWindowScene *scene, dispatch_block_t dismissed);
 UIWindow *DKMediaForegroundWindow(void);
 
 #ifdef __cplusplus

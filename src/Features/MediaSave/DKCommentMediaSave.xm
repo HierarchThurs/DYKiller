@@ -44,8 +44,8 @@ static void DKCollectCells(UIViewController *controller, Class cellClass, NSMuta
 }
 
 // 大图页当前张：取覆盖窗口中心的 cell 控制器，读 Swift ivar currentIndexInMultiImageList（从 0 开始）。
-static NSInteger DKBigPageIndex(NSUInteger count) {
-    UIViewController *feed = DKMediaFindController(kDKCommentMediaFeedClass);
+static NSInteger DKBigPageIndex(NSUInteger count, UIWindowScene *scene) {
+    UIViewController *feed = DKMediaFindControllerInScene(kDKCommentMediaFeedClass, scene);
     Class cellClass = NSClassFromString(kDKCommentMediaCellClass);
     Ivar ivar = cellClass ? class_getInstanceVariable(cellClass, "currentIndexInMultiImageList") : NULL;
     UIWindow *window = feed.viewIfLoaded.window;
@@ -63,11 +63,34 @@ static NSInteger DKBigPageIndex(NSUInteger count) {
     return -1;
 }
 
+// 菜单元素按对象身份匹配所在列表，避免多个前台场景取到另一个窗口的面板。
+static UIWindowScene *DKCommentSourceScene(id element) {
+    UIWindowScene *single = nil;
+    NSUInteger foregroundCount = 0;
+    for (UIScene *candidate in UIApplication.sharedApplication.connectedScenes) {
+        if (![candidate isKindOfClass:UIWindowScene.class]
+            || candidate.activationState != UISceneActivationStateForegroundActive) continue;
+        UIWindowScene *scene = (UIWindowScene *)candidate;
+        if (!DKPromptWindowForScene(scene)) continue;
+        foregroundCount++;
+        single = scene;
+        UIViewController *list = DKMediaFindControllerInScene(
+            @"AWECommentLongPressPanelSwiftImpl.CommentLongPressPanelCollectionViewController", scene);
+        NSArray *sections = DKMediaValue(DKMediaValue(list, @"viewModel"), @"sectionViewModelsArray");
+        if (![sections isKindOfClass:NSArray.class]) continue;
+        for (id section in sections) {
+            NSArray *models = DKMediaValue(section, @"modelsArray");
+            if ([models isKindOfClass:NSArray.class] && [models indexOfObjectIdenticalTo:element] != NSNotFound) return scene;
+        }
+    }
+    return foregroundCount == 1 ? single : nil;
+}
+
 // 收起评论长按面板后再开始保存；收起入口缺失时延时兜底，只执行一次。
-static void DKDismissCommentPanel(dispatch_block_t then) {
+static void DKDismissCommentPanel(UIWindowScene *scene, dispatch_block_t then) {
+    UIViewController *sheet = DKMediaFindControllerInScene(kDKCommentPanelSheetClass, scene);
     __block BOOL started = NO;
     dispatch_block_t run = ^{ if (!started) { started = YES; then(); } };
-    UIViewController *sheet = DKMediaFindController(kDKCommentPanelSheetClass);
     if (sheet && DKMediaMethod(object_getClass(sheet), @selector(dismiss:withAnimated:), "v@B")) {
         ((void (*)(id, SEL, id, BOOL))objc_msgSend)(sheet, @selector(dismiss:withAnimated:), nil, YES);
     } else if (sheet) {
@@ -99,9 +122,11 @@ static void DKDismissCommentPanel(dispatch_block_t then) {
     BOOL hasMedia = DKSelectCommentHasMedia(dict);
     NSArray<DKMediaSaveItem *> *items = nil;
     NSString *source = nil;
+    UIWindowScene *scene = (media || sticker) ? DKCommentSourceScene(self) : nil;
+    if (!scene) { %orig; return; }
     if (media && hasMedia) {
         BOOL inflow = DKElementInflow(self);
-        NSInteger index = inflow ? DKBigPageIndex([dict[@"images"] count]) : -1;
+        NSInteger index = inflow ? DKBigPageIndex([dict[@"images"] count], scene) : -1;
         items = DKSelectCommentItems(dict, index);
         source = !inflow ? @"评论长按·全部" : (index >= 0 ? [NSString stringWithFormat:@"评论大图页·第%ld张", (long)index + 1] : @"评论大图页·全部");
     } else if (sticker && !hasMedia) {
@@ -113,7 +138,7 @@ static void DKDismissCommentPanel(dispatch_block_t then) {
         return;
     }
     DKMediaSaveHit(DKMediaSaveEntryCommentElement);
-    DKDismissCommentPanel(^{ DKMediaSaveRun(items, source); });
+    DKDismissCommentPanel(scene, ^{ DKMediaSaveRun(items, source, scene); });
 }
 
 %end

@@ -179,8 +179,9 @@ static void DKPreviewApply(AWEIMEmoticonPreviewV2 *preview) {
 %new
 - (void)dk_previewSave:(id)sender {
     DKMediaSaveItem *item = DKSelectStickerItem(DKResolveStickerURLGroups(self.model));
+    UIWindowScene *scene = DKPromptSceneForResponder(self);
     if ([self respondsToSelector:@selector(p_hidePreview)]) [self p_hidePreview];
-    DKMediaSaveRun(item ? @[item] : @[], @"表情预览");
+    DKMediaSaveRun(item ? @[item] : @[], @"表情预览", scene);
 }
 %end
 %end

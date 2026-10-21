@@ -358,7 +358,7 @@ static NSString *const DKKeyCommentLivePhotoNoWatermark = @"DYKillerCommentLiveP
 // 私信表情消息长按菜单、单击后的表情页、表情面板长按预览增加「保存表情包」。
 static NSString *const DKKeyMediaSaveChatSticker   = @"DYKillerMediaSaveChatSticker";
 static NSString *const DKKeyMediaSaveHaptic        = @"DYKillerMediaSaveHaptic";
-// 保存提示的材质单选（DKMakeGlassChoice）：总开关关时为普通模糊提示，开时按清透档取 Regular / Clear。
+// 通用提示面板的材质单选：总开关关时为系统模糊，开时按清透档取 Regular / Clear。
 static NSString *const DKKeyMediaSaveGlass         = @"DYKillerMediaSaveGlass";
 static NSString *const DKKeyMediaSaveGlassClear    = @"DYKillerMediaSaveGlassClear";
 

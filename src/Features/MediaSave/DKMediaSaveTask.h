@@ -3,13 +3,14 @@
 #define DKMediaSaveTask_h
 
 #import "DKMediaSaveItem.h"
+#import "DKPrompt.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // source 只用于诊断。可在任意线程调用，内部切到主线程开始。
-void DKMediaSaveRun(NSArray<DKMediaSaveItem *> *items, NSString *source);
+void DKMediaSaveRun(NSArray<DKMediaSaveItem *> *items, NSString *source, UIWindowScene *scene);
 
 #ifdef __cplusplus
 }

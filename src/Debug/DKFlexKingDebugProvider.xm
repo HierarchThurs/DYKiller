@@ -6,6 +6,7 @@
 #import "DKTabBarProbe.h"
 #import "DKVideoFeedTable.h"
 #import "DKVideoFullscreen.h"
+#import "DKPrompt.h"
 #import <objc/runtime.h>
 #import <dlfcn.h>
 
@@ -21,6 +22,7 @@ static NSDictionary *DKFKProviderSnapshot(void) {
     result[@"settings_backup"]=DKSettingsBackupDiagnostics() ?: @{};
     result[@"interaction_icons"]=DKInteractionIconsStatus();
     result[@"share_menu"]=DKShareMenuStatus();
+    result[@"prompt_panel"]=DKPromptDiagnostics();
     return result;
 }
 static void DKRegisterFLEXKingDebugProvider(void) {

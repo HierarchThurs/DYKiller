@@ -5,6 +5,7 @@
 #import "DKMediaLivePhoto.h"
 #import "DKMediaSaveDiagnostics.h"
 #import "DKMediaSaveHUD.h"
+#import "DKPrompt.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKUtils.h"
@@ -31,6 +32,8 @@ static NSString *const DKImageAccept = @"image/heic,image/heif,image/webp,image/
 @property (atomic, assign) BOOL cancelled;
 @property (nonatomic, assign) BOOL audioOnly;
 @property (nonatomic, assign) DKMediaHUDScene scene;
+@property (nonatomic, weak) UIWindowScene *windowScene;
+@property (nonatomic, strong) DKMediaSaveHUD *hud;
 @end
 
 static DKMediaSaveTask *gDKActiveTask;
@@ -84,9 +87,10 @@ static NSString *DKFileSize(NSURL *file) {
     self.scene = DKMediaHUDSceneForItems(self.items);
 
     __weak typeof(self) weakSelf = self;
-    DKMediaHUDShowProgress(self.scene, [self progressTitle], [self progressFraction], ^{ [weakSelf cancel]; });
+    self.hud = [[DKMediaSaveHUD alloc] initWithScene:self.scene windowScene:self.windowScene onCancel:^{ [weakSelf cancel]; }];
+    [self.hud showProgress:[self progressTitle] fraction:[self progressFraction]];
     self.timer = [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) {
-        DKMediaHUDUpdateProgress([weakSelf progressTitle], [weakSelf progressFraction]);
+        [weakSelf.hud updateProgress:[weakSelf progressTitle] fraction:[weakSelf progressFraction]];
     }];
     if (self.audioOnly) { [self next]; return; }
     DKMediaLibraryAuthorize(^(BOOL granted) {
@@ -130,7 +134,7 @@ static NSString *DKFileSize(NSURL *file) {
 - (void)next {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.cancelled || self.index >= self.items.count) { [self finish]; return; }
-        DKMediaHUDUpdateProgress([self progressTitle], [self progressFraction]);
+        [self.hud updateProgress:[self progressTitle] fraction:[self progressFraction]];
         DKMediaSaveItem *item = self.items[self.index];
         void (^done)(NSString *, NSString *) = ^(NSString *error, NSString *detail) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -232,8 +236,8 @@ static NSString *DKFileSize(NSURL *file) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.timer invalidate];
             self.timer = nil;
-            DKMediaHUDShowResult(DKMediaHUDStateSuccess, @"音乐已下载", nil);
-            DKMediaShareFile(named, ^{ done(nil, candidate.tag); });
+            [self.hud showResult:DKMediaHUDStateSuccess title:@"音乐已下载" subtitle:nil];
+            DKMediaShareFile(named, self.windowScene, ^{ done(nil, candidate.tag); });
         });
     }];
 }
@@ -245,39 +249,41 @@ static NSString *DKFileSize(NSURL *file) {
     [NSFileManager.defaultManager removeItemAtURL:self.directory error:nil];
     if (self.cancelled) {
         NSString *saved = self.saved ? [NSString stringWithFormat:@"已保存 %lu 项", (unsigned long)self.saved] : nil;
-        DKMediaHUDShowResult(DKMediaHUDStateCancelled, self.audioOnly ? @"已取消下载" : @"已取消保存", saved);
+        [self.hud showResult:DKMediaHUDStateCancelled title:self.audioOnly ? @"已取消下载" : @"已取消保存" subtitle:saved];
     } else if (!self.failed) {
         // 音乐在弹出分享面板前已提示「音乐已下载」。
-        if (!self.audioOnly) DKMediaHUDShowResult(DKMediaHUDStateSuccess, [self successTitle], nil);
+        if (!self.audioOnly) [self.hud showResult:DKMediaHUDStateSuccess title:[self successTitle] subtitle:nil];
         if (self.saved && DKPrefBool(DKKeyMediaSaveHaptic)) {
             UINotificationFeedbackGenerator *haptic = [UINotificationFeedbackGenerator new];
             [haptic notificationOccurred:UINotificationFeedbackTypeSuccess];
         }
     } else if (self.saved) {
         NSString *title = [NSString stringWithFormat:@"已保存 %lu 项，失败 %lu 项", (unsigned long)self.saved, (unsigned long)self.failed];
-        DKMediaHUDShowResult(DKMediaHUDStateFailure, title, self.lastError);
+        [self.hud showResult:DKMediaHUDStateFailure title:title subtitle:self.lastError];
     } else {
-        DKMediaHUDShowResult(DKMediaHUDStateFailure, self.audioOnly ? @"下载失败" : @"保存失败", self.lastError ?: @"未知原因");
+        [self.hud showResult:DKMediaHUDStateFailure title:self.audioOnly ? @"下载失败" : @"保存失败" subtitle:self.lastError ?: @"未知原因"];
     }
     gDKActiveTask = nil;
 }
 
 @end
 
-void DKMediaSaveRun(NSArray<DKMediaSaveItem *> *items, NSString *source) {
+void DKMediaSaveRun(NSArray<DKMediaSaveItem *> *items, NSString *source, UIWindowScene *scene) {
     if (!NSThread.isMainThread) {
-        dispatch_async(dispatch_get_main_queue(), ^{ DKMediaSaveRun(items, source); });
+        dispatch_async(dispatch_get_main_queue(), ^{ DKMediaSaveRun(items, source, scene); });
         return;
     }
-    if (gDKActiveTask) { DKMediaHUDNudge(); return; }
+    if (gDKActiveTask) { [gDKActiveTask.hud nudge]; return; }
     if (!items.count) {
         DKMediaSaveNote([NSString stringWithFormat:@"[%@] 没有可保存的内容", source ?: @""]);
-        DKMediaHUDShowResult(DKMediaHUDStateFailure, @"保存失败", @"没有可保存的内容");
+        DKMediaSaveHUD *hud = [[DKMediaSaveHUD alloc] initWithScene:DKMediaHUDSceneVideo windowScene:scene onCancel:nil];
+        [hud showResult:DKMediaHUDStateFailure title:@"保存失败" subtitle:@"没有可保存的内容"];
         return;
     }
     DKMediaSaveTask *task = [DKMediaSaveTask new];
     task.items = items;
     task.source = source ?: @"";
+    task.windowScene = scene ?: DKPromptSceneForResponder(nil);
     gDKActiveTask = task;
     [task start];
 }

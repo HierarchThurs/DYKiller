@@ -107,7 +107,7 @@ static void DKSheetEnsure(AWEIMSimilarEmojiDisplayView *view, id model, id conte
 - (void)dk_saveSticker:(id)sender {
     id model = objc_getAssociatedObject(self, &kDKSheetModelKey);
     DKMediaSaveItem *item = DKSelectStickerItem(DKResolveStickerURLGroups(model));
-    DKMediaSaveRun(item ? @[item] : @[], @"表情页");
+    DKMediaSaveRun(item ? @[item] : @[], @"表情页", DKPromptSceneForResponder(self));
 }
 %end
 %end
