@@ -31,7 +31,7 @@ BOOL DKFeedCardFitContainer(UIView *container, CGFloat inset, DKFeedCardType typ
 /// 当前底边约束是否由本功能接管。
 BOOL DKFeedCardContainerIsFitted(UIView *container);
 
-/// 在 host 底部维持 inset 高的背景条（不接收触摸，位于最上层）；inset 为 0 时移除。
+/// 在 host 原内容后方补齐有效背景底边至宿主底部；创建或几何变化时取样，inset 为 0 时移除。
 void DKFeedCardSyncBackdrop(UIView *host, CGFloat inset, DKFeedCardType type);
 
 /// 条目内容可能变化后安排背景条取样：合并连续请求，并在稍后补一次，覆盖晚到的图片与 Lynx 渲染。

@@ -30,11 +30,13 @@ struct DKFeedCardCounters {
     NSUInteger backdrops;   // 新建背景条
 };
 static struct DKFeedCardCounters gDKCardCounters[DKFeedCardTypeCount];
-static NSUInteger gDKMissingConstraints, gDKSamples, gDKSkippedSamples;
+static NSUInteger gDKMissingConstraints, gDKSamples, gDKSkippedSamples, gDKEmptySamples;
 
 @interface DKFeedCardBackdropView : UIImageView
 @property (nonatomic) BOOL samplePending;
 @property (nonatomic) BOOL resamplePending;
+@property (nonatomic) CGFloat contentBottom;
+@property (nonatomic) CGRect sourceBounds;
 @end
 
 @implementation DKFeedCardBackdropView
@@ -150,33 +152,89 @@ void DKFeedCardSyncBackdrop(UIView *host, CGFloat inset, DKFeedCardType type) {
         strip = [[DKFeedCardBackdropView alloc] initWithFrame:CGRectZero];
         strip.userInteractionEnabled = NO;
         strip.contentMode = UIViewContentModeScaleToFill;
-        [host addSubview:strip];
+        strip.hidden = YES;
+        [host insertSubview:strip atIndex:0];
         if (!gDKBackdropHosts) gDKBackdropHosts = [NSHashTable weakObjectsHashTable];
         [gDKBackdropHosts addObject:host];
         gDKCardCounters[type].backdrops++;
-    } else if (host.subviews.lastObject != strip) {
-        [host bringSubviewToFront:strip];
+    } else if (host.subviews.firstObject != strip) {
+        [host insertSubview:strip atIndex:0];
     }
-    CGRect frame = CGRectMake(0.0, CGRectGetHeight(host.bounds) - inset, CGRectGetWidth(host.bounds), inset);
-    if (!CGRectEqualToRect(strip.frame, frame)) strip.frame = frame;
+    CGFloat bottom = CGRectGetMaxY(host.bounds) - inset;
+    if (strip.contentBottom != bottom || !CGRectEqualToRect(strip.sourceBounds, host.bounds)) {
+        strip.contentBottom = bottom;
+        strip.sourceBounds = host.bounds;
+        strip.image = nil;
+        strip.hidden = YES;
+        strip.frame = CGRectMake(CGRectGetMinX(host.bounds), bottom, CGRectGetWidth(host.bounds), inset);
+        DKFeedCardRequestBackdropSample(host);
+    }
 }
 
-// 取背景条正上方 1pt 的整行像素。这一行在背景条之外，渲染结果不含背景条自己。
+// 在底部预留量对应的内容横带内，从下往上找整行不透明像素；按设备像素对齐填充起点。
+static UIImage *DKCardBottomImage(UIView *host, DKFeedCardBackdropView *strip, CGFloat *bottom) {
+    CGRect bounds = host.bounds;
+    CGFloat scale = host.traitCollection.displayScale;
+    if (scale <= 0.0) return nil;
+    CGFloat end = floor(strip.contentBottom * scale) / scale;
+    CGFloat depth = MIN(end - CGRectGetMinY(bounds), CGRectGetMaxY(bounds) - strip.contentBottom);
+    if (depth <= 0.0 || CGRectGetWidth(bounds) <= 0.0) return nil;
+    size_t width = (size_t)floor(CGRectGetWidth(bounds) * scale);
+    size_t height = (size_t)ceil(depth * scale);
+    CGFloat top = end - height / scale;
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef context = CGBitmapContextCreate(NULL, width, height, 8, width * 4, space,
+        kCGBitmapByteOrder32Big | kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    if (!context) return nil;
+
+    CGContextTranslateCTM(context, 0.0, height);
+    CGContextScaleCTM(context, scale, -scale);
+    CGContextTranslateCTM(context, -CGRectGetMinX(bounds), -top);
+    // 背景条已延伸进原内容的透明边时，取样仍只读取原页面。
+    BOOL hidden = strip.layer.hidden;
+    strip.layer.hidden = YES;
+    [host.layer renderInContext:context];
+    strip.layer.hidden = hidden;
+
+    const uint8_t *pixels = CGBitmapContextGetData(context);
+    size_t stride = CGBitmapContextGetBytesPerRow(context);
+    UIImage *image = nil;
+    for (size_t row = height; row > 0; row--) {
+        const uint8_t *line = pixels + (row - 1) * stride;
+        BOOL opaque = YES;
+        for (size_t x = 0; x < width; x++) {
+            if (line[x * 4 + 3] != UINT8_MAX) { opaque = NO; break; }
+        }
+        if (!opaque) continue;
+        CGImageRef snapshot = CGBitmapContextCreateImage(context);
+        CGImageRef sample = CGImageCreateWithImageInRect(snapshot, CGRectMake(0, row - 1, width, 1));
+        image = [UIImage imageWithCGImage:sample scale:scale orientation:UIImageOrientationUp];
+        CGImageRelease(sample);
+        CGImageRelease(snapshot);
+        *bottom = top + row / scale;
+        break;
+    }
+    CGContextRelease(context);
+    return image;
+}
+
 static void DKCardSampleBackdrop(UIView *host) {
     DKFeedCardBackdropView *strip = DKCardBackdrop(host);
-    CGFloat width = CGRectGetWidth(host.bounds);
-    CGFloat row = CGRectGetMinY(strip.frame) - 1.0;
-    if (!strip || !host.window || width <= 0.0 || row < 0.0) {
+    if (!strip || !host.window) {
         gDKSkippedSamples++;
         return;
     }
-    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
-    format.opaque = NO;
-    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(width, 1.0) format:format];
-    strip.image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
-        CGContextTranslateCTM(context.CGContext, 0.0, -row);
-        [host.layer renderInContext:context.CGContext];
-    }];
+    CGFloat bottom = 0.0;
+    UIImage *image = DKCardBottomImage(host, strip, &bottom);
+    strip.image = image;
+    strip.hidden = image == nil;
+    if (!image) {
+        gDKEmptySamples++;
+        return;
+    }
+    strip.frame = CGRectMake(CGRectGetMinX(host.bounds), bottom, CGRectGetWidth(host.bounds),
+        CGRectGetMaxY(host.bounds) - bottom);
     gDKSamples++;
 }
 
@@ -220,8 +278,9 @@ NSString *DKFeedCardStats(void) {
         [out appendFormat:@"%@ 收短=%lu 背景条=%lu  ", names[type],
             (unsigned long)gDKCardCounters[type].fits, (unsigned long)gDKCardCounters[type].backdrops];
     }
-    [out appendFormat:@"底边约束缺失=%lu 取样=%lu 跳过=%lu 接管中约束=%lu 背景条宿主=%lu",
+    [out appendFormat:@"底边约束缺失=%lu 取样=%lu 跳过=%lu 无有效背景=%lu 接管中约束=%lu 背景条宿主=%lu",
         (unsigned long)gDKMissingConstraints, (unsigned long)gDKSamples, (unsigned long)gDKSkippedSamples,
+        (unsigned long)gDKEmptySamples,
         (unsigned long)gDKFittedConstraints.allObjects.count, (unsigned long)gDKBackdropHosts.allObjects.count];
     return out;
 }

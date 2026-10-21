@@ -18,16 +18,17 @@ static UIView *DKCardMusicLynxContainer(UIView *root) {
     return nil;
 }
 
-static void DKSpecialCardBackdrop(UIViewController *controller) {
+static void DKSpecialCardBackdrop(UIViewController *controller, BOOL refreshImage) {
     if (!DKVideoFullscreenOn()) return;
     UIView *root = controller.viewIfLoaded;
     UIView *host = root.superview;
+    if (!host) return;
     // 约束已生效后才按实际内容底边铺背景，加载回调早于布局时保持空白。
     CGRect content = [root convertRect:root.bounds toView:host];
     CGFloat inset = DKFeedCardContainerIsFitted(root)
         ? MAX(CGRectGetMaxY(host.bounds) - CGRectGetMaxY(content), 0.0) : 0.0;
     DKFeedCardSyncBackdrop(host, inset, DKFeedCardTypeSpecial);
-    DKFeedCardRequestBackdropSample(host);
+    if (refreshImage) DKFeedCardRequestBackdropSample(host);
 }
 
 %group DKSpecialCardFit
@@ -41,9 +42,9 @@ static void DKSpecialCardBackdrop(UIViewController *controller) {
 }
 - (void)viewDidLayoutSubviews {
     %orig;
-    DKSpecialCardBackdrop(self);
+    DKSpecialCardBackdrop(self, NO);
 }
-- (void)viewDidAppear:(BOOL)animated { %orig; DKSpecialCardBackdrop(self); }
+- (void)viewDidAppear:(BOOL)animated { %orig; DKSpecialCardBackdrop(self, YES); }
 - (void)viewDidDisappear:(BOOL)animated {
     %orig;
     if (DKVideoFullscreenOn()) DKFeedCardSyncBackdrop(self.viewIfLoaded.superview, 0.0, DKFeedCardTypeSpecial);
@@ -53,13 +54,13 @@ static void DKSpecialCardBackdrop(UIViewController *controller) {
 
 %group DKSpecialCardLoaded
 %hook AWESpecialCardTemplateLynxViewController
-- (void)hunterContainerDidFinishLoadWithURL:(id)url { %orig; DKSpecialCardBackdrop(self); }
+- (void)hunterContainerDidFinishLoadWithURL:(id)url { %orig; DKSpecialCardBackdrop(self, YES); }
 %end
 %end
 
 %group DKSpecialCardDisplay
 %hook AWESpecialCardTemplateLynxViewController
-- (void)willDisplay { %orig; DKSpecialCardBackdrop(self); }
+- (void)willDisplay { %orig; DKSpecialCardBackdrop(self, YES); }
 %end
 %end
 
@@ -75,28 +76,28 @@ static void DKSpecialCardBackdrop(UIViewController *controller) {
 %end
 %end
 
-static void DKArticleBackdrop(UIViewController *controller) {
+static void DKArticleBackdrop(UIViewController *controller, BOOL refreshImage) {
     if (!DKVideoFullscreenOn()) return;
     UIView *root = controller.viewIfLoaded;
     DKFeedCardSyncBackdrop(root, DKFeedCardInset(root), DKFeedCardTypeArticle);
-    DKFeedCardRequestBackdropSample(root);
+    if (refreshImage) DKFeedCardRequestBackdropSample(root);
 }
 
 %group DKArticleFit
 %hook AWESearchFeedArticleViewController
-- (void)viewDidLayoutSubviews { %orig; DKArticleBackdrop(self); }
+- (void)viewDidLayoutSubviews { %orig; DKArticleBackdrop(self, NO); }
 %end
 %end
 
 %group DKArticleMounted
 %hook AWESearchFeedArticleViewController
-- (void)lynxEngineDidMount:(id)engine { %orig; DKArticleBackdrop(self); }
+- (void)lynxEngineDidMount:(id)engine { %orig; DKArticleBackdrop(self, YES); }
 %end
 %end
 
 %group DKArticleModel
 %hook AWESearchFeedArticleViewController
-- (void)updateModel:(id)model { %orig; DKArticleBackdrop(self); }
+- (void)updateModel:(id)model { %orig; DKArticleBackdrop(self, YES); }
 %end
 %end
 
