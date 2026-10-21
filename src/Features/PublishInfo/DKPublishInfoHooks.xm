@@ -19,6 +19,7 @@
 //
 
 #import "DKPublishInfo.h"
+#import "DKProfilePublishInfo.h"
 #import "DKPublishRegion.h"
 #import "DouyinHeaders.h"
 #import "DKColorScheme.h"
@@ -170,7 +171,7 @@ static NSAttributedString *DKPublishLine(AWEPlayInteractionTimestampElement *ele
         location = DKPublishRegionName(DKModelString(model, @selector(cityCode)), DKModelString(model, @selector(region)),
                                        DKModelString(model, @selector(ipAttribution)),
                                        [NSUserDefaults.standardUserDefaults stringForKey:DKKeyGeoNamesUsername],
-                                       ^(NSString *geonameId) { DKPublishInfoRefreshGeoname(geonameId); });
+                                       ^(NSString *geonameId) { DKPublishInfoRefreshGeoname(geonameId); DKProfilePublishInfoRefresh(); });
     }
     BOOL ownLocation = location != nil;
     if (!location && state.nativeActive) location = DKNativeAttribution(model);

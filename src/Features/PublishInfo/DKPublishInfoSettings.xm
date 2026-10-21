@@ -1,4 +1,5 @@
 #import "DKPublishInfo.h"
+#import "DKProfilePublishInfo.h"
 #import "DKColorScheme.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
@@ -69,8 +70,9 @@ static void DKRegisterPartColors(BOOL location) {
     DKSettingsRegister(DKKeyGeoNamesUsername, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeTextInputWithPrompt(DKKeyGeoNamesUsername, @"国外解析账号", @"GeoNames 用户名", 40,
             @"填写 GeoNames 用户名，用于解析国外详细地区。留空时使用已有国家或属地信息。", @"未填写", @"清空账号");
-        return DKPublishRefreshing(item,
-            @"填写 GeoNames 用户名以解析国外详细地区；未填写或解析失败时，使用已有国家或属地信息。需先开启「显示发布地区」。");
+        return DKSettingsOnChange(DKSettingsWithInfo(item,
+            @"填写 GeoNames 用户名以解析国外详细地区，播放页与主页共用。需开启播放页或主页的发布地区显示。"),
+            ^{ DKPublishInfoRefresh(); DKProfilePublishInfoRefresh(); });
     });
     DKSettingsRegister(DKKeyGeoNamesRegister, ^AWESettingItemModel *{
         return DKSettingsWithInfo(DKMakeWebLink(DKKeyGeoNamesRegister, @"注册 GeoNames 账号", @"https://www.geonames.org/login"),

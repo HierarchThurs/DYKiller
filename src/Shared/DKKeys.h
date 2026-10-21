@@ -158,6 +158,9 @@ static NSString *const DKKeyDanmakuGradientColors = @"DYKillerDanmakuGradientCol
 
 #pragma mark - 功能组：发布时间与地区
 
+// 主页作品信息，与播放页的开关独立。
+static NSString *const DKKeyProfilePublishTime = @"DYKillerProfileShowPublishTime";
+static NSString *const DKKeyProfilePublishLocation = @"DYKillerProfileShowPublishLocation";
 // 播放页文案下方一行：具体发布时间（作品创建时间，按设备时区）与发布地区（作品城市代码与国家地区码，不含作者自选地点）。
 static NSString *const DKKeyPublishTimeEnabled = @"DYKillerShowPublishTime";
 static NSString *const DKKeyPublishLocationEnabled = @"DYKillerShowPublishLocation";

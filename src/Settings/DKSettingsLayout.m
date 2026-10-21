@@ -389,6 +389,10 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyPublishTimeEnabled, @"ic_clock_outlined_20"),
                     DKRow(DKKeyPublishLocationEnabled, @"ic_location_outlined_20"),
                 ]),
+                DKSectionWithFooter(@"主页作品", @"主页三列封面在点赞上方显示时间与地区；双列卡片把时间与地区并成两行，与点赞数同一行。", @[
+                    DKRow(DKKeyProfilePublishTime, @"ic_clock_outlined_20"),
+                    DKRow(DKKeyProfilePublishLocation, @"ic_location_outlined_20"),
+                ]),
                 DKSection(@"文字颜色", @[
                     DKNotedPage(@"文字颜色", @"ic_magic_outlined_20", DKKeyPublishTextColors,
                                 @"时间文字与地区文字使用独立的颜色配置。仅在「显示具体发布时间」或「显示发布地区」任一项开启时可用；颜色功能默认关闭。", @[
@@ -605,7 +609,6 @@ NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {
             DKKeyDanmakuFixedColor: @[ DKKeyDanmakuColorEnabled ],
             DKKeyDanmakuHexColor: @[ DKKeyDanmakuColorEnabled ],
             DKKeyDanmakuGradientColors: @[ DKKeyDanmakuColorEnabled ],
-            DKKeyGeoNamesUsername: @[ DKKeyPublishLocationEnabled ],
             DKKeyPublishTimeColorMode: @[ DKKeyPublishTimeColorEnabled ],
             DKKeyPublishTimeFixedColor: @[ DKKeyPublishTimeColorEnabled ],
             DKKeyPublishTimeHexColor: @[ DKKeyPublishTimeColorEnabled ],
@@ -625,6 +628,7 @@ NSArray<NSString *> *DKSettingsLayoutRequiresAny(NSString *key) {
     dispatch_once(&once, ^{
         requires = @{
             DKKeyPublishTextColors: @[ DKKeyPublishTimeEnabled, DKKeyPublishLocationEnabled ],
+            DKKeyGeoNamesUsername: @[ DKKeyPublishLocationEnabled, DKKeyProfilePublishLocation ],
         };
     });
     return (key ? requires[key] : nil) ?: @[];
