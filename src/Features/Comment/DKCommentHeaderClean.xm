@@ -36,6 +36,9 @@ typedef void (^DKHeaderHeightCallback)(double);
 @end
 @interface DKHeaderCountLabel : UIView
 @end
+@interface DKHeaderComponentContainer : NSObject
+- (UIView *)mountedView;
+@end
 
 @interface AWETabContainerSectionViewModel : NSObject
 @end
@@ -60,14 +63,16 @@ static NSArray<NSArray<NSString *> *> *DKHeaderItems(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         items = @[
-            @[ DKKeyCommentAIParseMode, @"评论区AI解析", [@"评论区顶部的 AI 解析分页。" stringByAppendingString:kDKHeaderTabSuffix] ],
-            @[ DKKeyCommentPlayerDiscussionMode, @"玩家讨论", [@"评论区顶部的「玩家讨论」分页。" stringByAppendingString:kDKHeaderTabSuffix] ],
-            @[ DKKeyCommentStoreReviewMode, @"门店评价", [@"评论区顶部的「门店评价」分页。" stringByAppendingString:kDKHeaderTabSuffix] ],
             @[ DKKeyCommentSearchAnchorMode, @"大家都在搜", [@"评论区顶部的「大家都在搜」入口。" stringByAppendingString:kDKHeaderAnchorSuffix] ],
             @[ DKKeyCommentLunaAnchorMode, @"去汽水听", [@"评论区顶部的汽水音乐入口。" stringByAppendingString:kDKHeaderAnchorSuffix] ],
             @[ DKKeyCommentLocationMode, @"地点信息", [@"评论区顶部的地点信息。" stringByAppendingString:kDKHeaderAnchorSuffix] ],
             @[ DKKeyCommentGameAnchorMode, @"游戏标签", [@"评论区顶部的游戏标签。" stringByAppendingString:kDKHeaderAnchorSuffix] ],
             @[ DKKeyCommentSeriesAnchorMode, @"观看完整合集", [@"评论区顶部的「观看完整合集」入口。" stringByAppendingString:kDKHeaderAnchorSuffix] ],
+            @[ DKKeyCommentDramaAnchorMode, @"电视剧", [@"评论区顶部的电视剧标签。" stringByAppendingString:kDKHeaderAnchorSuffix] ],
+            @[ DKKeyCommentAIParseMode, @"评论区AI解析", [@"评论区顶部的 AI 解析分页。" stringByAppendingString:kDKHeaderTabSuffix] ],
+            @[ DKKeyCommentPlayerDiscussionMode, @"玩家讨论", [@"评论区顶部的「玩家讨论」分页。" stringByAppendingString:kDKHeaderTabSuffix] ],
+            @[ DKKeyCommentStoreReviewMode, @"门店评价", [@"评论区顶部的「门店评价」分页。" stringByAppendingString:kDKHeaderTabSuffix] ],
+            @[ DKKeyCommentDramaReviewMode, @"剧集评价", [@"评论区顶部的「剧集评价」分页。" stringByAppendingString:kDKHeaderTabSuffix] ],
         ];
     });
     return items;
@@ -93,7 +98,8 @@ static NSString *DKHeaderTemplateKey(id name) {
     static NSDictionary<NSString *, NSString *> *keys;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        keys = @{ @"poi_poi": DKKeyCommentLocationMode, @"game_pad": DKKeyCommentGameAnchorMode };
+        keys = @{ @"poi_poi": DKKeyCommentLocationMode, @"game_pad": DKKeyCommentGameAnchorMode,
+                  @"entertainment_ysz": DKKeyCommentDramaAnchorMode };
     });
     return [name isKindOfClass:NSString.class] ? keys[name] : nil;
 }
@@ -104,6 +110,7 @@ static NSString *DKHeaderTabKey(NSUInteger tab) {
         case 16: return DKKeyCommentAIParseMode;
         case 14: return DKKeyCommentPlayerDiscussionMode;
         case 8: return DKKeyCommentStoreReviewMode;
+        case 15: return DKKeyCommentDramaReviewMode;
         default: return nil;
     }
 }
@@ -143,6 +150,7 @@ static BOOL DKHeaderIsKind(id object, NSString *name) {
 @property (nonatomic) BOOL collapsed;
 @property (nonatomic) BOOL scheduled;
 @property (nonatomic) BOOL syncScheduled;
+@property (nonatomic, strong) NSHashTable<UIView *> *regions;
 @end
 @implementation DKCommentHeaderState
 @end
@@ -202,7 +210,7 @@ static void DKHeaderNoteMount(UIView *view) {
     for (UIView *ancestor = view.superview; ancestor && depth < 6; ancestor = ancestor.superview, depth++) {
         DKCommentHeaderState *state = objc_getAssociatedObject(ancestor, &kDKHeaderStateKey);
         if (![state isKindOfClass:DKCommentHeaderState.class]) continue;
-        if (state.cell == ancestor && state.leaf != view) DKHeaderScheduleSync(state);
+        if (state.cell == ancestor && (DKPrefBool(DKKeyCommentRemoveAllTopTags) || state.leaf != view)) DKHeaderScheduleSync(state);
         return;
     }
 }
@@ -292,6 +300,33 @@ static void DKHeaderApplyLeaf(UIView *leaf, DKDisplayMode mode) {
         leaf.accessibilityElementsHidden = original[1].boolValue;
     }
     if (remove || original) DKHeaderWriteHidden(leaf, host || remove);
+}
+
+static UIView *DKHeaderRegionCount(UIView *root) {
+    // 原生计数是业务容器的直接子视图；业务分支内部的同类文字仍随业务移除。
+    for (UIView *child in root.subviews) {
+        if (DKHeaderIsKind(child, kDKHeaderCountLabelClass) && !DKHeaderHostHidden(child)) return child;
+    }
+    return nil;
+}
+
+// 在顶部业务容器中仅保留原生计数，其余完整分支均由总开关接管。
+static void DKHeaderCollectRegions(UIView *root, UIView *count, NSHashTable<UIView *> *regions) {
+    if (root == count) return;
+    if (!count) { [regions addObject:root]; return; }
+    for (UIView *child in root.subviews) if (child != count) [regions addObject:child];
+}
+
+static void DKHeaderRemoveRegions(DKCommentHeaderState *state, NSHashTable<UIView *> *regions) {
+    for (UIView *view in state.regions) {
+        if (![regions containsObject:view]) DKHeaderApplyLeaf(view, DKDisplayModeShow);
+    }
+    for (UIView *view in regions) {
+        DKHeaderApplyLeaf(view, DKDisplayModeRemove);
+        // 组件重写 hidden 时仍由分支 mask 保持不可见，包含尚未登记的业务类。
+        DKAdjustFade(view, 0.0, CGSizeZero);
+    }
+    state.regions = regions;
 }
 
 #pragma mark - 计数单行
@@ -399,26 +434,34 @@ static void DKHeaderScheduleLayout(DKCommentHeaderState *state) {
 }
 
 static void DKHeaderSync(DKCommentHeaderState *state) {
+    BOOL removeAll = DKPrefBool(DKKeyCommentRemoveAllTopTags);
+    if (!removeAll) DKHeaderRemoveRegions(state, nil);
     NSString *key = nil;
     UIView *countLabel = nil;
     UIView *leaf = DKHeaderLeaf(state, &key, &countLabel);
-    if (!leaf) countLabel = nil;
+    if (removeAll) countLabel = DKHeaderRegionCount(state.cell.contentView);
+    else if (!leaf) countLabel = nil;
     if (state.leaf != leaf) DKHeaderApplyLeaf(state.leaf, DKDisplayModeShow);
     if (state.countLabel != countLabel) DKHeaderPinCount(state.countLabel, nil, 0.0);
     state.leaf = leaf;
     state.countLabel = countLabel;
     state.key = key;
-    DKDisplayMode mode = key ? DKPrefDisplayMode(key) : DKDisplayModeShow;
+    DKDisplayMode mode = removeAll ? DKDisplayModeRemove : key ? DKPrefDisplayMode(key) : DKDisplayModeShow;
     state.mode = mode;
-    DKHeaderApplyLeaf(leaf, mode);
+    DKHeaderApplyLeaf(leaf, removeAll ? DKDisplayModeShow : mode);
     id models = DKHeaderObject(state.section, @"modelsArray");
     BOOL singleItem = [models isKindOfClass:NSArray.class] && [models count] == 1 && [models firstObject] == state.model;
     double retainedHeight = countLabel ? DKHeaderCountRowHeight(state) : 0.0;
-    BOOL collapsed = leaf && mode == DKDisplayModeRemove && singleItem && (!countLabel || retainedHeight > 0.0);
+    BOOL collapsed = (removeAll || leaf) && mode == DKDisplayModeRemove && singleItem && (!countLabel || retainedHeight > 0.0);
     BOOL changed = state.collapsed != collapsed || (collapsed && state.retainedHeight != retainedHeight);
     state.collapsed = collapsed;
     state.retainedHeight = retainedHeight;
     DKHeaderPinCount(countLabel, state.cell.contentView, collapsed ? retainedHeight : 0.0);
+    if (removeAll) {
+        NSHashTable *regions = [NSHashTable weakObjectsHashTable];
+        DKHeaderCollectRegions(state.cell.contentView, countLabel, regions);
+        DKHeaderRemoveRegions(state, regions);
+    }
     gDKHeaderLastState = state;
     if (changed) DKHeaderScheduleLayout(state);
 }
@@ -426,14 +469,15 @@ static void DKHeaderSync(DKCommentHeaderState *state) {
 #pragma mark - 评论分页
 
 static NSUInteger DKHeaderTab(id model) {
-    if (!DKHeaderIsKind(model, @"AWECommentPanelContainerSwiftImpl.CommentTabModel")) return 0;
+    if (!DKHeaderIsKind(model, @"AWECommentPanelContainerSwiftImpl.CommentTabModel")) return NSNotFound;
     SEL selector = NSSelectorFromString(@"tab");
     NSMethodSignature *signature = [model methodSignatureForSelector:selector];
-    if (signature.numberOfArguments != 2 || strcmp(signature.methodReturnType, @encode(NSUInteger)) != 0) return 0;
+    if (signature.numberOfArguments != 2 || strcmp(signature.methodReturnType, @encode(NSUInteger)) != 0) return NSNotFound;
     return ((NSUInteger (*)(id, SEL))objc_msgSend)(model, selector);
 }
 
 static DKDisplayMode DKHeaderTabMode(NSUInteger tab) {
+    if (tab != NSNotFound && tab != kDKHeaderCommentsTab && DKPrefBool(DKKeyCommentRemoveAllTabs)) return DKDisplayModeRemove;
     NSString *key = DKHeaderTabKey(tab);
     return key ? DKPrefDisplayMode(key) : DKDisplayModeShow;
 }
@@ -510,12 +554,15 @@ static NSString *DKHeaderTitle(NSString *key) {
 
 NSString *DKCommentHeaderStatus(void) {
     NSMutableString *out = [NSMutableString stringWithString:@"档位："];
+    [out appendFormat:@" 全部顶部标签=%@ 全部业务分页=%@", DKPrefBool(DKKeyCommentRemoveAllTopTags) ? @"移除" : @"按单项",
+        DKPrefBool(DKKeyCommentRemoveAllTabs) ? @"移除" : @"按单项"];
     for (NSArray<NSString *> *item in DKHeaderItems()) {
         [out appendFormat:@" %@=%@", item[1], DKHeaderModeText(DKPrefDisplayMode(item[0]))];
     }
     [out appendFormat:@"\nHook：%@\n", gDKHeaderHooks ?: @"未安装"];
     DKCommentHeaderState *state = gDKHeaderLastState;
     if (state.cell) {
+        [out appendFormat:@"通用业务区域：接管分支=%lu\n", (unsigned long)state.regions.count];
         UIView *leaf = state.leaf, *count = state.countLabel;
         [out appendFormat:@"最近顶部：业务=%@ 档位=%@ 收拢=%@ 单行高=%.1f 宿主高=%.1f 计数在行内=%@\n",
             leaf ? [NSString stringWithFormat:@"%@(%@)", NSStringFromClass(leaf.class), DKHeaderTitle(state.key)] : @"(无)",
@@ -585,6 +632,7 @@ NSString *DKCommentHeaderStatus(void) {
 - (void)configCell:(UICollectionViewCell *)cell index:(NSInteger)index model:(id)model {
     DKCommentHeaderState *state = DKHeaderState(self);
     if (state.model != model || state.cell != cell) {
+        DKHeaderRemoveRegions(state, nil);
         DKHeaderApplyLeaf(state.leaf, DKDisplayModeShow);
         state.leaf = nil;
         DKHeaderPinCount(state.countLabel, nil, 0.0);
@@ -625,6 +673,16 @@ NSString *DKCommentHeaderStatus(void) {
     double height = %orig;
     DKCommentHeaderState *state = objc_getAssociatedObject(self, &kDKHeaderStateKey);
     return state.collapsed ? state.retainedHeight + [self heightForSegmentedControl] : height;
+}
+%end
+%end
+
+// 组件挂载结束后同步所属顶部，覆盖未知业务分支晚到或替换的情况。
+%group DKHeaderRegionMount
+%hook DKHeaderComponentContainer
+- (void)didRender {
+    %orig;
+    if (DKPrefBool(DKKeyCommentRemoveAllTopTags)) DKHeaderNoteMount([self mountedView]);
 }
 %end
 %end
@@ -690,6 +748,14 @@ NSString *DKCommentHeaderStatus(void) {
 %end
 
 %ctor {
+    DKSettingsRegister(DKKeyCommentRemoveAllTopTags, ^{
+        return DKMakeSwitch(DKKeyCommentRemoveAllTopTags, @"移除全部评论区顶部标签",
+            @"移除评论区顶部的整个业务标签区域，包含新增的同类标签；保留评论数量和关闭、放大按钮。下方标签项锁定为「移除」，关闭后恢复各项原设置。更改后重新打开评论区生效。");
+    });
+    DKSettingsRegister(DKKeyCommentRemoveAllTabs, ^{
+        return DKMakeSwitch(DKKeyCommentRemoveAllTabs, @"移除全部评论区分页",
+            @"保留基础「评论」页，移除其余业务分页，包含新增的同类分页。下方分页项锁定为「移除」，关闭后恢复各项原设置。更改后重新打开评论区生效。");
+    });
     NSMutableArray<NSString *> *installed = [NSMutableArray array];
     Class section = NSClassFromString(@"AWECommentPanelHeaderSwiftImpl.CommentPanelHeaderSectionController");
     Class cell = NSClassFromString(@"AWECommentPanelHeaderSwiftImpl.CommentPanelHeaderNewCell");
@@ -697,6 +763,12 @@ NSString *DKCommentHeaderStatus(void) {
     if (section && cell && inner) {
         %init(DKCommentHeaderHooks, DKCommentHeaderSection=section, DKCommentHeaderCell=cell, DKCommentHeaderInner=inner);
         [installed addObject:@"顶部"];
+        Class componentContainer = NSClassFromString(@"AWERLComponentContainer");
+        if (class_getInstanceMethod(componentContainer, @selector(didRender))
+            && class_getInstanceMethod(componentContainer, @selector(mountedView))) {
+            %init(DKHeaderRegionMount, DKHeaderComponentContainer=componentContainer);
+            [installed addObject:@"业务容器挂载"];
+        }
         Class search = NSClassFromString(@"AWECommentSearchAnchorView");
         if (search) { %init(DKHeaderSearchGuard, DKHeaderSearchView=search); [installed addObject:@"搜索守门"]; }
         Class luna = NSClassFromString(@"AWECommentGuideLunaAnchorView");
