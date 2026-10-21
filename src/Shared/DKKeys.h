@@ -51,6 +51,19 @@ static NSString *const DKKeyShareMenu            = @"DYKillerShareMenu";
 static NSString *const DKKeyShareMenuCatalog     = @"DYKillerShareMenuCatalog";
 static NSString *const DKKeyShareMenuHidePrefix  = @"DYKillerHideShareMenu.";
 
+#pragma mark - 功能组：搜索页精简
+
+static NSString *const DKKeySearchRemoveHistory = @"DYKillerSearchRemoveHistory";
+static NSString *const DKKeySearchRemoveGuess = @"DYKillerSearchRemoveGuess";
+static NSString *const DKKeySearchRemoveAllRanks = @"DYKillerSearchRemoveAllRanks";
+static NSString *const DKKeySearchRanks = @"DYKillerSearchRanks";
+static NSString *const DKKeySearchRankCatalog = @"DYKillerSearchRankCatalog";
+static NSString *const DKKeySearchRankHidePrefix = @"DYKillerHideSearchRank.";
+static NSString *const DKKeySearchRemoveRankFooter = @"DYKillerSearchRemoveRankFooter";
+static NSString *const DKKeySearchRemoveVoice = @"DYKillerSearchRemoveVoice";
+// 相机入口：0 显示 / 1 隐藏（保留位置与点击）/ 2 移除（原生布局收拢）。
+static NSString *const DKKeySearchCameraMode = @"DYKillerSearchCameraMode";
+
 #pragma mark - 功能组：应用内通知
 
 // 材质单选（DKMakeGlassChoice）：总开关 + 清透档两个 BOOL，清透档关即系统 Regular。

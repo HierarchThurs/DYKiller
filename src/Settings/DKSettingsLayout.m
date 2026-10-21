@@ -244,6 +244,23 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                 ]),
             ]),
         ]),
+        DKSection(@"搜索页", @[
+            DKPage(@"搜索页精简", @"ic_videosearch_outlined_20", @[
+                DKSection(@"搜索历史", @[
+                    DKRow(DKKeySearchRemoveHistory, @"ic_eyeslash_outlined_20"),
+                ]),
+                DKSection(@"推荐与榜单", @[
+                    DKRow(DKKeySearchRemoveGuess, @"ic_eyeslash_outlined_20"),
+                    DKRow(DKKeySearchRemoveAllRanks, @"ic_eyeslash_outlined_20"),
+                    DKRow(DKKeySearchRanks, @"ic_module_outlined_20"),
+                    DKRow(DKKeySearchRemoveRankFooter, @"ic_eyeslash_outlined_20"),
+                ]),
+                DKSection(@"输入入口", @[
+                    DKRow(DKKeySearchRemoveVoice, @"ic_eyeslash_outlined_20"),
+                    DKRow(DKKeySearchCameraMode, @"ic_cameralogo_outlined_20"),
+                ]),
+            ]),
+        ]),
     ]);
 
     DKSettingsPage *appearance = DKPage(@"外观定制", @"ic_magic_outlined_20", @[
@@ -654,6 +671,8 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
         NSString *removedPlus = @"拍摄按钮已在「移除底栏项目」中移除";
         NSMutableDictionary *table = [NSMutableDictionary dictionary];
         [table addEntriesFromDictionary:@{
+            DKKeySearchRanks: @[ DKBlockOn(DKKeySearchRemoveAllRanks, @"已移除全部榜单") ],
+            DKKeySearchRemoveRankFooter: @[ DKBlockOn(DKKeySearchRemoveAllRanks, @"已移除全部榜单") ],
             DKKeyPlusStyle: @[ DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
             DKKeyPlusIcon: @[ DKBlockNotEqual(DKKeyPlusStyle, 3, @"需先在「拍摄按钮」中选择「自定义图片」"),
                               DKBlockOn(DKKeyHidePlusButton, removedPlus) ],

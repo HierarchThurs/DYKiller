@@ -3,6 +3,7 @@
 #import "DKMediaSaveDiagnostics.h"
 #import "DKInteractionIcons.h"
 #import "DKShareMenu.h"
+#import "DKSearchClean.h"
 #import "DKTabBarProbe.h"
 #import "DKVideoFeedTable.h"
 #import "DKVideoFullscreen.h"
@@ -21,6 +22,7 @@ static NSDictionary *DKFKProviderSnapshot(void) {
     else result[@"detail_layout_hook"]=@{@"state":@"method_unavailable"};
     result[@"settings_backup"]=DKSettingsBackupDiagnostics() ?: @{};
     result[@"interaction_icons"]=DKInteractionIconsStatus();
+    result[@"search_clean"]=DKSearchCleanStatus();
     result[@"share_menu"]=DKShareMenuStatus();
     result[@"prompt_panel"]=DKPromptDiagnostics();
     return result;
