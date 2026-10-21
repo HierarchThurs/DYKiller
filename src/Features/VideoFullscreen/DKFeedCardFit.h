@@ -2,9 +2,9 @@
 //  DKFeedCardFit.h
 //  DYKiller
 //
-//  视频全屏下的非视频条目（Lynx 特殊卡、音乐卡、长文章）：内容按视频表撑高前的高度排版，背景铺满。
+//  视频全屏下的非视频条目（特殊卡、音乐卡、长文章）：内容按视频表撑高前的高度排版，背景铺满。
 //
-//  特殊卡收短根视图，音乐卡收短 Lynx 容器；背景条挂在仍为满高的宿主中。
+//  特殊卡收短内容容器，音乐卡收短 Lynx 容器；背景条挂在仍为满高的宿主中。
 //
 #ifndef DKFeedCardFit_h
 #define DKFeedCardFit_h
@@ -27,6 +27,9 @@ CGFloat DKFeedCardInset(UIView *view);
 
 /// 把 container 与上层视图（父视图至所在 cell）之间的底边约束收短 inset，返回是否已接管；inset 为 0 时还原。缺失时返回 NO。
 BOOL DKFeedCardFitContainer(UIView *container, CGFloat inset, DKFeedCardType type);
+
+/// 原生特殊卡面板的底边至少让出 inset；保留原生已有的底部预留，inset 为 0 时还原。
+BOOL DKFeedCardFitNativePanel(UIView *panel, CGFloat inset);
 
 /// 当前底边约束是否由本功能接管。
 BOOL DKFeedCardContainerIsFitted(UIView *container);

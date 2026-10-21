@@ -131,6 +131,15 @@ BOOL DKFeedCardContainerIsFitted(UIView *container) {
     return bottom && objc_getAssociatedObject(bottom, &kDKConstraintOriginalKey) != nil;
 }
 
+BOOL DKFeedCardFitNativePanel(UIView *panel, CGFloat inset) {
+    BOOL reversed = NO;
+    NSLayoutConstraint *bottom = DKCardBottomConstraint(panel, &reversed);
+    NSNumber *original = bottom ? objc_getAssociatedObject(bottom, &kDKConstraintOriginalKey) : nil;
+    CGFloat nativeGap = (reversed ? 1.0 : -1.0) * (original ? original.doubleValue : bottom.constant);
+    return DKFeedCardFitContainer(panel, inset > 0.0 ? MAX(inset - nativeGap, 0.0) : 0.0,
+                                  DKFeedCardTypeSpecial);
+}
+
 #pragma mark - 背景条
 
 static DKFeedCardBackdropView *DKCardBackdrop(UIView *host) {
