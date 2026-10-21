@@ -30,6 +30,8 @@ void DKDoubleTapCommentDuplicate(void);
 void DKDoubleTapCommentDispatch(DKDoubleTapCommentEntry entry, id source,
                                dispatch_block_t original, BOOL (^handler)(void));
 BOOL DKDoubleTapCommentOpen(UIViewController *owner, id model, dispatch_block_t action);
+// iPad 评论已显示时，返回本页原生关闭动作；其他页面或设备返回 nil。
+dispatch_block_t DKDoubleTapCommentPadCloseAction(UIViewController *owner);
 NSString *DKDoubleTapCommentDiagnostics(void);
 
 #endif

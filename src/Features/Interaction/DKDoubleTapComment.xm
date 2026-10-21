@@ -142,9 +142,14 @@ static BOOL DKTapCommentActive(UIViewController *owner) {
 BOOL DKDoubleTapCommentOpen(UIViewController *owner, id model, dispatch_block_t action) {
     if (!NSThread.isMainThread || !DKPrefBool(DKKeyDoubleTapOpenComment)) return NO;
     if (!owner || !model || !action) { DKDoubleTapCommentMissing(); return NO; }
-    if (DKTapCommentActive(owner) || objc_getAssociatedObject(owner, &kDKTapPendingKey)) {
+    if (objc_getAssociatedObject(owner, &kDKTapPendingKey)) {
         gDKTapDuplicates++;
         return YES;
+    }
+    if (DKTapCommentActive(owner)) {
+        dispatch_block_t close = DKDoubleTapCommentPadCloseAction(owner);
+        if (!close) { gDKTapDuplicates++; return YES; }
+        action = close;
     }
     if (!DKTapPageVisible(owner)) { gDKTapInactive++; return YES; }
 
