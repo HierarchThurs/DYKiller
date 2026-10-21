@@ -189,6 +189,7 @@ static CGRect DKAdjustFrame(UIView *view, CGRect frame) {
         return DKSettingsOnChange(item, ^{
             DKTabBarBackdropSetNeedsUpdate();
             DKPlaybackOverlayRefresh();
+            DKProgressUnderlineRefresh();
             if (DKVideoFullscreenOn()) return;
             for (NSUInteger i = 0; i < gRestoreCount; i++) gRestoreHooks[i]();
         });

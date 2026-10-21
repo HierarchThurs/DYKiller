@@ -534,12 +534,19 @@
 - (BOOL)shouldTransparentProgressSliderOnStableState;
 @end
 
+// feed 进度条背景的实际属主；getter 返回创建并挂在进度容器中的底边背景。
+@interface AWEDProgressFeedContainer : NSObject
+- (UIView *)progressSliderUnderView;
+@end
+
 // 进度条状态机：常态 / 唤醒态的外观在这里套用；currentState 1 为常态、2 为唤醒态（暂停）。
 @interface AWEDProgressStateChangeContainer : NSObject
 - (long long)currentState;
 - (AWEFeedProgressSlider *)progressSlider;
 - (BOOL)shouldTransparentProgressSliderOnStableState;
 - (void)reapplyCurrentStateAppearance;
+- (UIView *)progressSliderUnderView;
+- (void)updateProgressSliderUnderView;
 @end
 
 #pragma mark - 内容过滤用到的类

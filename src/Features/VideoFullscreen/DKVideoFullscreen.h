@@ -83,9 +83,8 @@ void DKHUDStatusBarCoverSync(UIViewController *interaction);
 /// 该遮罩应有的高度（窗口安全区高）。实现与调试探针共用同一把尺子。
 CGFloat DKHUDStatusBarCoverHeight(UIView *hudView);
 
-/// 进度条容器每轮布局后调用：视频全屏开时清掉底边的纯黑细垫层，关时还原。
-/// 由进度条容器的统一布局入口调用，实现在 DKProgressUnderline.xm。
-void DKProgressUnderlineApply(UIView *container);
+/// 视频全屏开关变化时，立即更新已见进度条背景；关闭时由原生状态机恢复显隐。
+void DKProgressUnderlineRefresh(void);
 
 /// 注册一个「开关关闭时立刻还原」的回调。各分支在 %ctor 里登记，由统一的开关项触发。
 void DKVideoFullscreenRegisterRestore(void (*restore)(void));
