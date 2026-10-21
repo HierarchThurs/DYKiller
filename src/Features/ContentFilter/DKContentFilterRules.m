@@ -44,6 +44,7 @@ BOOL DKFilterIsLive(id model) {
 
 BOOL DKFilterSpecialCard(id model, DKFilterCardKind *kind) {
     if (!DKFilterIsClass(model, @"AWEAwemeModel")) return NO;
+    // 原生与 Lynx 特殊卡共用该卡模型，过滤按业务号分类。
     id card = DKFilterObject(model, @selector(hotSpotLynxCardModel));
     if (!card) return NO;
     if (kind) *kind = DKFilterCardKindForBusiness(DKFilterObject(card, @selector(businessID)));
