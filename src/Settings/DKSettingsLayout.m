@@ -106,6 +106,11 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyPlaybackFullscreenMode, @"ic_fullscreen_outlined_16"),
                     DKRow(DKKeyPlaybackDanmakuMode, @"ic_comment_outlined_20"),
                 ]),
+                DKSection(@"作品详情页", @[
+                    DKRow(DKKeyDetailReturnMode, @"ic_arrowleft_outlined_20"),
+                    DKRow(DKKeyDetailSearchMode, @"ic_videosearch_outlined_20"),
+                    DKRow(DKKeyDetailHideBottomBar, @"ic_xmark_outlined_20"),
+                ]),
                 DKSection(@"锚点标签", @[
                     DKRow(DKKeyPlaybackRemoveAllAnchors, @"ic_eyeslash_outlined_20"),
                     DKRow(DKKeyPlaybackGameTagMode, @"ic_module_outlined_20"),
@@ -128,25 +133,35 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyPlaybackSlidesTagMode, @"ic_image_outlined_20"),
                 ]),
                 DKSection(@"文案下方", @[
-                    DKRow(DKKeyPlaybackRelatedSearchMode, @"ic_videosearch_outlined_20"),
                     DKRow(DKKeyPlaybackRiskNoticeMode, @"ic_text_outlined_20"),
-                    DKRow(DKKeyPlaybackVideoCollectionMode, @"ic_playsquarestack_outlined_20"),
-                    DKRow(DKKeyPlaybackHotspotMode, @"ic_module_outlined_20"),
                     DKRow(DKKeyPlaybackMusicInfoMode, @"ic_quaver_outlined_20"),
                     DKRow(DKKeyPlaybackQuickReplyMode, @"ic_msg_outlined_20"),
+                ]),
+                DKSection(@"底部栏目", @[
+                    DKRow(DKKeyPlaybackRemoveAllBottomBars, @"ic_eyeslash_outlined_20"),
+                    DKRow(DKKeyPlaybackRelatedSearchMode, @"ic_videosearch_outlined_20"),
+                    DKRow(DKKeyPlaybackRelatedVideoMode, @"ic_playsquarestack_outlined_20"),
+                    DKRow(DKKeyPlaybackVideoCollectionMode, @"ic_playsquarestack_outlined_20"),
+                    DKRow(DKKeyPlaybackHotspotMode, @"ic_module_outlined_20"),
                     DKRow(DKKeyPlaybackAppDownloadMode, @"ic_boxarrowdown_outlined"),
                 ]),
             ]),
             DKPage(@"评论区精简", @"ic_comment_outlined_20", @[
-                DKSection(@"评论区顶部", @[
-                    DKRow(DKKeyCommentAIParseMode, @"ic_magic_outlined_20"),
-                    DKRow(DKKeyCommentPlayerDiscussionMode, @"ic_bubbletwo_outlined_20"),
-                    DKRow(DKKeyCommentStoreReviewMode, @"ic_star_outlined_20"),
+                DKSection(@"评论区顶部标签", @[
+                    DKRow(DKKeyCommentRemoveAllTopTags, @"ic_eyeslash_outlined_20"),
                     DKRow(DKKeyCommentSearchAnchorMode, @"ic_videosearch_outlined_20"),
                     DKRow(DKKeyCommentLunaAnchorMode, @"ic_quaver_outlined_20"),
                     DKRow(DKKeyCommentLocationMode, @"ic_location_outlined_20"),
                     DKRow(DKKeyCommentGameAnchorMode, @"ic_tag_outlined_20"),
                     DKRow(DKKeyCommentSeriesAnchorMode, @"ic_collection_outlined_20"),
+                    DKRow(DKKeyCommentDramaAnchorMode, @"ic_video_outlined_20"),
+                ]),
+                DKSection(@"评论区分页", @[
+                    DKRow(DKKeyCommentRemoveAllTabs, @"ic_eyeslash_outlined_20"),
+                    DKRow(DKKeyCommentAIParseMode, @"ic_magic_outlined_20"),
+                    DKRow(DKKeyCommentPlayerDiscussionMode, @"ic_bubbletwo_outlined_20"),
+                    DKRow(DKKeyCommentStoreReviewMode, @"ic_star_outlined_20"),
+                    DKRow(DKKeyCommentDramaReviewMode, @"ic_star_outlined_20"),
                 ]),
                 DKSection(@"评论区元素", @[
                     DKRow(DKKeyCommentReplyBottomBarMode, @"ic_comment_outlined_20"),
@@ -157,7 +172,6 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                 ]),
             ]),
             DKRow(DKKeyShareMenu, @"ic_share_outlined"),
-            DKRow(DKKeyDetailHideBottomBar, @"ic_xmark_outlined_20"),
         ]),
         DKSection(@"长按菜单", @[
             DKRow(DKKeyFeedMenu, @"ic_video_outlined_20"),
@@ -325,6 +339,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                                                          sections:@[
         DKSection(@"底栏", @[
             DKRow(DKKeyGlassTabBar, @"ic_module_outlined_20"),
+            DKRow(DKKeyGlassTabBarPadPosition, @"ic_squaresplit_outlined_20"),
         ]),
         DKSection(@"音频可视化", @[
             DKRow(DKKeyAudioVizPosition, @"ic_playbackquaver_outlined"),
@@ -342,6 +357,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
         DKSection(@"应用内通知", @[
             DKRow(DKKeyInnerNotiGlass, @"ic_msg_outlined_20"),
             DKRow(DKKeyInnerNotiCorner, @"ic_circletop_outlined"),
+            DKRow(DKKeyTipsGlass, @"ic_msg_outlined_20"),
             DKRow(DKKeyMediaSaveGlass, @"ic_boxarrowdown_outlined"),
         ]),
     ]];
@@ -563,6 +579,7 @@ NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {
     dispatch_once(&once, ^{
         requires = @{
             DKKeyAudioVizPosition:       @[ DKKeyGlassTabBar ],
+            DKKeyGlassTabBarPadPosition: @[ DKKeyGlassTabBar ],
             DKKeyAudioVizStyle:          @[ DKKeyAudioVizPosition ],
             DKKeyInnerNotiCorner:        @[ DKKeyInnerNotiGlass ],
             DKKeyMinimumLikes:           @[ DKKeyFilterLowLikes ],
@@ -665,6 +682,18 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
             DKKeyPlaybackGameTagMode, DKKeyPlaybackMusicAnchorMode, DKKeyPlaybackPropEffectMode,
             DKKeyPlaybackJianyingMode, DKKeyPlaybackPaidContentMode, DKKeyPlaybackLocationMode,
         ], 2, @"已由「移除全部昵称上方标签」统一移除");
+        DKAddMasterBlockers(table, DKKeyPlaybackRemoveAllBottomBars, @[
+            DKKeyPlaybackRelatedSearchMode, DKKeyPlaybackRelatedVideoMode, DKKeyPlaybackVideoCollectionMode,
+            DKKeyPlaybackHotspotMode, DKKeyPlaybackAppDownloadMode,
+        ], 2, @"已由「移除全部底部栏目」统一移除");
+        DKAddMasterBlockers(table, DKKeyCommentRemoveAllTopTags, @[
+            DKKeyCommentSearchAnchorMode, DKKeyCommentLunaAnchorMode, DKKeyCommentLocationMode,
+            DKKeyCommentGameAnchorMode, DKKeyCommentSeriesAnchorMode, DKKeyCommentDramaAnchorMode,
+        ], 2, @"已由「移除全部评论区顶部标签」统一移除");
+        DKAddMasterBlockers(table, DKKeyCommentRemoveAllTabs, @[
+            DKKeyCommentAIParseMode, DKKeyCommentPlayerDiscussionMode, DKKeyCommentStoreReviewMode,
+            DKKeyCommentDramaReviewMode,
+        ], 2, @"已由「移除全部评论区分页」统一移除");
         blockers = [table copy];
     });
     return (key ? blockers[key] : nil) ?: @[];
