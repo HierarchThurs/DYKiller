@@ -4,6 +4,7 @@
 //
 //  播放页精简：显示 / 隐藏 / 移除。
 //  「移除全部昵称上方标签」开启时，锚点行（含没有单独设置项的业务号）一律按移除处理，各锚点项的存值不动。
+//  「移除全部底部栏目」按播放交互控制器的底部容器归属覆盖业务行，包含未登记元素。
 //
 //  实现：
 //   - 隐藏：对目标挂透明 mask（DKAdjustFade 系数 0），不改 alpha / hidden，命中与位置不变。整行项淡出行的直接子视图，
@@ -37,9 +38,10 @@ static CGFloat DKCleanFadeFactor(DKDisplayMode mode) {
 
 #pragma mark - 行档位
 
-// 行的有效档位：总开关开启时锚点行一律移除；其余按所属设置项，不归任何设置项的行按显示。
+// 总开关优先于单项档位；未登记的锚点与底部栏目同样受各自总开关管理。
 static DKDisplayMode DKCleanRowMode(UIView *row, NSString *key) {
     if (DKPrefBool(DKKeyPlaybackRemoveAllAnchors) && DKCleanIsAnchorRow(row)) return DKDisplayModeRemove;
+    if (DKPrefBool(DKKeyPlaybackRemoveAllBottomBars) && DKCleanIsBottomRow(row)) return DKDisplayModeRemove;
     return key ? DKPrefDisplayMode(key) : DKDisplayModeShow;
 }
 
@@ -150,7 +152,8 @@ BOOL DKPlaybackCleanRowRemoved(UIView *row) {
     id element = DKCleanRowElement(row);
     if (!element) return NO;
     NSString *key = DKCleanKeyForRow(row);
-    if (key || DKCleanIsAnchorRow(row)) return DKCleanRowMode(row, key) == DKDisplayModeRemove;
+    if (DKCleanRowMode(row, key) == DKDisplayModeRemove) return YES;
+    if (key || DKCleanIsAnchorRow(row)) return NO;
     return DKCleanIsTagsElement(element) && DKCleanTagsRowRemoved(row, element);
 }
 
@@ -211,6 +214,7 @@ NSString *DKPlaybackCleanStatus(void) {
         if (mode != DKDisplayModeShow) [changed addObject:[NSString stringWithFormat:@"%@=%@", DKCleanShortName(key), DKCleanModeText(mode)]];
     }
     [out appendFormat:@"移除全部昵称上方标签=%@\n", DKPrefBool(DKKeyPlaybackRemoveAllAnchors) ? @"开启" : @"关闭"];
+    [out appendFormat:@"移除全部底部栏目=%@\n", DKPrefBool(DKKeyPlaybackRemoveAllBottomBars) ? @"开启" : @"关闭"];
     [out appendFormat:@"非默认存值：%@\n", changed.count ? [changed componentsJoinedByString:@" "] : @"无"];
 
     for (UIView *entry in gDKCleanEntries.allObjects) {
@@ -225,7 +229,8 @@ NSString *DKPlaybackCleanStatus(void) {
             id element = DKCleanRowElement(row);
             NSString *key = DKCleanKeyForRow(row);
             NSString *owner = key ? DKCleanShortName(key) : (DKCleanIsAnchorRow(row)
-                ? [NSString stringWithFormat:@"未登记锚点 %@", DKCleanAnchorName(row) ?: @"?"] : nil);
+                ? [NSString stringWithFormat:@"未登记锚点 %@", DKCleanAnchorName(row) ?: @"?"]
+                : DKCleanIsBottomRow(row) ? @"未登记底部栏目" : nil);
             [out appendFormat:@"    %@ → %@ hidden=%d 移除=%d 高=%.1f\n",
                 element ? NSStringFromClass([element class]) : NSStringFromClass(row.class),
                 owner ? [NSString stringWithFormat:@"%@(%@)", owner, DKCleanModeText(DKCleanRowMode(row, key))] : @"-",

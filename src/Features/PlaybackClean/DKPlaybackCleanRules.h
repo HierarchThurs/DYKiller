@@ -23,6 +23,9 @@ UIView *DKCleanRowForView(UIView *view);
 /// 整行由一个设置项管理时返回该设置键，否则返回 nil。
 NSString *DKCleanKeyForRow(UIView *row);
 
+/// 是否属于当前播放交互控制器的原生底部栏目栈，包含未登记的业务元素。
+BOOL DKCleanIsBottomRow(UIView *row);
+
 /// 是否锚点行（游戏标签、汽水音乐、付费内容等，按锚点业务号区分；含没有单独设置项的业务号）。
 BOOL DKCleanIsAnchorRow(UIView *row);
 

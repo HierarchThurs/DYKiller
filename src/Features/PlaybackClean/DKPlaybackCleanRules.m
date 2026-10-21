@@ -10,6 +10,7 @@
 
 #import "DKPlaybackCleanRules.h"
 #import "DKKeys.h"
+#import "DKUtils.h"
 
 static id DKCleanValue(id object, NSString *key) {
     if (!object || key.length == 0) return nil;
@@ -67,6 +68,14 @@ NSString *DKCleanAnchorName(UIView *row) {
     return DKCleanString(DKCleanValue(anchorView, @"templateAnchorInfo"), @"name");
 }
 
+BOOL DKCleanIsBottomRow(UIView *row) {
+    if (!DKCleanRowElement(row)) return NO;
+    UIViewController *controller = DKPlayInteractionControllerForView(row);
+    UIView *container = DKCleanViewValue(controller, @"bottomContainerView");
+    return [container isKindOfClass:UIStackView.class] && row.superview == container
+        && [((UIStackView *)container).arrangedSubviews containsObject:row];
+}
+
 // 锚点：templateAnchorInfo.name，拍同款的名字末尾带空格，比对前去空白。
 static NSString *DKCleanAnchorKey(UIView *row) {
     static NSDictionary<NSString *, NSString *> *map;
@@ -121,6 +130,7 @@ NSString *DKCleanKeyForRow(UIView *row) {
     if (DKCleanIsKind(element, @"AWEPlayInteractionMusicInfoAiRefactorElement")
         || DKCleanIsKind(element, @"AWEPlayInteractionMusicInfoElement")) return DKKeyPlaybackMusicInfoMode;
     if (DKCleanIsKind(element, @"AWEPlayInteractionNewDiversionBarBottomElement")) return DKKeyPlaybackAppDownloadMode;
+    if (DKCleanIsKind(element, @"AWEPlayInteractionRelatedVideoNewBottomElement")) return DKKeyPlaybackRelatedVideoMode;
     if (DKCleanIsKind(element, @"AWEPlayInteractionAnchorElement")) return DKCleanAnchorKey(row);
     if (DKCleanIsKind(element, @"AWETemplateNewBottomElement")) return DKCleanTemplateBarKey(element);
     // 搜索详情等页的合集栏（identifier 固定为 compilation_detail），与模板底栏的 playlet_bar 同归视频合集。
