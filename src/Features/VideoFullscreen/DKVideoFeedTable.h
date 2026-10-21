@@ -30,6 +30,9 @@ BOOL DKVideoFeedTablePrepareForController(UIViewController *controller, UITableV
 /// 详情页建行与分页前准备、三个行高入口的调用及修正统计。
 NSString *DKVideoDetailTableStats(void);
 
+/// iPad 首页建行前的表准备与整页行高修正统计。
+NSString *DKVideoPadFeedTableStats(void);
+
 /// HUD 钉位与视频表修正的会话累计统计；首页和详情控制器布局分别报告调用与补正次数。
 NSString *DKVideoFeedTableStats(void);
 

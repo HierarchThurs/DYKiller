@@ -17,6 +17,7 @@ static const NSUInteger kDKFeedAncestorLimit = 8;
 
 // 撑高前的表高。挂在表上，既是还原依据，也是 HUD 的钉位目标。
 static char kDKFeedOriginalHeightKey;
+static char kDKPadFeedBottomReserveKey;
 // 所有撑高过的表（弱引用），供关闭开关时立即还原。多页并存时可能不止一张。
 static NSHashTable<UITableView *> *gStretchedTables = nil;
 
@@ -42,7 +43,7 @@ NSString *DKVideoFeedTableStats(void) {
     return [NSString stringWithFormat:
             @"HUD setFrame=%lu  HUD 布局后兜底=%lu  表 setFrame补正=%lu  表控制器布局补正=%lu  "
              "首页控制器布局 跑=%lu 补正=%lu  详情控制器布局 跑=%lu 补正=%lu  "
-             "首页原生布局前 跑=%lu 补正=%lu  详情原生布局前 跑=%lu 补正=%lu",
+             "首页原生布局前 跑=%lu 补正=%lu  详情原生布局前 跑=%lu 补正=%lu  %@",
             (unsigned long)gHitSetFrame,
             (unsigned long)gHitFallback,
             (unsigned long)gHitTableSetFrame,
@@ -54,7 +55,8 @@ NSString *DKVideoFeedTableStats(void) {
             (unsigned long)gFeedTableLayoutPreStats.runs,
             (unsigned long)gFeedTableLayoutPreStats.adjustments,
             (unsigned long)gDetailTableLayoutPreStats.runs,
-            (unsigned long)gDetailTableLayoutPreStats.adjustments];
+            (unsigned long)gDetailTableLayoutPreStats.adjustments,
+            DKVideoPadFeedTableStats()];
 }
 
 #pragma mark - 目标判定
@@ -78,7 +80,14 @@ UIView *DKFeedTableForView(UIView *view) {
 }
 
 NSNumber *DKVideoFeedTableOriginalHeight(UIView *table) {
-    return objc_getAssociatedObject(table, &kDKFeedOriginalHeightKey);
+    NSNumber *original = objc_getAssociatedObject(table, &kDKFeedOriginalHeightKey);
+    if (original && UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+        NSNumber *reserve = objc_getAssociatedObject(table, &kDKPadFeedBottomReserveKey);
+        CGFloat full = CGRectGetHeight(table.superview ? table.superview.bounds : table.bounds);
+        CGFloat native = full - reserve.doubleValue;
+        if (reserve && isfinite(native) && native > 0.0) return @(native);
+    }
+    return original;
 }
 
 // 该视图所在视频表撑高前的高度，也就是 HUD 的钉位目标；不在撑高作用域内返回 0。
@@ -95,6 +104,8 @@ static CGRect DKFeedTableAdjustFrameToHeight(UITableView *table, CGRect frame, C
     if (!DKVideoFullscreenOn()) {
         // 关闭后一律放行，抖音写什么就是什么；标记清掉以免 HUD 继续被钉。
         objc_setAssociatedObject(table, &kDKFeedOriginalHeightKey, nil,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(table, &kDKPadFeedBottomReserveKey, nil,
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return CGRectNull;
     }
@@ -113,6 +124,11 @@ static CGRect DKFeedTableAdjustFrameToHeight(UITableView *table, CGRect frame, C
         objc_setAssociatedObject(table, &kDKFeedOriginalHeightKey, @(current),
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [gStretchedTables addObject:table];
+        // iPad 保存底部预留，HUD 和关闭恢复按当前容器高度求原生高度。
+        if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+            objc_setAssociatedObject(table, &kDKPadFeedBottomReserveKey, @(target - current),
+                                     OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
     }
     frame.size.height = target;
     return frame;
@@ -211,6 +227,14 @@ static void DKSyncFeedTableLayout(UITableView *table, DKFeedTableLayoutStats *st
 
 #pragma mark - HUD 钉位
 
+// iPad 旋转会通过 autoresizing 同时增减 HUD 高度；评论原生缩小态继续由宿主管理。
+static BOOL DKFeedHUDPinsBothDirections(UIView *view) {
+    if (UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad) return NO;
+    if (DKCommentFreezeOn()) return YES;
+    id owner = view.nextResponder;
+    return [owner respondsToSelector:@selector(isCommentVCShowing)] && ![owner isCommentVCShowing];
+}
+
 // 由 DKVideoGeometry.xm 的总入口调用，调用方已确认写入方是 AWEPlayInteractionViewController。
 // HUD 根视图是裸 UIView、没有类可挂，只能这样拦。返回 CGRectNull 表示放行。
 //
@@ -225,9 +249,13 @@ CGRect DKFeedHUDAdjustFrame(UIView *view, CGRect frame) {
     NSNumber *original = DKVideoFeedTableOriginalHeight(table);
     if (!original) return CGRectNull;
 
-    // 只拦「被设成撑高后的满高」这一种写入；缩小态（如评论展开）一律放行。
+    // iPad 按当前基线处理旋转的增高与缩短；其他情况保留原生缩小态。
     CGFloat pinned = original.doubleValue;
-    if (CGRectGetHeight(frame) <= pinned + kDKFeedTolerance) return CGRectNull;
+    if (DKFeedHUDPinsBothDirections(view)) {
+        if (fabs(CGRectGetMinY(frame)) <= kDKFeedTolerance
+            && fabs(CGRectGetHeight(frame) - pinned) <= kDKFeedTolerance) return CGRectNull;
+        frame.origin.y = 0.0;
+    } else if (CGRectGetHeight(frame) <= pinned + kDKFeedTolerance) return CGRectNull;
 
     gHitSetFrame++;
     frame.size.height = pinned;
@@ -248,8 +276,11 @@ CGRect DKFeedHUDAdjustFrame(UIView *view, CGRect frame) {
     if (original <= 0.0) return;
 
     CGRect frame = view.frame;
+    BOOL heightFits = DKFeedHUDPinsBothDirections(view)
+        ? fabs(CGRectGetHeight(frame) - original) <= kDKFeedTolerance
+        : CGRectGetHeight(frame) <= original + kDKFeedTolerance;
     if (fabs(CGRectGetMinY(frame)) <= kDKFeedTolerance
-        && CGRectGetHeight(frame) <= original + kDKFeedTolerance) {
+        && heightFits) {
         return;
     }
 
@@ -268,6 +299,8 @@ static void DKVideoFeedTableRestore(void) {
         if (!original) continue;
 
         objc_setAssociatedObject(table, &kDKFeedOriginalHeightKey, nil,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(table, &kDKPadFeedBottomReserveKey, nil,
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         CGRect frame = table.frame;
         frame.size.height = original.doubleValue;
