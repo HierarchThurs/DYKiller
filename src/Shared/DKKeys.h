@@ -30,6 +30,10 @@ static NSString *const DKKeyCommentGameAnchorMode = @"DYKillerCommentGameAnchorM
 static NSString *const DKKeyCommentPlayerDiscussionMode = @"DYKillerCommentPlayerDiscussionMode";
 static NSString *const DKKeyCommentStoreReviewMode = @"DYKillerCommentStoreReviewMode";
 static NSString *const DKKeyCommentSeriesAnchorMode = @"DYKillerCommentSeriesAnchorMode";
+static NSString *const DKKeyCommentDramaAnchorMode = @"DYKillerCommentDramaAnchorMode";
+static NSString *const DKKeyCommentDramaReviewMode = @"DYKillerCommentDramaReviewMode";
+static NSString *const DKKeyCommentRemoveAllTopTags = @"DYKillerCommentRemoveAllTopTags";
+static NSString *const DKKeyCommentRemoveAllTabs = @"DYKillerCommentRemoveAllTabs";
 // 移除评论列表中的「评论氛围是否满意」评价卡片。
 static NSString *const DKKeyRemoveCommentSurvey = @"DYKillerRemoveCommentSurvey";
 static NSString *const DKKeyCommentMediaCleanBottomBar = @"DYKillerCommentMediaCleanBottomBar";
@@ -54,12 +58,16 @@ static NSString *const DKKeyInnerNotiGlass      = @"DYKillerInnerNotiGlass";
 static NSString *const DKKeyInnerNotiGlassClear = @"DYKillerInnerNotiGlassClear";
 // 0–100：0 为抖音原圆角，100 为胶囊。未写入时按 100。
 static NSString *const DKKeyInnerNotiCorner     = @"DYKillerInnerNotiCorner";
+static NSString *const DKKeyTipsGlass          = @"DYKillerTipsGlass";
+static NSString *const DKKeyTipsGlassClear     = @"DYKillerTipsGlassClear";
 
 #pragma mark - 功能组：底栏
 
 // 材质单选（DKMakeGlassChoice）：总开关 + 清透档两个 BOOL，清透档关即系统默认磨砂。
 static NSString *const DKKeyGlassTabBar      = @"DYKillerGlassTabBar";
 static NSString *const DKKeyGlassTabBarClear = @"DYKillerGlassTabBarClear";
+// iPad 玻璃底栏位置（单选）：0 默认居中 / 1 左端 / 2 右端；仅 iPad 生效（见 DKGlassPadElements.xm）。
+static NSString *const DKKeyGlassTabBarPadPosition = @"DYKillerGlassTabBarPadPosition";
 // 自定义拍摄图标：图片本体存文件（见 DKPlusIcon.xm），这个键只作设置项 identifier，
 // NSUserDefaults 里不写值。是否使用由「拍摄按钮」（DKKeyPlusStyle）选「自定义图片」决定。
 static NSString *const DKKeyPlusIcon         = @"DYKillerPlusIcon";
@@ -170,6 +178,8 @@ static NSString *const DKKeyAudioVizStyle = @"DYKillerAudioVizStyle";
 
 static NSString *const DKKeyDoubleTapOpenComment = @"DYKillerDoubleTapOpenComment";
 static NSString *const DKKeyDetailHideBottomBar = @"DYKillerHideChatVideoBottomBar";
+static NSString *const DKKeyDetailReturnMode = @"DYKillerDetailReturnMode";
+static NSString *const DKKeyDetailSearchMode = @"DYKillerDetailSearchMode";
 // 所有视频常态下都显示底部进度条。
 static NSString *const DKKeyProgressAlwaysVisible = @"DYKillerProgressAlwaysVisible";
 // 进度条旁的已播 / 总时长：0 关闭 / 1 两端（与进度条同一行）/ 2 右端 · 上方 / 3 右端 · 下方 / 4 两端 · 上方 / 5 两端 · 下方
@@ -200,12 +210,15 @@ static NSString *const DKKeyPlaybackChapterHighlightsMode  = @"DYKillerPlaybackC
 static NSString *const DKKeyPlaybackCoCreatorMode          = @"DYKillerPlaybackCoCreatorMode";
 static NSString *const DKKeyPlaybackSlidesTagMode          = @"DYKillerPlaybackSlidesTagMode";
 // 文案下方
-static NSString *const DKKeyPlaybackRelatedSearchMode      = @"DYKillerPlaybackRelatedSearchMode";
 static NSString *const DKKeyPlaybackRiskNoticeMode         = @"DYKillerPlaybackRiskNoticeMode";
-static NSString *const DKKeyPlaybackVideoCollectionMode    = @"DYKillerPlaybackVideoCollectionMode";
-static NSString *const DKKeyPlaybackHotspotMode            = @"DYKillerPlaybackHotspotMode";
 static NSString *const DKKeyPlaybackMusicInfoMode          = @"DYKillerPlaybackMusicInfoMode";
 static NSString *const DKKeyPlaybackQuickReplyMode         = @"DYKillerPlaybackQuickReplyMode";
+// 底部栏目：总开关覆盖原生底部容器中的全部业务行，单项存值保持不变。
+static NSString *const DKKeyPlaybackRemoveAllBottomBars    = @"DYKillerPlaybackRemoveAllBottomBars";
+static NSString *const DKKeyPlaybackRelatedSearchMode      = @"DYKillerPlaybackRelatedSearchMode";
+static NSString *const DKKeyPlaybackRelatedVideoMode       = @"DYKillerPlaybackRelatedVideoMode";
+static NSString *const DKKeyPlaybackVideoCollectionMode    = @"DYKillerPlaybackVideoCollectionMode";
+static NSString *const DKKeyPlaybackHotspotMode            = @"DYKillerPlaybackHotspotMode";
 static NSString *const DKKeyPlaybackAppDownloadMode        = @"DYKillerPlaybackAppDownloadMode";
 
 #pragma mark - 功能组：内容过滤

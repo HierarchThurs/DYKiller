@@ -142,6 +142,7 @@
 @property (nonatomic, assign) BOOL hideMusicInfo;
 @property (nonatomic, copy) NSString *referString;
 - (void)performCommentAction;
+- (BOOL)isCommentVCShowing;
 - (void)onPlayer:(id)player didDoubleClick:(id)event;
 - (void)onVideoPlayerViewDoubleClicked:(id)event;
 @end
@@ -200,8 +201,23 @@
 
 #pragma mark - 底栏功能组用到的类
 
+// iPad 紧凑底栏两侧的元素按钮（连播 / 弹幕 / 倍速等）。图标、文字与折叠态都由抖音按 viewModel 绘制。
+@interface AWETabBarElementButton : UIButton
+@property (nonatomic, strong) UILabel *elementLabel;
+@end
+
+// 元素按钮容器：按钮放在 scrollView 里，elementButtons 是复用池，不在当前列表里的按钮 hidden=YES。
+// 容器 frame 由底栏布局写入，scrollView 与按钮 frame 由 p_refreshLayout 写入。
+@interface AWETabBarElementContainerView : UIView
+@property (nonatomic, strong) UIScrollView *scrollView;
+@property (nonatomic, strong) NSMutableArray *elementButtons;
+- (void)p_refreshLayout;
+@end
+
 // 抖音自绘底栏。它自身的 hidden/alpha 是抖音全部显隐逻辑的唯一汇聚点，可直接当镜像源。
 @interface AWENormalModeTabBar : UITabBar
+@property (nonatomic, strong) AWETabBarElementContainerView *leftElementContainerView;
+@property (nonatomic, strong) AWETabBarElementContainerView *rightElementContainerView;
 @end
 
 // 底栏文字视图的配置（文字项为 TextViewUIConfig、首页为 FeedUIConfig，均继承此类）。抖音按选中状态与明暗进度
@@ -294,6 +310,20 @@
 // 弹幕渲染层。抖音开评论面板时就是把这一层的 alpha 压成 0（实测半屏 / 全屏都是），
 // 容器与各条弹幕视图本身不动。
 @interface DDanmakuPlayerView : UIView
+@end
+
+// 弹幕渲染引擎。DDanmakuPlayer 在弹幕层每轮布局时把 frame 写成弹幕层 bounds，
+// 宽度变化会让在屏弹幕按新宽度重排。view 是引擎挂载的宿主视图。
+@interface DDanmakuRenderEngine : NSObject
+@property (nonatomic, strong) UIView *view;
+@property (nonatomic, assign) CGRect frame;
+@end
+
+// 首页弹幕业务控制器。viewDidLayoutSubviews 用弹幕容器父视图的 bounds 与 lastDanmakuContainerBounds
+// 比较，不同即重新布局弹幕，并经容器控制器 pause → clearAllDisplayingDanmakus → play 重新开始。
+@interface AWEDanmakuFeedController : NSObject
+@property (nonatomic, readonly) UIView *danmakuContainerView;
+@property (nonatomic, assign) CGRect lastDanmakuContainerBounds;
 @end
 
 @interface AWEListKitMagicCollectionView : UICollectionView
@@ -389,6 +419,27 @@
 @end
 
 #pragma mark - 应用内通知功能组用到的类
+
+@interface AFDSnackBar : UIView
+@property (nonatomic, strong) UIView *bodyView;
+@property (nonatomic, strong) id delegate;
+- (void)showWithBodyView:(UIView *)bodyView;
+@end
+
+@interface AFDSnackBarCustomView : UIView
+@end
+
+@interface AWEPlayInteractionSnackBarConfig : NSObject
+@property (nonatomic, copy) NSString *identifier;
+@end
+
+@interface DUXBottomNotification : UIView
+- (void)showOnView:(UIView *)view bottomOffset:(double)offset;
+@end
+
+@interface AWEPlayInteractionSnackBar : DUXBottomNotification
+@property (nonatomic, strong) AWEPlayInteractionSnackBarConfig *snakeBarConfig;
+@end
 
 @interface AWEInnerNotificationContainerView : UIView
 @property (nonatomic, strong) UIView *containerView;
