@@ -209,6 +209,11 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyMessageFriendAvatarMode, @"ic_personcircleclean_outlined_20"),
                     DKRow(DKKeyMessageInteractionMode, @"ic_msgheart_outlined_20"),
                 ]),
+                DKSection(@"聊天页", @[
+                    DKRow(DKKeyChatRemoveEmojiSuggestions, @"ic_emoji_outlined_20"),
+                    DKRow(DKKeyChatPlayEntryMode, @"ic_squaresplit_outlined_20"),
+                    DKRow(DKKeyChatRemovePlusPhotos, @"ic_removeimage_outlined_20"),
+                ]),
             ]),
         ]),
         DKSection(@"个人主页", @[
@@ -367,6 +372,9 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
         ]),
         DKSection(@"分享面板", @[
             DKRow(DKKeySharePanelGlass, @"ic_share_outlined"),
+        ]),
+        DKSection(@"聊天页", @[
+            DKRow(DKKeyChatInputGlass, @"ic_msg_outlined_20"),
         ]),
         DKSection(@"长按菜单", @[
             DKRow(DKKeyFeedMenuGlass, @"ic_squaresplit_outlined_20"),

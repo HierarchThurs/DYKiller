@@ -306,6 +306,14 @@ static NSString *const DKKeyMessageDailyMode        = @"DYKillerMessageDailyMode
 static NSString *const DKKeyMessageFriendAvatarMode = @"DYKillerMessageFriendAvatarMode";
 static NSString *const DKKeyMessageInteractionMode  = @"DYKillerMessageInteractionMode";
 
+#pragma mark - 功能组：聊天页输入区
+
+static NSString *const DKKeyChatRemoveEmojiSuggestions = @"DYKillerChatRemoveEmojiSuggestions";
+static NSString *const DKKeyChatPlayEntryMode           = @"DYKillerChatPlayEntryMode";
+static NSString *const DKKeyChatRemovePlusPhotos        = @"DYKillerChatRemovePlusPhotos";
+static NSString *const DKKeyChatInputGlass              = @"DYKillerChatInputGlass";
+static NSString *const DKKeyChatInputGlassClear         = @"DYKillerChatInputGlassClear";
+
 #pragma mark - 功能组：长按菜单
 
 // 作品长按菜单：每个原生菜单项一个 BOOL 键，前缀 + 抖音菜单项标识（panelBizVMIdentifier）。

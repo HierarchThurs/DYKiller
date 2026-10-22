@@ -792,6 +792,151 @@
 - (AWEIMChatModel *)chatWithSession:(NSString *)sessionId;
 @end
 
+#pragma mark - 聊天输入功能组用到的类
+
+// 输入页的组件体系：输入控制器持有一个组件管理器，组件通过 context 拿到宿主聊天页。
+@interface AWEIMComponentContext : NSObject
+@property (nonatomic, weak) UIViewController *hostViewController;
+@end
+
+@interface AWEIMComponentManager : NSObject
+@property (nonatomic, strong) NSArray *components;
+@end
+
+@interface AWEIMComponentBase : NSObject
+@property (nonatomic, weak) AWEIMComponentContext *context;
+@property (nonatomic, weak) AWEIMComponentManager *belongingManager;
+@end
+
+// 聊天页控制器，输入控制器是它的子控制器。
+@interface AWEIMMessageBaseViewController : UIViewController
+@property (nonatomic, strong) UIViewController *messageListVC;
+@end
+
+// 消息列表控制器：view 是裁剪列表的容器，消息表格在 tableView。
+@interface AWEIMMessageListViewController : UIViewController
+@property (nonatomic, strong) UITableView *tableView;
+@end
+
+// 消息页布局组件：把输入区、浮动条、列表容器与表格的 frame 汇成一份布局信息，经 updatePageLayout: 统一写入；
+// 表格 frame 变化后原生按高度差贴底，随后把 contentInset 写回 0。
+@interface AWEIMMessageListLayoutComponent : AWEIMComponentBase
+- (void)updatePageLayout:(id)layoutInfo;
+@end
+
+// 普通聊天输入控制器。公司会话、POI 会话、作品详情与图文详情内的输入页复用同一套组件，
+// 由下面四个只读标志区分，功能只接管四者都为假的那一种。
+@interface IESIMInputViewController : UIViewController
+@property (nonatomic, readonly) BOOL isCompanyChat;
+@property (nonatomic, readonly) BOOL isShowingInPOIIMConversationViewController;
+@property (nonatomic, readonly) BOOL isShowingInFeedDetailViewController;
+@property (nonatomic, readonly) BOOL isShowingInImageVideoDisplayViewController;
+// 当前输入形态：0 收起、1 系统键盘、2 表情面板、3 语音、5 加号面板（40.8.0 实测）。
+@property (nonatomic, readonly) long long currentInputType;
+@end
+
+// 输入框：内部文字视图的 frame 由 contentInset 推出（layoutSubviews 与高度变化都按它写），
+// 原生只经 setContentInsetPurely: 写这个值。
+@interface IESIMGrowingTextView : UIView
+@property (nonatomic) UIEdgeInsets contentInset;
+- (void)setContentInsetPurely:(UIEdgeInsets)insets;
+@end
+
+// 输入行布局组件：左右按钮、文字视图、语音视图、面板容器都由它排布。
+@interface IESIMInputLayoutComponent : AWEIMComponentBase
+- (void)refreshLayout;
+- (void)p_layoutInputViewsAfterAdjustButtons;
+- (void)pp_layoutSubviewsWithAnimated:(BOOL)animated context:(id)context;
+- (void)refreshBackgroundWithBackGroundImage:(BOOL)hasImage;
+@end
+
+// 左右按钮的供给策略，返回本轮参与布局的按钮数组。
+@interface IESIMInputLeftComponentPolicy : AWEIMComponentBase
+- (NSArray *)leftButtonsForShow;
+@end
+
+@interface IESIMInputRightComponentPolicy : AWEIMComponentBase
+- (NSArray *)rightButtonsForShow;
+@end
+
+@interface IESIMInputPlayEntryComponent : AWEIMComponentBase
+@end
+
+@interface IESIMInputAudioComponent : AWEIMComponentBase
+- (void)refreshBackgroundWithBackGroundImage:(BOOL)hasImage;
+@end
+
+@interface IESIMInputPlusComponent : AWEIMComponentBase
+- (void)refreshBackgroundWithBackGroundImage:(BOOL)hasImage;
+@end
+
+// 输入框上方的表情快捷提示条（早上好 / 比心 …）。展示判定与高度管理都在这个交互器上；
+// barMaker 是配置对象，只有普通单聊群聊用 AWEIMInputActionBarMaker_NormalGroupOrPrivate。
+@interface AWEIMInputActionBarInteractor : AWEIMComponentBase
+@property (nonatomic, readonly) id barMaker;
+- (BOOL)p_shouldShowActionBarAfterTypeResolved;
+- (BOOL)p_shouldShowInputActionBarWithInputType:(NSInteger)type;
+- (void)hideActionBarIfNeeded;
+- (void)showActionBarIfPossible;
+@end
+
+// 提示条的浮动容器（与最近照片共用），高度由提示条自己写。
+@interface AWEIMFloatingContainerView : UIView
+@end
+
+@interface AWEIMInputActionBarEntryView : UIView
+@end
+
+// 提示条里的一个表情芯片，芯片自带一层 85×30 的原生模糊；refreshStyle 会重写底色与模糊。
+@interface AWEIMInputActionBarEntryItemCollectionViewCell : UICollectionViewCell
+- (void)refreshStyle;
+@end
+
+// 加号面板打开时浮动容器里的最近照片条，照片在 _collectionView 里横向排列。
+@interface AWEIMQuickPhotoPickerView : UIView
+- (void)refreshBackgroundColorWhileHasBackground:(BOOL)hasBackground;
+@end
+
+// 最近照片条的分发方：输入形态切换时由浮动条分发询问能否展示，40.8.0 只在加号面板（类型 5）返回 YES。
+@interface AWEIMQuickSelectPhotoInteractor : AWEIMComponentBase
+- (BOOL)canShowBarWhenInputTypeChangedTo:(long long)type;
+@end
+
+// 聊天页的小火人挂件：键盘、表情与加号面板时吸附到输入区，Lynx 容器在 _containerView。
+@interface AWEIMStreakPendantView : UIView
+@property (nonatomic, readonly) BOOL isInputAttached;
+- (void)updateInputAttachedState:(BOOL)attached;
+@end
+
+// 加号面板与它的格子；格子里的图标方块自带原生模糊。
+@interface AWEIMPlusPanelView : UIView
+@end
+
+// 宫格格子：模糊层在 configWithModel: 返回之后才由 addBlurView 建出。
+@interface AWEIMChatPanelCollectionViewCell : UICollectionViewCell
+- (void)configWithModel:(id)model;
+- (void)addBlurView;
+@end
+
+// 表情面板顶部页签格子：userSelected 为选中态，__refreshSelectedUI 按它给 contentView 铺白底。
+@interface AWEIMEmoticonTabCollectionViewCell : UICollectionViewCell
+@property (nonatomic, readonly) BOOL userSelected;
+- (void)__refreshSelectedUI;
+@end
+
+// 表情面板的横向翻页区（每页一个表情网格）。
+@interface AWEIMEmoticonThemesCollectionView : UICollectionView
+@end
+
+@interface AWEIMEmoticonPanelBoxView : UIView
+- (void)iesim_themeReload:(id)theme;
+@end
+
+// 语音态「按住说话」的触摸视图，自带一层模糊与长按手势。
+@interface AWEIMOptimizeAudioInputTouchView : UIView
+- (void)refreshColor;
+@end
+
 #pragma mark - 个人主页功能组用到的类
 
 @interface AWEUserProfileUGCContributionGuideEmptyCollectionViewCell : UICollectionViewCell
