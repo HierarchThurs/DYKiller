@@ -100,6 +100,17 @@ void DKChatInputCleanRefresh(void) {
 }
 %end
 %hook AWEIMInputActionBarInteractor
+// 首次展示判定先于 barMaker 赋值；提交浮动布局时配置已确定，由原生收起路径同步回收高度与展示状态。
+- (void)p_layoutActionBarShowAnimated:(BOOL)animated {
+    if (DKChatSuggestionsSupported(self)) {
+        [gDKChatActionBars addObject:self];
+        if (DKPrefBool(DKKeyChatRemoveEmojiSuggestions)) {
+            [self p_layoutActionBarDismissAnimated:NO];
+            return;
+        }
+    }
+    %orig;
+}
 - (BOOL)p_shouldShowActionBarAfterTypeResolved {
     if (DKChatSuggestionsSupported(self)) {
         [gDKChatActionBars addObject:self];
@@ -109,6 +120,14 @@ void DKChatInputCleanRefresh(void) {
 }
 // 输入类型变化会重新判断提示条，与首次配置解析共用同一功能判据。
 - (BOOL)p_shouldShowInputActionBarWithInputType:(NSInteger)type {
+    if (DKChatSuggestionsSupported(self)) {
+        [gDKChatActionBars addObject:self];
+        if (DKPrefBool(DKKeyChatRemoveEmojiSuggestions)) return NO;
+    }
+    return %orig;
+}
+// 40.8.0 起提示条经浮动容器分发展示，分发方只按这一询问决定是否显示。
+- (BOOL)canShowBarWhenInputTypeChangedTo:(long long)type {
     if (DKChatSuggestionsSupported(self)) {
         [gDKChatActionBars addObject:self];
         if (DKPrefBool(DKKeyChatRemoveEmojiSuggestions)) return NO;
