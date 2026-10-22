@@ -6,6 +6,7 @@
 //
 
 #import "DKChatInput.h"
+#import "DKChatTopBar.h"
 #import "DKChatEmojiTabGlass.h"
 #import "DKChatFloatingGlass.h"
 #import "DKChatInputList.h"
@@ -113,4 +114,5 @@ void DKChatInputRefresh(void) {
     DKChatFloatingGlassRefresh();
     DKChatEmojiTabGlassRefresh();
     DKChatInputPendantRefresh();
+    DKChatTopBarRefresh();
 }

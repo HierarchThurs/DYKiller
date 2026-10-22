@@ -162,7 +162,7 @@ void DKChatInputGlassApply(id layout, BOOL clear, UIUserInterfaceStyle style) {
         }
         DKChatGlassStore *store = [DKChatGlassStore storeForOwner:layout create:YES];
         if (store.syncing) return;
-        DKChatObserveScene(input.view.window.windowScene);
+        DKChatObserveScene(DKChatInputScene(input));
         [store beginWithClear:clear style:style];
         [store clearBackingOfView:input.view];
         for (NSString *name in @[ @"_inputBarContainer", @"_inputBarElementContainer", @"_textViewBackgroundView",
@@ -297,8 +297,8 @@ void DKChatInputGlassRestore(id layout) {
     gDKChatGlassScenes = [NSHashTable weakObjectsHashTable];
     DKSettingsRegister(DKKeyChatInputGlass, ^AWESettingItemModel *{
         return DKSettingsWithInfo(DKMakeGlassChoice(DKKeyChatInputGlass, DKKeyChatInputGlassClear,
-            @"聊天页输入面板液态玻璃", ^{ DKChatInputRefresh(); }),
-            @"普通私聊与群聊的输入区悬浮在消息上：消息铺到屏幕底部，未弹出键盘时滑动消息会从输入区下方经过。输入框与按住说话区为胶囊，独立按钮为圆形，发送键为粉色玻璃；表情 / 加号面板与最近照片为悬浮卡片，表情提示的每个芯片各自一块玻璃，表情面板的搜索为圆钮、页签为胶囊；小火人改趴在输入框中间。关闭时恢复原生外观。");
+            @"聊天页液态玻璃", ^{ DKChatInputRefresh(); }),
+            @"普通私聊与群聊的顶部和输入区悬浮在消息上：消息铺到物理屏幕顶部，顶栏返回、头像名称、通话与菜单各自为玻璃，群功能栏每项为小胶囊；消息铺到屏幕底部，未弹出键盘时滑动消息会从输入区下方经过。输入框与按住说话区为胶囊，独立按钮为圆形，发送键为粉色玻璃；表情 / 加号面板与最近照片为悬浮卡片，表情提示的每个芯片各自一块玻璃，表情面板的搜索为圆钮、页签为胶囊；小火人改趴在输入框中间。关闭时恢复原生外观。");
     });
     if (DKGlassOSAvailable()) {
         %init(DKChatInputGlassHooks);
