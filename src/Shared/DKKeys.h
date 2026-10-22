@@ -313,6 +313,17 @@ static NSString *const DKKeyChatPlayEntryMode           = @"DYKillerChatPlayEntr
 static NSString *const DKKeyChatRemovePlusPhotos        = @"DYKillerChatRemovePlusPhotos";
 static NSString *const DKKeyChatInputGlass              = @"DYKillerChatInputGlass";
 static NSString *const DKKeyChatInputGlassClear         = @"DYKillerChatInputGlassClear";
+static NSString *const DKKeyChatRemoveBack              = @"DYKillerChatRemoveBack";
+static NSString *const DKKeyChatRemoveUnread            = @"DYKillerChatRemoveUnread";
+static NSString *const DKKeyChatRemoveOnline            = @"DYKillerChatRemoveOnline";
+static NSString *const DKKeyChatRemoveCall              = @"DYKillerChatRemoveCall";
+static NSString *const DKKeyChatRemoveMenu              = @"DYKillerChatRemoveMenu";
+// 聊天页顶栏自定义：子页面入口、顶部渐变模糊、居中头像（0 默认 / 1 居中）、火花与在线位置（0 居中 / 1 左侧 / 2 右侧）。
+static NSString *const DKKeyChatTopCustomPage           = @"DYKillerChatTopCustomPage";
+static NSString *const DKKeyChatTopBlur                 = @"DYKillerChatTopBlur";
+static NSString *const DKKeyChatTopCenter               = @"DYKillerChatTopCenter";
+static NSString *const DKKeyChatTopStreakPosition       = @"DYKillerChatTopStreakPosition";
+static NSString *const DKKeyChatTopOnlinePosition       = @"DYKillerChatTopOnlinePosition";
 
 #pragma mark - 功能组：长按菜单
 

@@ -818,10 +818,16 @@
 @property (nonatomic, strong) UITableView *tableView;
 @end
 
-// 消息页布局组件：把输入区、浮动条、列表容器与表格的 frame 汇成一份布局信息，经 updatePageLayout: 统一写入；
-// 表格 frame 变化后原生按高度差贴底，随后把 contentInset 写回 0。
+// 消息页布局组件：主布局从当前几何计算快照，页面配置负责重排输入区、浮动条与消息列表。
 @interface AWEIMMessageListLayoutComponent : AWEIMComponentBase
 - (void)updatePageLayout:(id)layoutInfo;
+- (void)p_layoutWithAnimation:(BOOL)animated coordinate:(id)coordinate;
+@end
+
+// 消息列表右上角的未读提示（⬆ N 条消息）：提示条挂在聊天页 view 上，纵坐标取 __bubbleYOrigin，
+// 即列表视图上沿下方 32pt，有顶部浮条时为浮条高 + 16（40.8.0 反汇编）。
+@interface AWEIMTopAnchorComponent : AWEIMComponentBase
+- (double)__bubbleYOrigin;
 @end
 
 // 普通聊天输入控制器。公司会话、POI 会话、作品详情与图文详情内的输入页复用同一套组件，
@@ -874,6 +880,8 @@
 // barMaker 是配置对象，只有普通单聊群聊用 AWEIMInputActionBarMaker_NormalGroupOrPrivate。
 @interface AWEIMInputActionBarInteractor : AWEIMComponentBase
 @property (nonatomic, readonly) id barMaker;
+- (void)p_layoutActionBarShowAnimated:(BOOL)animated;
+- (void)p_layoutActionBarDismissAnimated:(BOOL)animated;
 - (BOOL)p_shouldShowActionBarAfterTypeResolved;
 - (BOOL)p_shouldShowInputActionBarWithInputType:(NSInteger)type;
 - (void)hideActionBarIfNeeded;
@@ -935,6 +943,48 @@
 // 语音态「按住说话」的触摸视图，自带一层模糊与长按手势。
 @interface AWEIMOptimizeAudioInputTouchView : UIView
 - (void)refreshColor;
+@end
+
+@class AWENavigationBar;
+
+// 聊天导航的 provider 聚合器，原生负责排列左右控件与标题组件。
+@interface AWEIMMessageListNaviBarComponent : AWEIMComponentBase
+@property (nonatomic, weak) AWENavigationBar *naviBar;
+@property (nonatomic, weak) id naviBarTitleService;
+- (void)setNeedsUpdateNaviBar;
+@end
+
+@interface AWEIMMessageListNaviBarTitleComponent : AWEIMComponentBase
+- (void)setNeedsUpdateNaviBarTitle;
+@end
+
+@interface AWEIMNavigationUnreadView : UIView
+@property (nonatomic, strong) UIButton *backButton;
+@property (nonatomic, strong) UIView *unreadCountView;
+@property (nonatomic, strong) CAShapeLayer *dotLayer;
+@property (nonatomic, strong) UILabel *dotLabel;
+- (void)updateWithCount:(long long)count;
+@end
+
+// 标题：头像栈与标题容器；容器内主标题行（名称、人数、火花 AWEIMStreakFlameView）与副标题行（在线状态）。
+// 头像、名称、火花、在线的点击都由标题视图自己的点击手势处理（p_didClickSelfWithGesture:）。
+@interface AWEIMMessageListNaviBarTitleView : UIStackView
+@property (nonatomic, strong) UIStackView *avatarStackView;
+@property (nonatomic, strong) UIStackView *titleContainerStackView;
+@property (nonatomic, strong) UIStackView *mainTitleStackView;
+@property (nonatomic, strong) UIStackView *subtitleStackView;
+@end
+@interface AWEIMMessageListNaviBarTitleAvatarComponent : AWEIMComponentBase
+@property (nonatomic, strong) UIView *onlineDotView;
+- (void)p_updateDots;
+@end
+// 顶部浮条（群公告、置顶消息等）的容器组件，容器懒创建。
+@interface AWEIMMessageListTopFloatingComponent : AWEIMComponentBase
+@property (nonatomic, strong) UIView *topFloatingContainer;
+@end
+@interface AWEIMMessageVoipEntranceView : UIView
+@property (nonatomic, strong) UIButton *audioBtn;
+@property (nonatomic, strong) UIButton *videoBtn;
 @end
 
 #pragma mark - 个人主页功能组用到的类
@@ -1341,6 +1391,11 @@
 @end
 
 @interface AWENavigationBar : UIView
+@property (nonatomic, strong) UIView *contentView;
+@property (nonatomic, strong) UIView *bottomLineView;
+@property (nonatomic, strong) UIView *leftBtnsContainerView;
+@property (nonatomic, strong) UIView *rightBtnsContainerView;
+@property (nonatomic) BOOL shouldTouchPenetrate;
 @property (nonatomic, strong) UILabel *titleLabel;
 @end
 
