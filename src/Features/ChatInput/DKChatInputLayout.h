@@ -52,6 +52,9 @@ BOOL DKChatInputRowFrames(id layout, DKChatRowFrames *frames);
 /// 功能不生效或 growing 不是该输入页的输入框时原样返回 native。
 UIEdgeInsets DKChatInputTextInsets(id layout, UIView *growing, UIEdgeInsets native);
 
+/// 输入页所在场景：页面进出转场时输入页可能还未进入窗口，沿父控制器取第一个已在窗口中的场景。
+UIWindowScene *DKChatInputScene(UIViewController *input);
+
 /// 当前系统外观（场景优先），玻璃的深浅色与 Clear 染色按它取。
 UIUserInterfaceStyle DKChatInputStyle(UIViewController *input);
 

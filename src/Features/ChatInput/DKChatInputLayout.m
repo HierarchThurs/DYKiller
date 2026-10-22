@@ -90,8 +90,16 @@ UIEdgeInsets DKChatInputTextInsets(id layout, UIView *growing, UIEdgeInsets nati
     return insets;
 }
 
+UIWindowScene *DKChatInputScene(UIViewController *input) {
+    for (UIViewController *node = input; node; node = node.parentViewController) {
+        UIWindowScene *scene = node.viewIfLoaded.window.windowScene;
+        if (scene) return scene;
+    }
+    return nil;
+}
+
 UIUserInterfaceStyle DKChatInputStyle(UIViewController *input) {
-    UIUserInterfaceStyle style = input.view.window.windowScene.traitCollection.userInterfaceStyle;
+    UIUserInterfaceStyle style = DKChatInputScene(input).traitCollection.userInterfaceStyle;
     if (!style) style = input.view.traitCollection.userInterfaceStyle;
     return style ?: UIUserInterfaceStyleLight;
 }
