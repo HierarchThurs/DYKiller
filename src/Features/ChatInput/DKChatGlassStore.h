@@ -2,7 +2,7 @@
 //  DKChatGlassStore.h
 //  DYKiller
 //
-//  聊天页玻璃的槽位仓库：一个宿主对象（输入布局、提示条芯片、最近照片条）一份，
+//  聊天页玻璃的槽位仓库：每个宿主对象一份，
 //  记下本模块建的玻璃、清掉的原生底色与挂上的 mask。每轮同步在 begin / end 之间声明“本轮需要什么”，
 //  end 时撤掉没再声明的部分并还原原生值。
 //
@@ -39,6 +39,9 @@ API_AVAILABLE(ios(26.0))
 /// 清掉视图底色；UIVisualEffectView 连同材质一起清。返回接管前的原生底色（宿主之后写的不透明色会刷新记录）。
 /// 在 begin / end 之外调用时立即接管，下一轮声明里没再出现的照常还原。
 - (UIColor *)clearBackingOfView:(UIView *)view;
+
+/// 清掉独立形状图层的填充色；下一轮未声明或关闭时恢复原生色。
+- (void)clearFillOfShapeLayer:(CAShapeLayer *)layer;
 
 /// 该视图的底色是否已由本仓库接管。
 - (BOOL)tracksBackingOfView:(UIView *)view;

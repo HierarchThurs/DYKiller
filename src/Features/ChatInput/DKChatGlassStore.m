@@ -21,6 +21,13 @@ static char kDKChatGlassStoreKey;
 @implementation DKChatGlassBacking
 @end
 
+@interface DKChatGlassLayerBacking : NSObject
+@property (nonatomic, weak) CAShapeLayer *layer;
+@property (nonatomic, strong) UIColor *color;
+@end
+@implementation DKChatGlassLayerBacking
+@end
+
 // 一块玻璃：业务视图、玻璃本体与当前的形状、材质，未变化时不重写。
 @interface DKChatGlassSlot : NSObject
 @property (nonatomic, weak) UIView *source;
@@ -75,6 +82,7 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
 
 @implementation DKChatGlassStore {
     NSMutableArray<DKChatGlassBacking *> *_backings;
+    NSMutableArray<DKChatGlassLayerBacking *> *_layerBackings;
     NSMutableArray<DKChatGlassSlot *> *_slots;
     NSMutableArray<DKChatGlassMask *> *_masks;
     NSMutableSet *_wanted;
@@ -103,6 +111,7 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
 - (instancetype)init {
     if ((self = [super init])) {
         _backings = [NSMutableArray array];
+        _layerBackings = [NSMutableArray array];
         _slots = [NSMutableArray array];
         _masks = [NSMutableArray array];
         _wanted = [NSMutableSet set];
@@ -120,6 +129,13 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
 }
 
 - (void)end {
+    for (DKChatGlassLayerBacking *backing in _layerBackings.copy) {
+        if ([_wanted containsObject:backing]) continue;
+        if (backing.layer && (!backing.layer.fillColor || CGColorGetAlpha(backing.layer.fillColor) == 0.0)) {
+            backing.layer.fillColor = backing.color.CGColor;
+        }
+        [_layerBackings removeObject:backing];
+    }
     for (DKChatGlassSlot *slot in _slots.copy) {
         if ([_wanted containsObject:slot]) continue;
         [slot.glass removeFromSuperview];
@@ -141,6 +157,23 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
 }
 
 #pragma mark 底色
+
+- (void)clearFillOfShapeLayer:(CAShapeLayer *)layer {
+    if (!layer) return;
+    DKChatGlassLayerBacking *backing = nil;
+    for (DKChatGlassLayerBacking *item in _layerBackings) if (item.layer == layer) { backing = item; break; }
+    if (!backing) {
+        backing = [DKChatGlassLayerBacking new];
+        backing.layer = layer;
+        backing.color = layer.fillColor ? [UIColor colorWithCGColor:layer.fillColor] : nil;
+        [_layerBackings addObject:backing];
+    }
+    if (layer.fillColor && CGColorGetAlpha(layer.fillColor) > 0.0) {
+        backing.color = [UIColor colorWithCGColor:layer.fillColor];
+    }
+    [_wanted addObject:backing];
+    layer.fillColor = UIColor.clearColor.CGColor;
+}
 
 - (DKChatGlassBacking *)backingOfView:(UIView *)view {
     for (DKChatGlassBacking *backing in _backings) if (backing.view == view) return backing;
@@ -230,7 +263,7 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
         UIGlassEffect *effect = [UIGlassEffect effectWithStyle:_clear ? UIGlassEffectStyleClear : UIGlassEffectStyleRegular];
         effect.interactive = interactive;
         effect.tintColor = tint ?: (_clear ? DKGlassTintForStyle(_style) : nil);
-        glass.effect = effect;
+        [UIView performWithoutAnimation:^{ glass.effect = effect; }];
     }
     slot.configured = YES;
     return glass;
