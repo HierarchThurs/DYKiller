@@ -226,6 +226,34 @@
 @property (nonatomic, strong) UIColor *textColor;
 @end
 
+// 商城底栏宿主控制器（AWEECNewBottomMallViewController / AWEECNewMallViewController 的基类）。
+// mallMainVC 为实际承载 Mita 页面树的 IESECMallCoreViewController。
+@interface AWEECMallBaseViewController : UIViewController
+@property (nonatomic, strong) UIViewController *mallMainVC;
+@end
+
+@interface AWEECNewBottomMallViewController : AWEECMallBaseViewController
+- (void)buildUI;
+@end
+
+@interface AWEECNewMallViewController : AWEECMallBaseViewController
+- (void)buildUI;
+@end
+
+// 个人主页二级分页容器（收藏页 AWEFavoriteV2ViewController_New 等的内部列表控制器）。
+@interface AWETabContainerSectionController : NSObject
+- (UIViewController *)tabContentViewController;
+@end
+
+@interface AWEProfileBaseContainerViewController : UIViewController
+@property (nonatomic, assign) BOOL isInUserHomePage;
+@property (nonatomic, assign) BOOL isInLandingPage;
+@property (nonatomic, strong) AWETabContainerSectionController *tabContainerSectionController;
+- (UICollectionView *)awe_baseCollectionView;
+- (double)heightForSectionController:(id)sectionController;
+- (void)setupCollectionView:(UICollectionView *)collectionView;
+@end
+
 #pragma mark - 评论区功能组用到的类
 
 @interface AWECommentContainerViewController : UIViewController
