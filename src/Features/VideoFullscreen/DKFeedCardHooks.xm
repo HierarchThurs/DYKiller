@@ -1,7 +1,10 @@
 // 视频全屏下特殊卡、音乐卡与文章的内容视口及背景接入。
 #import "DKFeedCardFit.h"
 #import "DKVideoFullscreen.h"
+#import <dlfcn.h>
+#import <mach-o/dyld.h>
 #import <objc/runtime.h>
+#import <string.h>
 
 @interface AWESpecialCardTemplateLynxViewController : UIViewController
 @end
@@ -101,6 +104,25 @@ static void DKArticleBackdrop(UIViewController *controller, BOOL refreshImage) {
 %end
 %end
 
+static void DKArticleInstallHooks(void) {
+    static BOOL installed;
+    Class article = NSClassFromString(@"AWESearchFeedArticleViewController");
+    if (installed || ![article isSubclassOfClass:UIViewController.class]) return;
+    installed = YES;
+    %init(DKArticleFit);
+    if (class_getInstanceMethod(article, @selector(lynxEngineDidMount:))) { %init(DKArticleMounted); }
+    if (class_getInstanceMethod(article, @selector(updateModel:))) { %init(DKArticleModel); }
+}
+
+// 文章正文控制器在 AWESearchFramework 里，该框架晚于插件加载；回调在加载器上下文内，只调度到主队列安装。
+static void DKArticleImageAdded(const struct mach_header *header, intptr_t slide) {
+    Dl_info image = {0};
+    if (!dladdr(header, &image) || !image.dli_fname) return;
+    const char *name = strrchr(image.dli_fname, '/');
+    if (strcmp(name ? name + 1 : image.dli_fname, "AWESearchFramework") != 0) return;
+    dispatch_async(dispatch_get_main_queue(), ^{ DKArticleInstallHooks(); });
+}
+
 %ctor {
     Class special = NSClassFromString(@"AWESpecialCardTemplateLynxViewController");
     if ([special isSubclassOfClass:UIViewController.class]) {
@@ -110,11 +132,7 @@ static void DKArticleBackdrop(UIViewController *controller, BOOL refreshImage) {
     }
     Class music = NSClassFromString(@"AWEMusicStreamingSwiftImpl.MusicCardViewController");
     if ([music isSubclassOfClass:UIViewController.class]) { %init(DKMusicCardFit, DKMusicCardController = music); }
-    Class article = NSClassFromString(@"AWESearchFeedArticleViewController");
-    if ([article isSubclassOfClass:UIViewController.class]) {
-        %init(DKArticleFit);
-        if (class_getInstanceMethod(article, @selector(lynxEngineDidMount:))) { %init(DKArticleMounted); }
-        if (class_getInstanceMethod(article, @selector(updateModel:))) { %init(DKArticleModel); }
-    }
+    DKArticleInstallHooks();
+    _dyld_register_func_for_add_image(DKArticleImageAdded);
     DKVideoFullscreenRegisterRestore(DKFeedCardRestore);
 }
