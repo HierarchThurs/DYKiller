@@ -23,6 +23,7 @@
 #import "DKProfileClean.h"
 #import "DKLongPressMenu.h"
 #import "DKProgressAlwaysVisible.h"
+#import "DKProgressOffset.h"
 #import "DKProgressTime.h"
 #import "DKAdjustRange.h"
 #import "DKTabBarBackdrop.h"
@@ -1141,6 +1142,9 @@ NSString *DKTabBarProbeReport(void) {
 
     [out appendString:@"\n----- 显示视频时长 -----\n"];
     [out appendString:DKProgressTimeStatus()];
+
+    [out appendString:@"\n----- 进度条与图片指示器上移 -----\n"];
+    [out appendString:DKProgressOffsetStatus()];
 
     [out appendString:@"\n----- 分享面板输入 -----\n"];
     DKProbeAppendShareInput(out);
