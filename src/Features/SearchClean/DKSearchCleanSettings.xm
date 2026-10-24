@@ -1,31 +1,7 @@
-// 搜索页精简：固定区域开关与自动收录的榜单选择页。
-#import "DKSearchClean.h"
+// 搜索页精简：各区域与输入入口的设置项。
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKUtils.h"
-
-static NSString *DKSearchRankDetail(void) {
-    NSUInteger count = 0;
-    for (NSDictionary *entry in DKSearchRankCatalog()) if (DKSearchRankHidden(entry[@"id"])) count++;
-    return count ? [NSString stringWithFormat:@"已移除 %lu 项", (unsigned long)count] : @"未移除";
-}
-
-static void DKSearchOpenRanks(AWESettingItemModel *entryItem, UIViewController *presenter) {
-    NSMutableArray *rows = [NSMutableArray array];
-    __weak AWESettingItemModel *weakEntry = entryItem;
-    for (NSDictionary *entry in DKSearchRankCatalog()) {
-        NSString *title = entry[@"title"];
-        AWESettingItemModel *row = DKSettingsNeedsRestart(DKMakeSwitch(DKSearchRankHideKey(entry[@"id"]), title,
-            [NSString stringWithFormat:@"从搜索页移除「%@」标签及其内容，重启抖音后生效。", title]));
-        DKSettingsOnChange(row, ^{ weakEntry.detail = DKSearchRankDetail(); });
-        [rows addObject:row];
-    }
-    NSString *note = rows.count
-        ? @"打开搜索页时自动收录榜单，新榜单会继续补入；同城类型统一显示为「同城榜」。勾选后重启抖音生效，全部移除时收起榜单区域。"
-        : @"尚未收录榜单：先打开一次抖音搜索页，再返回这里选择。";
-    DKSettingsPushNotedSections(presenter, @"移除搜索榜单", note,
-                               @[ DKSettingsMakeSection(@"移除榜单", nil, rows) ]);
-}
 
 %ctor {
     DKSettingsRegister(DKKeySearchRemoveHistory, ^{
@@ -39,26 +15,7 @@ static void DKSearchOpenRanks(AWESettingItemModel *entryItem, UIViewController *
     });
     DKSettingsRegister(DKKeySearchRemoveAllRanks, ^{
         return DKSettingsNeedsRestart(DKMakeSwitch(DKKeySearchRemoveAllRanks, @"移除全部榜单",
-            @"移除搜索页整块榜单区域，包括全部榜单标签、榜单内容与查看完整榜单按钮。开启时下方两项灰显，原选择保留。重启抖音后生效。"));
-    });
-    DKSettingsRegister(DKKeySearchRanks, ^{
-        AWESettingItemModel *item = DKMakeAction(DKKeySearchRanks, @"移除搜索榜单", DKSearchRankDetail(),
-            ^(AWESettingItemModel *it, UIViewController *presenter) {
-                DKSearchOpenRanks(it, presenter);
-            });
-        DKSettingsWithValues(item, @[ [DKSettingsValue idSetWithPrefix:DKKeySearchRankHidePrefix] ],
-            ^NSString *(NSArray *values, BOOL brief) {
-                NSArray *ids = values.firstObject;
-                if (!ids.count) return @"未移除";
-                if (brief) return [NSString stringWithFormat:@"已移除 %lu 项", (unsigned long)ids.count];
-                NSMutableDictionary *titles = [NSMutableDictionary dictionary];
-                for (NSDictionary *entry in DKSearchRankCatalog()) titles[entry[@"id"]] = entry[@"title"];
-                NSMutableArray *names = [NSMutableArray array];
-                for (NSString *rankID in ids) [names addObject:titles[rankID] ?: rankID];
-                return [names componentsJoinedByString:@"、"];
-            });
-        return DKSettingsNeedsRestart(DKSettingsWithInfo(item,
-            @"自动收录搜索页出现的榜单，逐个选择移除；同城类型统一命名为「同城榜」。重启抖音后生效。"));
+            @"移除搜索页整块榜单区域，包括全部榜单标签、榜单内容与查看完整榜单按钮。开启时「移除查看完整榜单按钮」灰显，原选择保留。重启抖音后生效。"));
     });
     DKSettingsRegister(DKKeySearchRemoveRankFooter, ^{
         return DKSettingsNeedsRestart(DKMakeSwitch(DKKeySearchRemoveRankFooter, @"移除查看完整榜单按钮",

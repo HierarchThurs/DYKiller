@@ -1,11 +1,16 @@
-// 榜单末尾的完整榜单入口：限定搜索榜单模板，同时阻断 Lynx 命中。
+// 榜单末尾的完整榜单入口：限定搜索中间页卡片，同时阻断 Lynx 命中。
 #import "DKSearchClean.h"
 #import "DKKeys.h"
 #import "DKUtils.h"
 #import <objc/runtime.h>
 
+@interface DKSearchLynxParams : NSObject
+@property (nonatomic, readonly) NSDictionary *globalProps;
+@end
+
 @interface DKSearchLynxView : UIView
 @property (nonatomic, readonly) NSString *url;
+@property (nonatomic, readonly) DKSearchLynxParams *bdx_params;
 @end
 
 @interface DKSearchLynxContext : NSObject
@@ -22,6 +27,12 @@ static char kDKSearchFooterOriginalHidden;
 
 static BOOL DKSearchRemoveFooter(void) {
     return DKPrefBool(DKKeySearchRemoveAllRanks) || DKPrefBool(DKKeySearchRemoveRankFooter);
+}
+
+// 按卡片配置内容识别中间页；榜单模板路径判据并存。
+static BOOL DKSearchFooterScope(DKSearchLynxView *root) {
+    if (DKSearchTemplateMatches(root.url, @"search_transfer_rank")) return YES;
+    return [root respondsToSelector:@selector(bdx_params)] && DKSearchIsMiddlePageProps(root.bdx_params.globalProps);
 }
 
 static void DKSearchApplyFooter(LynxUI *ui) {
@@ -42,7 +53,7 @@ static void DKSearchApplyFooter(LynxUI *ui) {
 - (void)setAccessibilityLabel:(NSString *)label requestReset:(BOOL)reset {
     %orig;
     BOOL target = [label isKindOfClass:NSString.class] && [label hasPrefix:@"查看完整"] &&
-                  DKSearchTemplateMatches(self.context.rootView.url, @"search_transfer_rank");
+                  DKSearchFooterScope(self.context.rootView);
     objc_setAssociatedObject(self, &kDKSearchFooterTarget, target ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (target || objc_getAssociatedObject(self.view, &kDKSearchFooterOriginalHidden)) DKSearchApplyFooter(self);
 }
