@@ -2,9 +2,12 @@
 //  DKChatFloatingGlass.xm
 //  DYKiller
 //
-//  表情提示条芯片与最近照片条的玻璃。芯片清掉自带的模糊与底色，垫一块胶囊玻璃；
-//  照片条在父视图里垫一块左右内缩的卡片玻璃，照片条本身按卡片形状裁剪（照片列表会滚动，不能挂 mask）。
-//  两者都是先配置排版、再挂进浮动容器，进入窗口时各补一次同步。
+//  表情提示条芯片与最近照片条的玻璃：
+//   - 芯片清掉自带的模糊与底色，垫一块胶囊玻璃；
+//   - 最近照片条去掉整条通栏大底座，改为逐卡独立液态玻璃：
+//     1. 每张照片格（AWEIMAssetListCollectionViewCell）外圈垫一块 80×80 交互态液态玻璃相框（R14），
+//        内部图片容器内缩 4pt（72×72，同心连续圆角 R10），四周留出 4pt 折射玻璃边框；「动图」角标同步换为胶囊玻璃。
+//     2. 「添加更多可访问照片」格（AWEIMPhotoAddMoreCollectionViewCell）清掉原生灰底与模糊，垫一块同规格 80×80 液态玻璃卡。
 //
 
 #import "DKChatFloatingGlass.h"
@@ -14,12 +17,23 @@
 #import "DKGlassGuard.h"
 #import "DKKeys.h"
 #import "DKUtils.h"
+#import "DKViewAdjust.h"
 #import "DouyinHeaders.h"
 
-static const CGFloat kDKChatPhotoStripRadius = 12.0;
+#import <objc/runtime.h>
+
+static const CGFloat kDKChatPhotoCardRadius = 14.0;
+static const CGFloat kDKChatPhotoFrameInset = 4.0;
 
 static NSHashTable<UIView *> *gDKChatChips;
 static NSHashTable<UIView *> *gDKChatPhotoStrips;
+static NSHashTable<UIView *> *gDKChatPhotoAssetCells;
+static NSHashTable<UIView *> *gDKChatPhotoAddCells;
+
+static const char kDKChatPhotoCellClipsKey = 0;
+static const char kDKChatPhotoCellRadiusKey = 0;
+static const char kDKChatPhotoContentClipsKey = 0;
+static const char kDKChatPhotoContentRadiusKey = 0;
 
 // 宿主所在聊天页的输入控制器；功能对它生效时返回，否则返回 nil。
 static UIViewController *DKChatFloatingInput(UIView *view, NSHashTable<UIView *> *seen) {
@@ -50,6 +64,114 @@ static void DKChatChipSync(UIView *cell) {
     }
 }
 
+static UIView *DKChatQuickPhotoPickerForCell(UIView *cell) {
+    for (UIView *node = cell.superview; node; node = node.superview) {
+        if (DKChatInputIsKind(node, @"AWEIMQuickPhotoPickerView")) return node;
+    }
+    return nil;
+}
+
+static void DKChatSaveViewClipState(UIView *view, const void *clipsKey, const void *radiusKey) {
+    if (!view) return;
+    if (!objc_getAssociatedObject(view, clipsKey)) {
+        objc_setAssociatedObject(view, clipsKey, @(view.clipsToBounds), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (!objc_getAssociatedObject(view, radiusKey)) {
+        objc_setAssociatedObject(view, radiusKey, @(view.layer.cornerRadius), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static void DKChatRestoreViewClipState(UIView *view, const void *clipsKey, const void *radiusKey) {
+    if (!view) return;
+    NSNumber *savedClips = objc_getAssociatedObject(view, clipsKey);
+    if (savedClips) {
+        view.clipsToBounds = savedClips.boolValue;
+        objc_setAssociatedObject(view, clipsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    NSNumber *savedRadius = objc_getAssociatedObject(view, radiusKey);
+    if (savedRadius) {
+        view.layer.cornerRadius = savedRadius.doubleValue;
+        objc_setAssociatedObject(view, radiusKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static void DKChatPhotoAssetCellSync(UICollectionViewCell *cell) {
+    if (@available(iOS 26.0, *)) {
+        if (!DKChatQuickPhotoPickerForCell(cell)) return;
+        UIViewController *input = DKChatFloatingInput(cell, gDKChatPhotoAssetCells);
+        UIView *content = cell.contentView;
+        if (!input) {
+            [DKChatGlassStore removeStoreForOwner:cell];
+            DKAdjustTransform(content, CGAffineTransformIdentity);
+            DKChatRestoreViewClipState(cell, &kDKChatPhotoCellClipsKey, &kDKChatPhotoCellRadiusKey);
+            DKChatRestoreViewClipState(content, &kDKChatPhotoContentClipsKey, &kDKChatPhotoContentRadiusKey);
+            return;
+        }
+        DKChatGlassStore *store = [DKChatGlassStore storeForOwner:cell create:YES];
+        if (store.syncing) return;
+
+        DKChatSaveViewClipState(cell, &kDKChatPhotoCellClipsKey, &kDKChatPhotoCellRadiusKey);
+        DKChatSaveViewClipState(content, &kDKChatPhotoContentClipsKey, &kDKChatPhotoContentRadiusKey);
+
+        [store beginWithClear:DKPrefBool(DKKeyChatInputGlassClear) style:DKChatInputStyle(input)];
+        [store clearBackingOfView:cell];
+        [store clearBackingOfView:content];
+        [store placeGlassFor:cell in:cell frame:cell.bounds shape:DKChatGlassShapeRounded
+                      radius:kDKChatPhotoCardRadius interactive:YES tint:nil];
+
+        UIView *liveTag = DKChatInputObjectIvar(cell, "_livePhotoTag");
+        if (liveTag && !CGRectIsEmpty(liveTag.bounds)) {
+            [store clearBackingOfView:liveTag];
+            [store placeGlassFor:liveTag in:liveTag frame:liveTag.bounds shape:DKChatGlassShapeRounded
+                          radius:CGRectGetHeight(liveTag.bounds) * 0.5 interactive:NO tint:nil];
+        }
+        [store end];
+
+        cell.clipsToBounds = NO;
+        cell.layer.cornerRadius = 0.0;
+
+        CGFloat width = CGRectGetWidth(cell.bounds);
+        CGFloat height = CGRectGetHeight(cell.bounds);
+        if (width > kDKChatPhotoFrameInset * 2.0 && height > kDKChatPhotoFrameInset * 2.0) {
+            CGFloat scaleX = (width - kDKChatPhotoFrameInset * 2.0) / width;
+            CGFloat scaleY = (height - kDKChatPhotoFrameInset * 2.0) / height;
+            CGFloat innerRadius = MAX(kDKChatPhotoCardRadius - kDKChatPhotoFrameInset, 4.0);
+            DKAdjustTransform(content, CGAffineTransformMakeScale(scaleX, scaleY));
+            content.clipsToBounds = YES;
+            content.layer.cornerCurve = kCACornerCurveContinuous;
+            content.layer.cornerRadius = innerRadius / MIN(scaleX, scaleY);
+        }
+    }
+}
+
+static void DKChatPhotoAddCellSync(UICollectionViewCell *cell) {
+    if (@available(iOS 26.0, *)) {
+        if (!DKChatQuickPhotoPickerForCell(cell)) return;
+        UIViewController *input = DKChatFloatingInput(cell, gDKChatPhotoAddCells);
+        if (!input) {
+            [DKChatGlassStore removeStoreForOwner:cell];
+            DKChatRestoreViewClipState(cell, &kDKChatPhotoCellClipsKey, &kDKChatPhotoCellRadiusKey);
+            return;
+        }
+        DKChatGlassStore *store = [DKChatGlassStore storeForOwner:cell create:YES];
+        if (store.syncing) return;
+
+        DKChatSaveViewClipState(cell, &kDKChatPhotoCellClipsKey, &kDKChatPhotoCellRadiusKey);
+        UIView *content = cell.contentView;
+        [store beginWithClear:DKPrefBool(DKKeyChatInputGlassClear) style:DKChatInputStyle(input)];
+        [store clearBackingOfView:cell];
+        [store clearBackingOfView:content];
+        [store clearBackingOfView:DKChatInputObjectIvar(cell, "_backgroundContainer")];
+        [store clearBackingOfView:DKChatInputObjectIvar(cell, "_blurView")];
+        [store placeGlassFor:cell in:content frame:content.bounds shape:DKChatGlassShapeRounded
+                      radius:kDKChatPhotoCardRadius interactive:YES tint:nil];
+        [store end];
+
+        cell.clipsToBounds = NO;
+        cell.layer.cornerRadius = 0.0;
+    }
+}
+
 static void DKChatPhotoStripSync(UIView *picker) {
     if (@available(iOS 26.0, *)) {
         UIViewController *input = DKChatFloatingInput(picker, gDKChatPhotoStrips);
@@ -60,15 +182,19 @@ static void DKChatPhotoStripSync(UIView *picker) {
         }
         DKChatGlassStore *store = [DKChatGlassStore storeForOwner:picker create:YES];
         if (store.syncing) return;
+        UICollectionView *collectionView = DKChatInputObjectIvar(picker, "_collectionView");
         [store beginWithClear:DKPrefBool(DKKeyChatInputGlassClear) style:DKChatInputStyle(input)];
         [store clearBackingOfView:picker];
-        [store clearBackingOfView:DKChatInputObjectIvar(picker, "_collectionView")];
-        UIVisualEffectView *glass = [store placeGlassFor:picker in:host
-                                                   frame:CGRectInset(picker.frame, kDKChatPanelInset, 0.0)
-                                                   shape:DKChatGlassShapeRounded radius:kDKChatPhotoStripRadius
-                                             interactive:NO tint:nil];
-        if (glass) [store maskView:picker toGlass:glass];
+        [store clearBackingOfView:collectionView];
         [store end];
+
+        for (UICollectionViewCell *cell in collectionView.visibleCells) {
+            if (DKChatInputIsKind(cell, @"AWEIMAssetListCollectionViewCell")) {
+                DKChatPhotoAssetCellSync(cell);
+            } else if (DKChatInputIsKind(cell, @"AWEIMPhotoAddMoreCollectionViewCell")) {
+                DKChatPhotoAddCellSync(cell);
+            }
+        }
     }
 }
 
@@ -79,6 +205,8 @@ void DKChatFloatingGlassRefresh(void) {
     }
     for (UIView *cell in gDKChatChips.allObjects) DKChatChipSync(cell);
     for (UIView *picker in gDKChatPhotoStrips.allObjects) DKChatPhotoStripSync(picker);
+    for (UIView *cell in gDKChatPhotoAssetCells.allObjects) DKChatPhotoAssetCellSync((UICollectionViewCell *)cell);
+    for (UIView *cell in gDKChatPhotoAddCells.allObjects) DKChatPhotoAddCellSync((UICollectionViewCell *)cell);
 }
 
 %group DKChatFloatingGlassHooks
@@ -111,11 +239,46 @@ void DKChatFloatingGlassRefresh(void) {
     DKChatPhotoStripSync(self);
 }
 %end
+%hook AWEIMAssetListCollectionViewCell
+- (void)layoutSubviews {
+    if (DKChatQuickPhotoPickerForCell(self)) {
+        DKAdjustTransform(self.contentView, CGAffineTransformIdentity);
+    }
+    %orig;
+    DKChatPhotoAssetCellSync(self);
+}
+- (void)prepareForReuse {
+    if (DKChatQuickPhotoPickerForCell(self)) {
+        DKAdjustTransform(self.contentView, CGAffineTransformIdentity);
+    }
+    %orig;
+}
+- (void)didMoveToWindow {
+    %orig;
+    DKChatPhotoAssetCellSync(self);
+}
+%end
+%hook AWEIMPhotoAddMoreCollectionViewCell
+- (void)layoutSubviews {
+    %orig;
+    DKChatPhotoAddCellSync(self);
+}
+- (void)addBlurView {
+    %orig;
+    DKChatPhotoAddCellSync(self);
+}
+- (void)didMoveToWindow {
+    %orig;
+    DKChatPhotoAddCellSync(self);
+}
+%end
 %end
 
 %ctor {
     gDKChatChips = [NSHashTable weakObjectsHashTable];
     gDKChatPhotoStrips = [NSHashTable weakObjectsHashTable];
+    gDKChatPhotoAssetCells = [NSHashTable weakObjectsHashTable];
+    gDKChatPhotoAddCells = [NSHashTable weakObjectsHashTable];
     if (DKGlassOSAvailable()) {
         %init(DKChatFloatingGlassHooks);
     }
