@@ -429,12 +429,27 @@ static NSInteger DKClampSliderValue(NSInteger value, DKAdjustBounds bounds) {
     return MIN(bounds.maximum, MAX(bounds.minimum, value));
 }
 
+// 弹窗读数：数值，提示非空时后附「 · 提示」（次级色、小一号）。
+static NSAttributedString *DKSliderReadoutText(NSString *detail, NSString *note) {
+    NSMutableAttributedString *text = [[NSMutableAttributedString alloc] initWithString:detail ?: @"" attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold],
+        NSForegroundColorAttributeName: UIColor.labelColor,
+    }];
+    if (note.length) {
+        [text appendAttributedString:[[NSAttributedString alloc] initWithString:[@" · " stringByAppendingString:note] attributes:@{
+            NSFontAttributeName: [UIFont systemFontOfSize:13.0],
+            NSForegroundColorAttributeName: UIColor.secondaryLabelColor,
+        }]];
+    }
+    return text;
+}
+
 // 滑条范围与说明在显示、点开、onChange 时求值，可随「扩展所有缩放与位移」变化；
-// 落盘值按 declared 声明，备份能容纳任一状态下写入的值。
+// 落盘值按 declared 声明，备份能容纳任一状态下写入的值。note 非空时弹窗读数后附一段提示，随拖动刷新。
 static AWESettingItemModel *DKMakeBoundedSlider(NSString *key, NSString *title, DKSliderMessageBlock message,
                                                 DKAdjustBounds declared, DKSliderBoundsBlock bounds,
                                                 NSInteger defaultValue, DKSliderDetailBlock detailBlock,
-                                                void (^onChange)(NSInteger value)) {
+                                                DKSliderDetailBlock note, void (^onChange)(NSInteger value)) {
     defaultValue = DKClampSliderValue(defaultValue, declared);
     NSInteger (^currentValue)(void) = ^NSInteger {
         NSNumber *stored = [NSUserDefaults.standardUserDefaults objectForKey:key];
@@ -446,6 +461,7 @@ static AWESettingItemModel *DKMakeBoundedSlider(NSString *key, NSString *title, 
 
     __weak AWESettingItemModel *weakItem = item;
     void (^onChangeCopy)(NSInteger) = [onChange copy];
+    DKSliderDetailBlock noteCopy = [note copy];
     DKSettingsWithValues(item, @[ [DKSettingsValue integerWithKey:key minimum:declared.minimum maximum:declared.maximum] ],
         ^NSString *(NSArray *values, __unused BOOL brief) {
             NSInteger value = values[0] == NSNull.null ? defaultValue : [values[0] integerValue];
@@ -469,10 +485,11 @@ static AWESettingItemModel *DKMakeBoundedSlider(NSString *key, NSString *title, 
         box.preferredContentSize = CGSizeMake(250.0, 68.0);
 
         UILabel *readout = [[UILabel alloc] init];
-        readout.text = detailBlock(value);
+        readout.attributedText = DKSliderReadoutText(detailBlock(value), noteCopy ? noteCopy(value) : nil);
         readout.textAlignment = NSTextAlignmentCenter;
-        readout.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightSemibold];
         readout.translatesAutoresizingMaskIntoConstraints = NO;
+        // 弹窗以优先级 250 把内容宽度约束为 preferredContentSize；读数横向紧贴文字的优先级低于它，内容不按文字收窄。
+        [readout setContentHuggingPriority:UILayoutPriorityDefaultLow - 1 forAxis:UILayoutConstraintAxisHorizontal];
         [box.view addSubview:readout];
 
         UISlider *slider = [[UISlider alloc] init];
@@ -497,7 +514,7 @@ static AWESettingItemModel *DKMakeBoundedSlider(NSString *key, NSString *title, 
 
         void (^applyValue)(float, BOOL) = ^(float raw, BOOL finish) {
             NSInteger next = DKClampSliderValue((NSInteger)lroundf(raw), range);
-            readout.text = detailBlock(next);
+            readout.attributedText = DKSliderReadoutText(detailBlock(next), noteCopy ? noteCopy(next) : nil);
             [NSUserDefaults.standardUserDefaults setInteger:next forKey:key];
             if (onChangeCopy) onChangeCopy(next);
             if (!finish) return;
@@ -526,7 +543,7 @@ static AWESettingItemModel *DKMakeFixedSlider(NSString *key, NSString *title, NS
     DKAdjustBounds fixed = { minimum, MAX(minimum, maximum) };
     NSString *messageCopy = [message copy];
     return DKMakeBoundedSlider(key, title, ^NSString *{ return messageCopy; }, fixed,
-                               ^DKAdjustBounds { return fixed; }, defaultValue, detailBlock, onChange);
+                               ^DKAdjustBounds { return fixed; }, defaultValue, detailBlock, nil, onChange);
 }
 
 static NSString *DKPercentSliderDetail(NSInteger percent) {
@@ -559,6 +576,12 @@ AWESettingItemModel *DKMakeRangeSlider(NSString *key, NSString *title, NSString 
 
 AWESettingItemModel *DKMakeAdjustSlider(NSString *key, NSString *title, NSString *message,
                                         void (^onChange)(NSInteger value)) {
+    return DKMakeAdjustSliderWithNote(key, title, message, nil, onChange);
+}
+
+AWESettingItemModel *DKMakeAdjustSliderWithNote(NSString *key, NSString *title, NSString *message,
+                                                NSString *(^note)(NSInteger value),
+                                                void (^onChange)(NSInteger value)) {
     DKAdjustKind kind = DKAdjustKindForKey(key);
     NSString *messageCopy = [message copy];
     DKSliderMessageBlock fullMessage = ^NSString * {
@@ -572,7 +595,7 @@ AWESettingItemModel *DKMakeAdjustSlider(NSString *key, NSString *title, NSString
     return DKMakeBoundedSlider(key, title, fullMessage,
                                DKAdjustExtendedBounds(key), ^DKAdjustBounds { return DKAdjustEffectiveBounds(key); },
                                DKAdjustDefaultValue(key),
-                               ^NSString *(NSInteger value) { return DKAdjustValueText(kind, value); }, onChange);
+                               ^NSString *(NSInteger value) { return DKAdjustValueText(kind, value); }, note, onChange);
 }
 
 #pragma mark - 动作

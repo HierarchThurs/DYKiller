@@ -102,6 +102,11 @@ AWESettingItemModel *DKMakeRangeSlider(NSString *key, NSString *title, NSString 
 AWESettingItemModel *DKMakeAdjustSlider(NSString *key, NSString *title, NSString *message,
                                         void (^onChange)(NSInteger value));
 
+/// 同 DKMakeAdjustSlider，另在弹窗读数后附 note 给出的提示，随拖动刷新；返回 nil 时只显示数值。
+AWESettingItemModel *DKMakeAdjustSliderWithNote(NSString *key, NSString *title, NSString *message,
+                                                NSString *(^note)(NSInteger value),
+                                                void (^onChange)(NSInteger value));
+
 /// 动作项：点击时把该项与当前设置页交给 onTap，界面由功能自己弹。
 /// 状态不落在 NSUserDefaults 上（key 只作 identifier）的功能用它；须声明值或排除备份。
 AWESettingItemModel *DKMakeAction(NSString *key, NSString *title, NSString *detail,

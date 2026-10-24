@@ -131,6 +131,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyPlaybackChapterHighlightsMode, @"ic_text_outlined_20"),
                     DKRow(DKKeyPlaybackCoCreatorMode, @"ic_personcircleclean_outlined_20"),
                     DKRow(DKKeyPlaybackSlidesTagMode, @"ic_image_outlined_20"),
+                    DKRow(DKKeyPlaybackArticleTagMode, @"ic_text_outlined_20"),
                 ]),
                 DKSection(@"文案下方", @[
                     DKRow(DKKeyPlaybackRiskNoticeMode, @"ic_text_outlined_20"),
@@ -218,6 +219,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyChatRemoveOnline, @"ic_user_outlined_20"),
                     DKRow(DKKeyChatRemoveCall, @"ic_phoneup_outlined"),
                     DKRow(DKKeyChatRemoveMenu, @"ic_hamburgernut_outlined_20"),
+                    DKRow(DKKeyChatGroupZoneNoAutoExpand, @"ic_hamburgeruparrow_outlined_20"),
                 ]),
             ]),
         ]),
@@ -262,7 +264,6 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                 DKSection(@"推荐与榜单", @[
                     DKRow(DKKeySearchRemoveGuess, @"ic_eyeslash_outlined_20"),
                     DKRow(DKKeySearchRemoveAllRanks, @"ic_eyeslash_outlined_20"),
-                    DKRow(DKKeySearchRanks, @"ic_module_outlined_20"),
                     DKRow(DKKeySearchRemoveRankFooter, @"ic_eyeslash_outlined_20"),
                 ]),
                 DKSection(@"输入入口", @[
@@ -357,6 +358,8 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyInfoOffset, @"ic_doublearrowup_outlined_20"),
                 ]),
             ]),
+            DKRow(DKKeyProgressOffset, @"ic_doublearrowup_outlined_20"),
+            DKRow(DKKeyStoryIndicatorOffset, @"ic_doublearrowup_outlined_20"),
         ]),
     ]);
 
@@ -453,6 +456,8 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
         ]),
         DKSection(@"手势", @[
             DKRow(DKKeyDoubleTapOpenComment, @"ic_comment_outlined_20"),
+            DKRow(DKKeyLongPressCopyNickname, @"ic_user_outlined_20"),
+            DKRow(DKKeyLongPressCopyDescription, @"ic_text_outlined_20"),
         ]),
         DKSection(@"评论区", @[
             DKRow(DKKeyCommentCopyWithoutName, @"ic_text_outlined_20"),
@@ -704,7 +709,6 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
         NSString *removedPlus = @"拍摄按钮已在「移除底栏项目」中移除";
         NSMutableDictionary *table = [NSMutableDictionary dictionary];
         [table addEntriesFromDictionary:@{
-            DKKeySearchRanks: @[ DKBlockOn(DKKeySearchRemoveAllRanks, @"已移除全部榜单") ],
             DKKeySearchRemoveRankFooter: @[ DKBlockOn(DKKeySearchRemoveAllRanks, @"已移除全部榜单") ],
             DKKeyPlusStyle: @[ DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
             DKKeyPlusIcon: @[ DKBlockNotEqual(DKKeyPlusStyle, 3, @"需先在「拍摄按钮」中选择「自定义图片」"),
@@ -716,6 +720,7 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
             DKKeyTabTitleProfile: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_profile"]),
             DKKeyProfileSettingsEntry: @[ DKBlockOn(DKKeyProfileRemoveServiceArea, @"主页功能区已在「个人主页精简」中移除") ],
             DKKeyChatTopOnlinePosition: @[ DKBlockOn(DKKeyChatRemoveOnline, @"在线状态已在「消息页精简」中移除") ],
+            DKKeyChatGroupZoneNoAutoExpand: @[ DKBlockOn(DKKeyChatRemoveMenu, @"群功能栏已在「移除菜单按钮」中移除") ],
             DKKeyDanmakuFixedColor: @[ DKBlockNotEqual(DKKeyDanmakuColorMode, 0, @"当前颜色模式不是「固定颜色」") ],
             DKKeyDanmakuHexColor: @[ DKBlockNotEqual(DKKeyDanmakuColorMode, 0, @"当前颜色模式不是「固定颜色」") ],
             DKKeyDanmakuGradientColors: @[ DKBlockNotEqual(DKKeyDanmakuColorMode, 4, @"当前颜色模式不是「自定义渐变」") ],
