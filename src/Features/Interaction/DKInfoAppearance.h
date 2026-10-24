@@ -16,6 +16,9 @@
 extern "C" {
 #endif
 
+/// 元素栈一行（AWEBaseElementView）的元素对象；不是元素行时返回 nil。
+id DKInfoRowElement(UIView *row);
+
 /// 左侧信息栈布局后应用外观；不是左侧栈时直接返回。由元素栈的统一布局入口调用。
 void DKInfoAppearanceApplyStack(AWEElementStackView *stack);
 
