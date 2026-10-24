@@ -261,9 +261,14 @@ void DKChatInputGlassRestore(id layout) {
     DKChatInputSync(DKChatInputLayoutForView(self));
 }
 %end
-// 格子的模糊层在 configWithModel: 返回之后才由 addBlurView 建出，各回调后都只清这一格。
+// 格子的模糊层在 configWithModel: 返回之后才由 addBlurView 建出；底色在图标异步加载完成后还会重写一次。
+// 各回调后都只清这一格。
 %hook AWEIMChatPanelCollectionViewCell
 - (void)configWithModel:(id)model {
+    %orig;
+    DKChatPanelCellSync(self);
+}
+- (void)__configCellBackgroundColorWithColor:(id)color {
     %orig;
     DKChatPanelCellSync(self);
 }
