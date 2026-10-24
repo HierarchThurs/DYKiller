@@ -56,9 +56,6 @@ static NSString *const DKKeyShareMenuHidePrefix  = @"DYKillerHideShareMenu.";
 static NSString *const DKKeySearchRemoveHistory = @"DYKillerSearchRemoveHistory";
 static NSString *const DKKeySearchRemoveGuess = @"DYKillerSearchRemoveGuess";
 static NSString *const DKKeySearchRemoveAllRanks = @"DYKillerSearchRemoveAllRanks";
-static NSString *const DKKeySearchRanks = @"DYKillerSearchRanks";
-static NSString *const DKKeySearchRankCatalog = @"DYKillerSearchRankCatalog";
-static NSString *const DKKeySearchRankHidePrefix = @"DYKillerHideSearchRank.";
 static NSString *const DKKeySearchRemoveRankFooter = @"DYKillerSearchRemoveRankFooter";
 static NSString *const DKKeySearchRemoveVoice = @"DYKillerSearchRemoveVoice";
 // 相机入口：0 显示 / 1 隐藏（保留位置与点击）/ 2 移除（原生布局收拢）。
@@ -146,6 +143,16 @@ static NSString *const DKKeyNicknameScale    = @"DYKillerNicknameScale";
 static NSString *const DKKeyDescriptionScale = @"DYKillerDescriptionScale";
 static NSString *const DKKeyInfoOffset       = @"DYKillerInfoOffset";
 
+#pragma mark - 功能组：进度条与图片指示器位置
+
+// 视频进度条上移、图文图片指示器上移：常规 0–100 pt，默认 0。范围登记在 DKAdjustRange.m。
+static NSString *const DKKeyProgressOffset       = @"DYKillerProgressOffset";
+static NSString *const DKKeyStoryIndicatorOffset = @"DYKillerStoryIndicatorOffset";
+// 本机实测缓存（不进备份）：进度条底边、图片指示器底边到交互层底边的原生距离（pt，不含本插件的上移），
+// 供「位置同图片指示器」提示使用。
+static NSString *const DKKeyProgressBaseBottom       = @"DYKillerProgressBaseBottom";
+static NSString *const DKKeyStoryIndicatorBaseBottom = @"DYKillerStoryIndicatorBaseBottom";
+
 #pragma mark - 功能组：弹幕改色
 
 // 颜色模式：0 固定颜色 / 1 随机纯色 / 2 随机渐变 / 3 固定彩虹 / 4 自定义渐变 / 5 旋转彩虹。
@@ -193,6 +200,9 @@ static NSString *const DKKeyAudioVizStyle = @"DYKillerAudioVizStyle";
 #pragma mark - 功能组：播放体验
 
 static NSString *const DKKeyDoubleTapOpenComment = @"DYKillerDoubleTapOpenComment";
+// 播放页长按左下昵称复制「@昵称」、长按文案复制作品完整文案。
+static NSString *const DKKeyLongPressCopyNickname = @"DYKillerLongPressCopyNickname";
+static NSString *const DKKeyLongPressCopyDescription = @"DYKillerLongPressCopyDescription";
 static NSString *const DKKeyDetailHideBottomBar = @"DYKillerHideChatVideoBottomBar";
 static NSString *const DKKeyDetailReturnMode = @"DYKillerDetailReturnMode";
 static NSString *const DKKeyDetailSearchMode = @"DYKillerDetailSearchMode";
@@ -225,6 +235,7 @@ static NSString *const DKKeyPlaybackStoreMode              = @"DYKillerPlaybackS
 static NSString *const DKKeyPlaybackChapterHighlightsMode  = @"DYKillerPlaybackChapterHighlightsMode";
 static NSString *const DKKeyPlaybackCoCreatorMode          = @"DYKillerPlaybackCoCreatorMode";
 static NSString *const DKKeyPlaybackSlidesTagMode          = @"DYKillerPlaybackSlidesTagMode";
+static NSString *const DKKeyPlaybackArticleTagMode         = @"DYKillerPlaybackArticleTagMode";
 // 文案下方
 static NSString *const DKKeyPlaybackRiskNoticeMode         = @"DYKillerPlaybackRiskNoticeMode";
 static NSString *const DKKeyPlaybackMusicInfoMode          = @"DYKillerPlaybackMusicInfoMode";
@@ -318,6 +329,7 @@ static NSString *const DKKeyChatRemoveUnread            = @"DYKillerChatRemoveUn
 static NSString *const DKKeyChatRemoveOnline            = @"DYKillerChatRemoveOnline";
 static NSString *const DKKeyChatRemoveCall              = @"DYKillerChatRemoveCall";
 static NSString *const DKKeyChatRemoveMenu              = @"DYKillerChatRemoveMenu";
+static NSString *const DKKeyChatGroupZoneNoAutoExpand   = @"DYKillerChatGroupZoneNoAutoExpand";
 // 聊天页顶栏自定义：子页面入口、顶部渐变模糊、居中头像（0 默认 / 1 居中）、火花与在线位置（0 居中 / 1 左侧 / 2 右侧）。
 static NSString *const DKKeyChatTopCustomPage           = @"DYKillerChatTopCustomPage";
 static NSString *const DKKeyChatTopBlur                 = @"DYKillerChatTopBlur";

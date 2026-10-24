@@ -25,6 +25,7 @@
 #import "DKTabBarRemoval.h"
 #import "DouyinHeaders.h"
 #import "DKGlassGuard.h"
+#import "DKImageOpaque.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKUtils.h"
@@ -529,40 +530,10 @@ static UIImage *DKGlassPlusSourceIcon(UIView *button) {
 // 按 alpha 裁掉四周透明留白。抖音给的图是 75×49 而字形只有约 33×30，直接缩进圆键会小到看不清；
 // 裁完再排版，换了图标也自适应，不必写死内缩。
 static UIImage *DKGlassTrimTransparent(UIImage *image) {
-    CGImageRef source = image.CGImage;
-    if (!source) return image;
+    CGRect opaque = DKImageOpaquePixelRect(image);
+    if (CGRectIsNull(opaque)) return image;   // 无位图或整张全透明，原样返回
 
-    size_t width = CGImageGetWidth(source);
-    size_t height = CGImageGetHeight(source);
-    if (width == 0 || height == 0) return image;
-
-    uint8_t *alpha = (uint8_t *)calloc(width * height, sizeof(uint8_t));
-    if (!alpha) return image;
-
-    CGContextRef context = CGBitmapContextCreate(alpha, width, height, 8, width, NULL,
-                                                 (CGBitmapInfo)kCGImageAlphaOnly);
-    if (!context) {
-        free(alpha);
-        return image;
-    }
-    CGContextDrawImage(context, CGRectMake(0.0, 0.0, width, height), source);
-    CGContextRelease(context);
-
-    size_t minX = width, minY = height, maxX = 0, maxY = 0;
-    for (size_t y = 0; y < height; y++) {
-        for (size_t x = 0; x < width; x++) {
-            if (alpha[y * width + x] == 0) continue;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-        }
-    }
-    free(alpha);
-    if (minX > maxX || minY > maxY) return image;   // 整张全透明，原样返回
-
-    CGImageRef cropped = CGImageCreateWithImageInRect(
-        source, CGRectMake(minX, minY, maxX - minX + 1, maxY - minY + 1));
+    CGImageRef cropped = CGImageCreateWithImageInRect(image.CGImage, opaque);
     if (!cropped) return image;
 
     UIImage *result = [UIImage imageWithCGImage:cropped

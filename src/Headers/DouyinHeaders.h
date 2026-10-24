@@ -509,8 +509,16 @@
 
 // feed 页进度条布局策略：常态 / 唤醒 frame 与 progressWidth 都由左右边距 progressSliderLeftRightArea 算出
 // （progressWidth = 布局宽 − 2 × 边距，常态 frame = {边距, y, progressWidth, 2}），每次取 frame 都现取边距。
+// 纵向：进度条底边 = 容器高 − posAdjustY + sliderYOffset，常态与唤醒 frame 每次现取 posAdjustY；底部背景不用它。
 @interface AWEDProgressLayoutFeedStrategy : NSObject
 - (AWEArchEventDataController *)edc;
+- (double)posAdjustY;
+@end
+
+// 图文作品底部的图片指示器（分段条 / 圆点）。Masonry 约束在左侧栈下方；
+// currentProgressViewFrame 为当前一段在本视图坐标里的 frame。
+@interface AWEStoryProgressContainerView : UIView
+- (CGRect)currentProgressViewFrame;
 @end
 
 @class AWEDProgressStateChangeContainer;
@@ -818,6 +826,13 @@
 @property (nonatomic, strong) UITableView *tableView;
 @end
 
+// 群聊顶部群功能栏：展开状态存在 Swift viewModel 里，hostVC_viewDidLoad 内按群身份与功能项红点同步算出，
+// 切换只在原生允许时生效（40.8.0 反汇编）。
+@interface AWEIMGroupZoneConversationComponent : AWEIMComponentBase
+- (BOOL)isGroupZoneExpanded;
+- (void)toggleGroupZoneExpanded:(BOOL)animated;
+@end
+
 // 消息页布局组件：主布局从当前几何计算快照，页面配置负责重排输入区、浮动条与消息列表。
 @interface AWEIMMessageListLayoutComponent : AWEIMComponentBase
 - (void)updatePageLayout:(id)layoutInfo;
@@ -940,6 +955,18 @@
 - (void)iesim_themeReload:(id)theme;
 @end
 
+// 页签行的两种原生形态按聊天有无背景图切换（40.8.0 反汇编）：居中时页签集合视图 contentInset.bottom 为 0、
+// 固定入口图标在入口内居中、分隔线隐藏；否则底部留 8pt、图标距顶 6pt、分隔线显示。
+@interface AWEIMEmoticonPanelBoxComponent : AWEIMComponentBase
+- (void)verticalAlignmentCenter:(BOOL)center boxView:(UIView *)boxView;
+@end
+
+// 页签行左侧的固定入口（搜索）：entryView 为入口，iconView 为其中的图标。
+@interface AWEIMEmoticonFixedTab : NSObject
+@property (nonatomic, strong) UIView *entryView;
+- (void)verticalAlignmentCenter:(BOOL)center;
+@end
+
 // 语音态「按住说话」的触摸视图，自带一层模糊与长按手势。
 @interface AWEIMOptimizeAudioInputTouchView : UIView
 - (void)refreshColor;
@@ -974,7 +1001,10 @@
 @property (nonatomic, strong) UIStackView *mainTitleStackView;
 @property (nonatomic, strong) UIStackView *subtitleStackView;
 @end
+// 标题头像：p_updateDots 显示在线圆点时给头像内容 contentView 挂 notchLayer 缺口遮罩（为圆点留出外圈），隐藏圆点时摘掉。
 @interface AWEIMMessageListNaviBarTitleAvatarComponent : AWEIMComponentBase
+@property (nonatomic, strong) UIView *contentView;
+@property (nonatomic, strong) CAShapeLayer *notchLayer;
 @property (nonatomic, strong) UIView *onlineDotView;
 - (void)p_updateDots;
 @end
@@ -1421,6 +1451,23 @@
 + (NSString *)formattedDateForFullTimestamp:(double)timestamp;
 - (id)context;
 - (void)layoutElementView;
+@end
+
+#pragma mark - 长按复制昵称与文案用到的类
+
+@interface AWEUserModel : NSObject
+@property (nonatomic, copy) NSString *nickname;
+@end
+
+// 作品的作者与完整文案：descriptionString 为正文加话题标签（itemTitle + caption），不受播放页折叠影响。
+@interface AWEAwemeModel (DKInfoCopy)
+@property (nonatomic, strong) AWEUserModel *author;
+@property (nonatomic, copy) NSString *descriptionString;
+@end
+
+// 播放交互层元素基类（AWEBaseElement 子类），model 为当前作品；左侧昵称、文案元素都继承它。
+@interface AWEPlayInteractionBaseElement : NSObject
+@property (nonatomic, strong) AWEAwemeModel *model;
 @end
 
 #endif /* DouyinHeaders_h */
