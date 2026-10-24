@@ -10,6 +10,7 @@
 #import "DKChatGlassStore.h"
 #import "DKChatInput.h"
 #import "DKChatInputLayout.h"
+#import "DKGlassFlexView.h"
 #import "DKGlassGuard.h"
 #import "DKKeys.h"
 #import "DKUtils.h"
@@ -18,8 +19,10 @@
 
 // 相邻页签胶囊之间的间距。
 static const CGFloat kDKChatEmojiTabGap = 4.0;
-// 搜索圆钮整体右移的距离：圆钮按页签高度取直径后会越出面板卡片左缘，右移后与卡片、首个页签都留出间隙。
-static const CGFloat kDKChatEmojiSearchShift = 4.0;
+// 顶栏整体偏移：右移 14pt 使首枚胶囊左缘落在 x=16（距 x=8 面板左缘留 8pt，并与下方 x=16 表情网格左对齐），
+// 下移 8pt 使 38pt 高的胶囊位于 y=9..47，距面板顶边（y=0）与下方托盘托手（y=56）各留 9pt 对称空隙。
+static const CGFloat kDKChatEmojiRowShiftX = 14.0;
+static const CGFloat kDKChatEmojiRowShiftY = 8.0;
 
 static NSHashTable<UIView *> *gDKChatEmojiTabs;
 static NSHashTable<UIView *> *gDKChatEmojiBoxes;
@@ -36,6 +39,15 @@ static UIViewController *DKChatEmojiInput(UIView *view, NSHashTable<UIView *> *s
 static UIColor *DKChatEmojiSelectedTint(UIUserInterfaceStyle style) {
     return [UIColor colorWithWhite:1.0 alpha:style == UIUserInterfaceStyleDark ? 0.12 : 0.18];
 }
+
+static UIView *DKChatEmojiBoxForView(UIView *view) {
+    for (UIView *node = view.superview; node; node = node.superview) {
+        if (DKChatInputIsKind(node, @"AWEIMEmoticonPanelBoxView")) return node;
+    }
+    return nil;
+}
+
+static void DKChatEmojiSearchSync(UIView *box);
 
 static void DKChatEmojiTabSync(UICollectionViewCell *cell) {
     if (@available(iOS 26.0, *)) {
@@ -56,6 +68,8 @@ static void DKChatEmojiTabSync(UICollectionViewCell *cell) {
                       radius:CGRectGetHeight(frame) * 0.5 interactive:YES
                         tint:selected ? DKChatEmojiSelectedTint(style) : nil];
         [store end];
+        UIView *box = DKChatEmojiBoxForView(cell);
+        if (box) DKChatEmojiSearchSync(box);
     }
 }
 
@@ -70,36 +84,73 @@ static NSArray<UIView *> *DKChatEmojiEntries(UIView *box) {
     return entries;
 }
 
-// 圆钮直径与页签胶囊同高；还没有页签时按入口短边。
-static CGFloat DKChatEmojiButtonDiameter(UIView *box, UIView *entry) {
+// 搜索胶囊与右侧页签胶囊统一尺寸（48×38）；首帧尚未生成页签 cell 时按入口宽度与有效内容高度兜底。
+static CGSize DKChatEmojiButtonSize(UIView *box, UIView *entry) {
     UICollectionView *tabs = DKChatInputObjectIvar(box, "_tabCollectionView");
     UIView *tab = tabs.visibleCells.firstObject;
-    return tab ? CGRectGetHeight(tab.bounds) : MIN(CGRectGetWidth(entry.bounds), CGRectGetHeight(entry.bounds));
+    CGFloat width = tab && CGRectGetWidth(tab.bounds) > kDKChatEmojiTabGap
+        ? CGRectGetWidth(tab.bounds) - kDKChatEmojiTabGap
+        : MAX(CGRectGetWidth(entry.bounds) - kDKChatEmojiTabGap, 0.0);
+    if (tab && CGRectGetHeight(tab.bounds) > 0.0) {
+        return CGSizeMake(width, CGRectGetHeight(tab.bounds));
+    }
+    if (tabs) {
+        UIEdgeInsets inset = tabs.contentInset;
+        CGFloat contentHeight = CGRectGetHeight(tabs.bounds) - inset.top - inset.bottom - 2.0;
+        if (contentHeight > 0.0) return CGSizeMake(width, contentHeight);
+    }
+    CGFloat side = MIN(CGRectGetWidth(entry.bounds), CGRectGetHeight(entry.bounds));
+    return CGSizeMake(width > 0.0 ? width : side, side);
+}
+
+// 搜索入口（52×48）内部图标（im_emoticon_tab_search，{{12, 6}, {28, 28}}）与右侧页签 cell（{{x, 1}, {52, 38}}）
+// 的中心均在 y = 20.0（而非 entry.bounds 的中点 y = 24.0）；按图标中心与页签中线对齐胶囊。
+static CGPoint DKChatEmojiEntryCenter(UIView *box, UIView *entry) {
+    CGPoint center = CGPointMake(CGRectGetMidX(entry.bounds), CGRectGetMidY(entry.bounds));
+    for (UIView *subview in entry.subviews) {
+        if ([subview isKindOfClass:DKGlassFlexView.class] || subview.hidden || CGRectIsEmpty(subview.bounds)) continue;
+        center = subview.center;
+        break;
+    }
+    UICollectionView *tabs = DKChatInputObjectIvar(box, "_tabCollectionView");
+    UIView *tab = tabs.visibleCells.firstObject;
+    if (tab) {
+        center.y = tab.center.y - tabs.contentOffset.y;
+    } else if (tabs) {
+        UIEdgeInsets inset = tabs.contentInset;
+        CGFloat contentHeight = CGRectGetHeight(tabs.bounds) - inset.top - inset.bottom;
+        if (contentHeight > 0.0) center.y = inset.top + contentHeight * 0.5;
+    }
+    return center;
 }
 
 static void DKChatEmojiSearchSync(UIView *box) {
     if (@available(iOS 26.0, *)) {
         UIViewController *input = DKChatEmojiInput(box, gDKChatEmojiBoxes);
+        UIView *tabs = DKChatInputObjectIvar(box, "_tabCollectionView");
         NSArray<UIView *> *entries = DKChatEmojiEntries(box);
         if (!input) {
             [DKChatGlassStore removeStoreForOwner:box];
+            DKAdjustTransform(tabs, CGAffineTransformIdentity);
             for (UIView *entry in entries) DKAdjustTransform(entry, CGAffineTransformIdentity);
             return;
         }
         DKChatGlassStore *store = [DKChatGlassStore storeForOwner:box create:YES];
         if (store.syncing) return;
+        CGAffineTransform shift = CGAffineTransformMakeTranslation(kDKChatEmojiRowShiftX, kDKChatEmojiRowShiftY);
         [store beginWithClear:DKPrefBool(DKKeyChatInputGlassClear) style:DKChatInputStyle(input)];
+        DKAdjustTransform(tabs, shift);
         for (UIView *entry in entries) {
-            CGFloat diameter = DKChatEmojiButtonDiameter(box, entry);
-            CGRect frame = CGRectMake(CGRectGetMidX(entry.bounds) - diameter * 0.5, CGRectGetMidY(entry.bounds) - diameter * 0.5,
-                                      diameter, diameter);
+            CGSize size = DKChatEmojiButtonSize(box, entry);
+            CGPoint center = DKChatEmojiEntryCenter(box, entry);
+            CGRect frame = CGRectMake(center.x - size.width * 0.5, center.y - size.height * 0.5,
+                                      size.width, size.height);
             [store clearBackingOfView:entry];
-            UIVisualEffectView *glass = [store placeGlassFor:entry in:entry frame:frame shape:DKChatGlassShapeRounded radius:diameter * 0.5
+            UIVisualEffectView *glass = [store placeGlassFor:entry in:entry frame:frame shape:DKChatGlassShapeRounded radius:size.height * 0.5
                      interactive:YES tint:nil];
-            // 横向栈在父级回调后仍会调整入口高度，圆片随入口尺寸保持居中。
-            glass.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin
-                | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
-            DKAdjustTransform(entry, CGAffineTransformMakeTranslation(kDKChatEmojiSearchShift, 0.0));
+            // 搜索图标（autoresizingMask = 0）与右侧页签均固定在顶部 40pt 行内，禁用纵向弹性边距以免被 48pt 栈高拉偏。
+            glass.autoresizingMask = UIViewAutoresizingNone;
+            DKAdjustTransform(entry, shift);
         }
         [store end];
     }
