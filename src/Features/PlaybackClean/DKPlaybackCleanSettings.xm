@@ -66,6 +66,8 @@ static AWESettingItemModel *DKCleanSettingItem(NSString *key, NSString *title, N
            @"昵称右侧的「N人共创」标签。隐藏：保留原位置和点击入口；移除：同时移除该标签及其布局占位。" ],
         @[ DKKeyPlaybackSlidesTagMode, @"图文标签",
            @"昵称右侧的「图文」作品类型标签。隐藏保留原位置；移除同时移除该标签及其布局占位。" ],
+        @[ DKKeyPlaybackArticleTagMode, @"文章标签",
+           @"昵称右侧的「文章」作品类型标签。隐藏保留原位置；移除同时移除该标签及其布局占位。" ],
         // 文案下方
         @[ DKKeyPlaybackRiskNoticeMode, @"作者声明",
            @"作品页中的作者声明、AI 生成提示与风险提示。隐藏：保留原位置和点击行为；移除：同时移除元素及其布局占位。" ],
