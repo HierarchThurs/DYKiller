@@ -135,6 +135,13 @@
 @interface AWEGradientView : UIView                                // HUD 可读性压暗渐变
 @end
 
+@interface AWEDPlayerComponentInteraction : NSObject
+@property (nonatomic, strong) AWEAwemeModel *model;
+@property (nonatomic, strong) id playerController;
+- (void)addGradientViews;
+- (void)hideGradientViewIfNeeded:(id)player;
+@end
+
 @interface AWEIMFeedVideoQuickReplayInputViewController : UIViewController  // 底部快捷回复栏控制器
 @end
 
