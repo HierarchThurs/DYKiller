@@ -184,8 +184,9 @@ static void DKProbeAppendGlassBar(NSMutableString *out, UITabBarController *cont
     // 不写它，读回恒为 0，无论装的是哪一档都会显示 Regular。
     UIVisualEffect *barEffect = bar.standardAppearance.backgroundEffect;
     [out appendFormat:@"  standardAppearance.backgroundEffect   = %@\n", barEffect ?: (id)@"(nil)"];
-    [out appendFormat:@"  scrollEdgeAppearance.backgroundEffect = %@\n",
-     bar.scrollEdgeAppearance.backgroundEffect ?: (id)@"(nil)"];
+    id scrollEdgeEffect = nil;
+    if (@available(iOS 15.0, *)) scrollEdgeEffect = bar.scrollEdgeAppearance.backgroundEffect;
+    [out appendFormat:@"  scrollEdgeAppearance.backgroundEffect = %@\n", scrollEdgeEffect ?: (id)@"(nil)"];
     [out appendFormat:@"  backgroundEffect.tintColor            = %@\n",
      DKProbeColorDesc(DKProbeValue(barEffect, @"tintColor"))];
     // 标题走的是 image 槽（模板图），title 恒为空，认人靠 accessibilityLabel。
@@ -219,7 +220,7 @@ static void DKProbeAppendGlassBar(NSMutableString *out, UITabBarController *cont
      DKProbeStyleName(bar.overrideUserInterfaceStyle)];
 
     // 文字居中的判据：标题图的 frame 应在按钮内纵向居中（按钮 54 高时 y≈(54−图高)/2）。
-    UIView *platter = DKProbeFindSubview(bar, @"_UITabBarItemPlatterView");
+    UIView *platter = DKGlassPlatterCurrent();
     [out appendFormat:@"  platter            = %@  frame=%@\n",
      DKProbeDesc(platter), platter ? NSStringFromCGRect(platter.frame) : @"-"];
     // 胶囊清透与否只看这一行：appearance.backgroundEffect 是旧 API，悬浮 provider 不读，
@@ -419,29 +420,34 @@ static BOOL DKProbeChainVisible(UIView *view) {
     return view != nil;
 }
 
-// 小表情栏靠「透出输入栏那块玻璃」取得同档观感，自己不挂玻璃。两条读数各答一个问题：
-// 底色清了没有（清不掉就是一条黑杠），以及输入栏玻璃在不在它背后（不在就是一条原始视频）。
-// 它在另一个窗口里，两个窗口都是满屏同原点，各自的窗口坐标可以直接比。
-static void DKProbeAppendCommentEmoticonBar(NSMutableString *out, UIView *backdropGlass) {
-    UIView *panel = DKCommentGlassCurrentEmoticonPanel();
-    if (!panel || !panel.window) {
-        [out appendString:@"小表情栏             = (不在屏)\n"];
+// 输入区小控件栏（小表情栏 / 零评论的发布引导栏）靠「透出输入栏那块玻璃」取得同档观感，
+// 自己不挂玻璃。两条读数各答一个问题：底色清了没有（清不掉就是一条黑杠），以及输入栏玻璃
+// 在不在它背后（不在就是一条原始视频）。它们都在另一个窗口里，两个窗口满屏同原点，坐标可比。
+static void DKProbeAppendCommentEmoticonBars(NSMutableString *out, UIView *backdropGlass) {
+    NSMutableArray<UIView *> *live = [NSMutableArray array];
+    for (UIView *bar in DKCommentGlassCurrentEmoticonBars()) {
+        if (bar.window) [live addObject:bar];
+    }
+    if (live.count == 0) {
+        [out appendString:@"输入区小控件栏       = (不在屏)\n"];
         return;
     }
 
-    CGRect panelRect = [panel convertRect:panel.bounds toView:nil];
-    [out appendFormat:@"小表情栏             = %@  窗口矩形=%@  窗口=%@\n",
-     DKProbeDesc(panel), NSStringFromCGRect(panelRect), NSStringFromClass(panel.window.class)];
-    [out appendFormat:@"  底色               = %@\n", DKProbeColorDesc(panel.backgroundColor)];
-
-    if (!backdropGlass.window || !DKProbeChainVisible(backdropGlass)) {
-        [out appendString:@"  背后是输入栏玻璃   = 否（输入栏没有可见玻璃）\n"];
-        return;
+    [out appendFormat:@"输入区小控件栏       = %lu 块\n", (unsigned long)live.count];
+    for (UIView *bar in live) {
+        CGRect barRect = [bar convertRect:bar.bounds toView:nil];
+        [out appendFormat:@"  %@  窗口矩形=%@  窗口=%@  底色=%@\n",
+         DKProbeDesc(bar), NSStringFromCGRect(barRect), NSStringFromClass(bar.window.class),
+         DKProbeColorDesc(bar.backgroundColor)];
+        if (!backdropGlass.window || !DKProbeChainVisible(backdropGlass)) {
+            [out appendString:@"    背后是输入栏玻璃 = 否（输入栏没有可见玻璃）\n"];
+            continue;
+        }
+        CGRect glassRect = [backdropGlass convertRect:backdropGlass.bounds toView:nil];
+        [out appendFormat:@"    背后是输入栏玻璃 = %@  玻璃窗口矩形=%@\n",
+         CGRectContainsRect(CGRectInset(glassRect, -0.5, -0.5), barRect) ? @"是" : @"否",
+         NSStringFromCGRect(glassRect)];
     }
-    CGRect glassRect = [backdropGlass convertRect:backdropGlass.bounds toView:nil];
-    [out appendFormat:@"  背后是输入栏玻璃   = %@  玻璃窗口矩形=%@\n",
-     CGRectContainsRect(CGRectInset(glassRect, -0.5, -0.5), panelRect) ? @"是" : @"否",
-     NSStringFromCGRect(glassRect)];
 }
 
 // 评论面板玻璃：验收配置目标、公开属性、flex 交互、场景 trait 与有效圆角。
@@ -618,7 +624,7 @@ static void DKProbeAppendCommentGlass(NSMutableString *out) {
          CGRectGetMaxY(glass.frame), CGRectGetMinY(cover), CGRectGetHeight(slot.bounds)];
     }
 
-    DKProbeAppendCommentEmoticonBar(out, backdropGlass);
+    DKProbeAppendCommentEmoticonBars(out, backdropGlass);
 
     // 输入框胶囊会在常驻态与回复态之间改变尺寸，探针直接核对玻璃是否仍与槽位等大。
     UIView *field = DKCommentGlassCurrentField();

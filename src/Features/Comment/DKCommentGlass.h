@@ -27,9 +27,10 @@ UIView *DKCommentGlassCurrentField(void);
 /// 探针据此核对主面板有没有正确让位、容器里的不透明底清干净没有。
 UIView *DKCommentGlassCurrentInputContainer(void);
 
-/// 在场的小表情栏（键盘输入附件，住在 UITextEffectsWindow 里）；不在屏时为 nil。
-/// 它靠透出输入栏那块玻璃取得同档观感，探针据此核对底色清了没有、玻璃在不在它背后。
-UIView *DKCommentGlassCurrentEmoticonPanel(void);
+/// 在场的输入区小控件栏快照（有评论时是小表情栏，零评论时是发布引导栏；住在
+/// UITextEffectsWindow 里），离屏的也在其中，按 window 自行过滤。
+/// 它们靠透出输入栏那块玻璃取得同档观感，探针据此核对底色清了没有、玻璃在不在它们背后。
+NSArray<UIView *> *DKCommentGlassCurrentEmoticonBars(void);
 
 /// 本次会话拦下「不透明绘制优化」网关的次数。恒为 0 说明抖音没走这个网关——
 /// 那就要靠探针的「残留面板底色」判断面板有没有被刷上底色。

@@ -109,7 +109,7 @@
 // 视频+交互合并容器。其 .view 用于视频容器布局调整。
 @interface AWEDPlayerViewController_Merge : UIViewController
 @property (nonatomic, strong) AWEAwemeModel *model;                 // 取视频宽高做比例限幅
-@property (nonatomic, assign) BOOL hasInlandscape;                  // 横屏视频判据（横屏排除全屏）
+@property (nonatomic, assign) BOOL hasInlandscape;                  // 本次播放点过「全屏观看」：退出横屏不清零，播放结束才清零
 @property (nonatomic, strong) UIView *gradientBackgroundView;       // 评论 shrink 会调整该渐变透明度
 @property (nonatomic, copy) NSString *referString;                  // 页面来源，用于限定搜索详情页
 - (BOOL)isInLandscapeFeedStatus;
@@ -382,6 +382,11 @@
 // 回复输入区上方那条小表情栏。它是键盘的输入附件，住在 UITextEffectsWindow 里，
 // 不在评论控制器的视图树内——只能按类名挂钩，遍历评论容器找不到它。
 @interface AWECommentMiniEmoticonPanelView : UIView
+@end
+
+// 零评论作品打开评论面板时，输入区上方那条「发布你的第一条评论」引导栏。同样住在
+// UITextEffectsWindow 里；底色由输入区在每次键盘弹出 / 收起时写入（40.8.0 实测）。
+@interface AWECommentPublishGuidanceView : UIView
 @end
 
 // 点工具栏「@」拉起的艾特面板（横排头像 / 搜索结果表 / 加载与出错页）。

@@ -28,7 +28,8 @@
 //    输入框保持独立一块，不使用 UIGlassContainerEffect（嵌套会被合并成同一形状）。
 //
 //  · 小表情栏住在 UITextEffectsWindow 里，够不着也不必够——它的矩形正好落在输入区玻璃之内，
-//    只清掉自己的不透明底色，透出来的就是同一块玻璃。
+//    只清掉自己的不透明底色，透出来的就是同一块玻璃。有两种形态：AWECommentMiniEmoticonPanelView，
+//    以及零评论时的发布引导栏 AWECommentPublishGuidanceView（白底由输入区在键盘弹出 / 收起时写入）。
 //
 //  · 热更新的「不透明绘制优化」从抖音自己的 AB 网关关掉，等于把收到热更新的设备退回没收到的
 //    那个状态。不碰文字颜色、字形、图层与 opaque。
@@ -98,8 +99,9 @@ static __weak UIView *gLastPanelSlot = nil;
 static __weak UIView *gLastFieldSlot = nil;
 // 最近接管的输入栏容器。主面板玻璃的让位判据、小表情栏的清色判据都以它那块玻璃为准。
 static __weak UIView *gLastInputContainer = nil;
-// 在场的小表情栏。它随键盘来去，玻璃可能比它后到，同步时补清一次。
-static __weak UIView *gEmoticonPanel = nil;
+// 在场的输入区小控件栏：有评论时是小表情栏，零评论时是发布引导栏，两者同形、可同时在世。
+// 只做弱引用登记，随键盘来去；玻璃可能比它们后到，同步时补清一次。
+static NSHashTable<UIView *> *gEmoticonBars = nil;
 // 最近同步过的评论控制器，供小表情栏那条补救路径回调同步（见 DKCommentEmoticonHook）。
 static __weak UIViewController *gLastController = nil;
 
@@ -115,8 +117,8 @@ UIView *DKCommentGlassCurrentInputContainer(void) {
     return gLastInputContainer;
 }
 
-UIView *DKCommentGlassCurrentEmoticonPanel(void) {
-    return gEmoticonPanel;
+NSArray<UIView *> *DKCommentGlassCurrentEmoticonBars(void) {
+    return gEmoticonBars.allObjects ?: @[];
 }
 
 NSUInteger DKCommentGlassRenderOptimizeBlocks(void) {
@@ -698,27 +700,30 @@ static void DKSyncFoldRowsIn(UIView *view, Class foldClass, NSUInteger depth) {
     }
 }
 
-#pragma mark - 小表情栏
+#pragma mark - 输入区小控件栏
 
-// 小表情栏是键盘的输入附件，住在 UITextEffectsWindow 里，不在评论控制器的视图树内。
-// 它上面那条窗口链（UITextEffectsWindow / UITrackingWindowView / UIKeyboardItemContainerView）
-// 底色全为 nil，只有它自己是不透明的；而它的矩形恒落在输入栏容器之内（容器高 = 输入栏高 +
-// 键盘高）。所以清掉这一块底色，透出来的就是输入栏那块玻璃本身——同一块玻璃，天生同档、不叠加。
+// 小表情栏与发布引导栏都是键盘的输入附件，住在 UITextEffectsWindow 里，不在评论控制器的
+// 视图树内。它们上面那条窗口链（UITextEffectsWindow / UITrackingWindowView /
+// UIKeyboardItemContainerView）底色全为 nil，只有它们自己是不透明的；而它们的矩形恒落在输入栏
+// 容器之内（容器高 = 输入栏高 + 键盘高）。所以清掉这一块底色，透出来的就是输入栏那块玻璃本身
+// ——同一块玻璃，天生同档、不叠加。
 //
-// 只在能证明「输入栏玻璃就在它背后」时才清，证明不了就保留抖音原样，不留一条没有玻璃的横条。
-static void DKApplyEmoticonPanel(void) {
-    UIView *panel = gEmoticonPanel;
-    if (!panel || !panel.window || !DKCommentGlassEnabled()) return;
-
+// 两种形态同形、可同时在世（有评论时小表情栏在，零评论时发布引导栏在），所以按「在场全部」处理，
+// 不取最后一个。只在能证明「输入栏玻璃就在它背后」时才清，证明不了就保留抖音原样，不留一条
+// 没有玻璃的横条。
+static void DKApplyEmoticonBars(void) {
+    if (!DKCommentGlassEnabled()) return;
     UIVisualEffectView *glass = DKUsableInputGlass();
     if (!glass) return;
 
     // 两个窗口都是满屏同原点，各自的窗口坐标可以直接比。
-    CGRect panelRect = [panel convertRect:panel.bounds toView:nil];
     CGRect glassRect = [glass convertRect:glass.bounds toView:nil];
-    if (!CGRectContainsRect(CGRectInset(glassRect, -0.5, -0.5), panelRect)) return;
-
-    DKClearCoverColor(panel);
+    for (UIView *bar in gEmoticonBars.allObjects) {
+        if (!bar.window) continue;
+        CGRect barRect = [bar convertRect:bar.bounds toView:nil];
+        if (!CGRectContainsRect(CGRectInset(glassRect, -0.5, -0.5), barRect)) continue;
+        DKClearCoverColor(bar);
+    }
 }
 
 #pragma mark - 同步
@@ -821,7 +826,7 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
             DKMaterializeSlotGlass(inputContainer, controller);
             DKMaterializeSlotGlass(DKInputFieldSlot(inputContainer), controller);
         }
-        DKApplyEmoticonPanel();
+        DKApplyEmoticonBars();
     }
 }
 
@@ -868,23 +873,43 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
 
 %end
 
-// 小表情栏随键盘来去，且不在评论控制器的视图树里——遍历找不到它，只能按类名挂钩。
-// 玻璃可能比它后到，所以 DKCommentGlassSync 末尾也补一次（弱引用记住这一块）。
+// 小表情栏与发布引导栏都随键盘来去，且不在评论控制器的视图树里——遍历找不到它们，只能按类名
+// 挂钩。玻璃可能比它们后到，所以 DKCommentGlassSync 末尾也补一次（弱集合记住在场的每一块）。
+//
+// 只在功能开启时处理：关闭时的还原会把底色写回，发布引导栏的写入钩子不能再触发同步。
+static void DKTrackEmoticonBar(UIView *bar) API_AVAILABLE(ios(26.0)) {
+    if (!DKCommentGlassEnabled()) return;
+    [gEmoticonBars addObject:bar];
+    DKApplyEmoticonBars();
+    // 小表情栏在屏 = 回复输入区已就位。此时若还没有可用的输入栏玻璃，说明抖音把输入栏从
+    // 常驻态挪上来那一下没走评论控制器的布局回调（「移除评论区底栏」开着时常驻态整条被压成
+    // alpha 0，那之前也没机会挂）。这是回复态确定会走到的时机，补一次同步；
+    // 玻璃就位后本判据即不成立，不会反复进来。
+    if (!DKUsableInputGlass() && gLastController) DKCommentGlassSync(gLastController);
+}
+
 %group DKCommentEmoticonHook
 
 %hook AWECommentMiniEmoticonPanelView
 
 - (void)layoutSubviews {
     %orig;
-    gEmoticonPanel = self;
-    if (@available(iOS 26.0, *)) {
-        DKApplyEmoticonPanel();
-        // 小表情栏在屏 = 回复输入区已就位。此时若还没有可用的输入栏玻璃，说明抖音把输入栏从
-        // 常驻态挪上来那一下没走评论控制器的布局回调（「移除评论区底栏」开着时常驻态整条被压成
-        // alpha 0，那之前也没机会挂）。这是回复态确定会走到的时机，补一次同步；
-        // 玻璃就位后本判据即不成立，不会反复进来。
-        if (!DKUsableInputGlass() && gLastController) DKCommentGlassSync(gLastController);
-    }
+    if (@available(iOS 26.0, *)) DKTrackEmoticonBar(self);
+}
+
+%end
+
+%end
+
+// 发布引导栏的白底在每次键盘弹出 / 收起时由输入区写入，晚于它自己的布局（40.8.0 方法追踪），
+// 所以在写入点接管：写入后按同一判据清掉。清过之后的不透明写入由 UIView 钩子直接改写为透明。
+%group DKCommentGuidanceHook
+
+%hook AWECommentPublishGuidanceView
+
+- (void)setBackgroundColor:(UIColor *)color {
+    %orig;
+    if (@available(iOS 26.0, *)) DKTrackEmoticonBar(self);
 }
 
 %end
@@ -962,6 +987,7 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
     gGlassCarriers = [NSHashTable weakObjectsHashTable];
     gClearedCovers = [NSHashTable weakObjectsHashTable];
     gFoldMaskedViews = [NSHashTable weakObjectsHashTable];
+    gEmoticonBars = [NSHashTable weakObjectsHashTable];
 
     DKSettingsRegister(DKKeyCommentGlass, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeGlassChoice(DKKeyCommentGlass, DKKeyCommentGlassClear, @"评论区液态玻璃", ^{
@@ -985,6 +1011,12 @@ static void DKCommentGlassSync(UIViewController *controller) API_AVAILABLE(ios(2
 
         if (NSClassFromString(@"AWECommentMiniEmoticonPanelView")) {
             %init(DKCommentEmoticonHook);
+        }
+
+        // 引导栏没有自己的 setBackgroundColor:，钩子在其上新增覆写并转调 UIView 的实现；
+        // 放在 DKCommentGlassHooks 之后初始化，转调的是已带改写规则的 UIView 实现。
+        if (NSClassFromString(@"AWECommentPublishGuidanceView")) {
+            %init(DKCommentGuidanceHook);
         }
 
         if (NSClassFromString(@"AWEListKitMagicCollectionView") && DKFoldDisplayClass()) {
