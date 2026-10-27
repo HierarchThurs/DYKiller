@@ -23,9 +23,6 @@
 @interface AFDRoundRectangleButton : UIButton
 @end
 
-@interface AWEStoryProgressContainerView : UIView
-@end
-
 #ifdef __cplusplus
 extern "C" {
 #endif

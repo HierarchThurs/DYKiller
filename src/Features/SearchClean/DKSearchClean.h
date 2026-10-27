@@ -1,16 +1,16 @@
-// 搜索页精简：榜单目录、移除规则与搜索卡片配置。
+// 搜索页精简：中间页区块配置规则、Hook 安装与诊断。
 #import <Foundation/Foundation.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-NSArray<NSDictionary *> *DKSearchRankCatalog(void);
-void DKSearchRecordRanks(NSArray<NSDictionary *> *entries);
-NSString *DKSearchRankHideKey(NSString *rankID);
-BOOL DKSearchRankHidden(NSString *rankID);
-NSArray *DKSearchVisibleRanks(NSArray *tabs, NSString *(^identifier)(id));
+// 搜索中间页区块配置在 AB / 设置中的键，值为 {pageComponents:[{key, show}]}。
+extern NSString *const DKSearchPageConfigKey;
+
 BOOL DKSearchTemplateMatches(NSString *url, NSString *bundle);
+BOOL DKSearchIsMiddlePageProps(NSDictionary *props);
+id DKSearchCleanPageConfig(id config);
 NSDictionary *DKSearchCleanGlobalProps(NSDictionary *props, NSString *url);
 void DKSearchInstallNativeHooks(void);
 void DKSearchInstallCameraHooks(void);

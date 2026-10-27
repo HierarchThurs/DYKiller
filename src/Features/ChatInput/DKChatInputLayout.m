@@ -2,7 +2,7 @@
 //  DKChatInputLayout.m
 //  DYKiller
 //
-//  聊天输入区的悬浮布局：行内几何、文字区 inset 的计算与回写，以及「行几何 → 文字区 → 玻璃」的单一同步入口。
+//  聊天输入区的悬浮布局：行内几何、文字区 inset 的计算与回写、收起态下沉，以及「行几何 → 文字区 → 玻璃」的单一同步入口。
 //
 
 #import "DKChatInputLayout.h"
@@ -17,6 +17,7 @@ const CGFloat kDKChatButtonDiameter = 44.0;
 const CGFloat kDKChatCapsuleTextPadding = 12.0;
 const CGFloat kDKChatPanelInset = 8.0;
 const CGFloat kDKChatPanelRadius = 22.0;
+const CGFloat kDKChatFoldedSink = 16.0;
 
 static BOOL gDKChatSyncing;
 
@@ -88,6 +89,15 @@ UIEdgeInsets DKChatInputTextInsets(id layout, UIView *growing, UIEdgeInsets nati
     insets.right = CGRectGetWidth(growing.bounds) - CGRectGetMaxX(capsule) + kDKChatCapsuleTextPadding
         - padding - text.textContainerInset.right;
     return insets;
+}
+
+CGRect DKChatInputFoldedFrame(id layout, CGRect native) {
+    UIViewController *input = DKChatInputController(layout);
+    if (!DKChatInputGlassWanted(input)) return native;
+    // 原生 y = 父视图高 − 行高 − 底部让位，让位量由父视图高与 frame 底边反推；没有让位的机型不下沉。
+    CGFloat bottomOffset = CGRectGetHeight(input.view.superview.bounds) - CGRectGetMaxY(native);
+    native.origin.y += MIN(kDKChatFoldedSink, MAX(0.0, bottomOffset));
+    return native;
 }
 
 UIWindowScene *DKChatInputScene(UIViewController *input) {

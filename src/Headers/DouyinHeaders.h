@@ -135,6 +135,13 @@
 @interface AWEGradientView : UIView                                // HUD 可读性压暗渐变
 @end
 
+@interface AWEDPlayerComponentInteraction : NSObject
+@property (nonatomic, strong) AWEAwemeModel *model;
+@property (nonatomic, strong) id playerController;
+- (void)addGradientViews;
+- (void)hideGradientViewIfNeeded:(id)player;
+@end
+
 @interface AWEIMFeedVideoQuickReplayInputViewController : UIViewController  // 底部快捷回复栏控制器
 @end
 
@@ -510,8 +517,10 @@
 @end
 
 // 播放进度条（首页、朋友页共用）。progressSliderDelegate 为 AWEDProgressCoreContainer。
+// sliderRightView 是整宽的未播放轨道（底色即 maximumTrackTintColor），已播段与拇指是叠在其上的图层。
 @interface AWEFeedProgressSlider : UIView
 @property (nonatomic, weak) id progressSliderDelegate;
+@property (nonatomic, strong) UIView *sliderRightView;
 @end
 
 // 进度条章节点：按 progressWidth 把章节时间换成点位（加在进度条上），吸附区间与拖动换算同一口径。
@@ -537,8 +546,16 @@
 
 // feed 页进度条布局策略：常态 / 唤醒 frame 与 progressWidth 都由左右边距 progressSliderLeftRightArea 算出
 // （progressWidth = 布局宽 − 2 × 边距，常态 frame = {边距, y, progressWidth, 2}），每次取 frame 都现取边距。
+// 纵向：进度条底边 = 容器高 − posAdjustY + sliderYOffset，常态与唤醒 frame 每次现取 posAdjustY；底部背景不用它。
 @interface AWEDProgressLayoutFeedStrategy : NSObject
 - (AWEArchEventDataController *)edc;
+- (double)posAdjustY;
+@end
+
+// 图文作品底部的图片指示器（分段条 / 圆点）。Masonry 约束在左侧栈下方；
+// currentProgressViewFrame 为当前一段在本视图坐标里的 frame。
+@interface AWEStoryProgressContainerView : UIView
+- (CGRect)currentProgressViewFrame;
 @end
 
 @class AWEDProgressStateChangeContainer;
@@ -663,6 +680,14 @@
 // 顶栏搜索入口的控制器。评论区打开时由它配置一份搜索图标副本（普通 UIView），放在首页根视图上。
 @interface AWEHPTopBarSearchEntranceController : NSObject
 - (void)setupCopyFeedDiscoverEntranceView:(UIView *)view;
+@end
+
+#pragma mark - 未读红点功能组用到的类
+
+// 抖音通用红点（点状 / 数字 / 文字三种样式）。显示时写 hidden=NO；清除时写 YES 并移出父视图（40.8.0 反汇编）。
+@interface DUXBadge : UIView
+@property (nonatomic, assign) unsigned long long badgeNumber;
+@property (nonatomic, copy) NSString *badgeText;
 @end
 
 #pragma mark - 朋友页精简用到的类
@@ -846,6 +871,13 @@
 @property (nonatomic, strong) UITableView *tableView;
 @end
 
+// 群聊顶部群功能栏：展开状态存在 Swift viewModel 里，hostVC_viewDidLoad 内按群身份与功能项红点同步算出，
+// 切换只在原生允许时生效（40.8.0 反汇编）。
+@interface AWEIMGroupZoneConversationComponent : AWEIMComponentBase
+- (BOOL)isGroupZoneExpanded;
+- (void)toggleGroupZoneExpanded:(BOOL)animated;
+@end
+
 // 消息页布局组件：主布局从当前几何计算快照，页面配置负责重排输入区、浮动条与消息列表。
 @interface AWEIMMessageListLayoutComponent : AWEIMComponentBase
 - (void)updatePageLayout:(id)layoutInfo;
@@ -856,6 +888,11 @@
 // 即列表视图上沿下方 32pt，有顶部浮条时为浮条高 + 16（40.8.0 反汇编）。
 @interface AWEIMTopAnchorComponent : AWEIMComponentBase
 - (double)__bubbleYOrigin;
+@end
+
+// 消息列表底部的「回到最新」圆钮（40×40）与「N 条新消息」胶囊：AWEIMBottomAnchorComponent 的同一个容器，
+// 挂在列表视图上。纵坐标按列表视图高度写（出现 = 高 − 56，收起 = 高），换文案时只改宽度与横向居中（40.8.0 反汇编）。
+@interface AWEIMBottomNewMessageTipsImageView : UIView
 @end
 
 // 普通聊天输入控制器。公司会话、POI 会话、作品详情与图文详情内的输入页复用同一套组件，
@@ -882,6 +919,9 @@
 - (void)p_layoutInputViewsAfterAdjustButtons;
 - (void)pp_layoutSubviewsWithAnimated:(BOOL)animated context:(id)context;
 - (void)refreshBackgroundWithBackGroundImage:(BOOL)hasImage;
+// 收起 / 语音态的输入页 frame：y = 父视图高 − 行高 − 底部安全区让位（40.8.0 反汇编）；
+// 输入控制器、最近照片与菜单组件取折叠位置都经它。
+- (CGRect)inputVCFoldedFrame:(CGFloat)height;
 @end
 
 // 左右按钮的供给策略，返回本轮参与布局的按钮数组。
@@ -968,6 +1008,18 @@
 - (void)iesim_themeReload:(id)theme;
 @end
 
+// 页签行的两种原生形态按聊天有无背景图切换（40.8.0 反汇编）：居中时页签集合视图 contentInset.bottom 为 0、
+// 固定入口图标在入口内居中、分隔线隐藏；否则底部留 8pt、图标距顶 6pt、分隔线显示。
+@interface AWEIMEmoticonPanelBoxComponent : AWEIMComponentBase
+- (void)verticalAlignmentCenter:(BOOL)center boxView:(UIView *)boxView;
+@end
+
+// 页签行左侧的固定入口（搜索）：entryView 为入口，iconView 为其中的图标。
+@interface AWEIMEmoticonFixedTab : NSObject
+@property (nonatomic, strong) UIView *entryView;
+- (void)verticalAlignmentCenter:(BOOL)center;
+@end
+
 // 语音态「按住说话」的触摸视图，自带一层模糊与长按手势。
 @interface AWEIMOptimizeAudioInputTouchView : UIView
 - (void)refreshColor;
@@ -1002,7 +1054,10 @@
 @property (nonatomic, strong) UIStackView *mainTitleStackView;
 @property (nonatomic, strong) UIStackView *subtitleStackView;
 @end
+// 标题头像：p_updateDots 显示在线圆点时给头像内容 contentView 挂 notchLayer 缺口遮罩（为圆点留出外圈），隐藏圆点时摘掉。
 @interface AWEIMMessageListNaviBarTitleAvatarComponent : AWEIMComponentBase
+@property (nonatomic, strong) UIView *contentView;
+@property (nonatomic, strong) CAShapeLayer *notchLayer;
 @property (nonatomic, strong) UIView *onlineDotView;
 - (void)p_updateDots;
 @end
@@ -1449,6 +1504,23 @@
 + (NSString *)formattedDateForFullTimestamp:(double)timestamp;
 - (id)context;
 - (void)layoutElementView;
+@end
+
+#pragma mark - 长按复制昵称与文案用到的类
+
+@interface AWEUserModel : NSObject
+@property (nonatomic, copy) NSString *nickname;
+@end
+
+// 作品的作者与完整文案：descriptionString 为正文加话题标签（itemTitle + caption），不受播放页折叠影响。
+@interface AWEAwemeModel (DKInfoCopy)
+@property (nonatomic, strong) AWEUserModel *author;
+@property (nonatomic, copy) NSString *descriptionString;
+@end
+
+// 播放交互层元素基类（AWEBaseElement 子类），model 为当前作品；左侧昵称、文案元素都继承它。
+@interface AWEPlayInteractionBaseElement : NSObject
+@property (nonatomic, strong) AWEAwemeModel *model;
 @end
 
 #endif /* DouyinHeaders_h */

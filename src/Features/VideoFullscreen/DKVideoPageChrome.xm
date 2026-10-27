@@ -516,6 +516,24 @@ void DKHUDStatusBarCoverSync(UIViewController *interaction) {
 
 #pragma mark - 底部压暗渐变
 
+%hook AWEDPlayerComponentInteraction
+
+- (void)addGradientViews {
+    %orig;
+    if (!DKVideoFullscreenOn()) return;
+
+    AWEAwemeModel *model = self.model;
+    AWEVideoModel *video = model.video;
+    double width = video.width.doubleValue;
+    double height = video.height.doubleValue;
+    if (model.awemeType == 68 || width <= 0.0 || height <= 0.0 || width <= height) return;
+
+    // 渐变创建后同步宿主显隐判定，覆盖播放器已提前就绪的首次展示。
+    [self hideGradientViewIfNeeded:self.playerController];
+}
+
+%end
+
 // 只叠 transform，不改 frame（防布局环 / 0x8BADF00D）。
 //
 // 视频与图文的渐变同步点不同：视频在自身 layout 中层级已经完整；图文必须等横滑 collection

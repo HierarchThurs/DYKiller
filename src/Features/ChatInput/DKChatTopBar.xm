@@ -7,6 +7,7 @@
 #import "DKChatTopBlur.h"
 #import "DKChatTopCenter.h"
 #import "DKGlassGuard.h"
+#import "DKImageOpaque.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKUtils.h"
@@ -117,13 +118,37 @@ static NSArray<UIView *> *DKChatTopItems(AWENavigationBar *bar) {
     }];
 }
 
+// 返回按钮实际画出的箭头（carrier 坐标）：原生给图片加了水平偏移，图标里的箭头也不在画布中间。
+// 先让按钮排版，首轮同步时 imageView 才有位置；没有位图时退回按钮或图片框。
+static CGRect DKChatTopArrowRect(UIButton *button, UIView *carrier) {
+    [button layoutIfNeeded];
+    UIImageView *icon = button.imageView;
+    UIImage *image = icon.image;
+    if (!image || CGRectIsEmpty(icon.bounds)) return [button convertRect:button.bounds toView:carrier];
+    CGRect pixels = DKImageOpaquePixelRect(image);
+    if (CGRectIsNull(pixels)) return [icon convertRect:icon.bounds toView:carrier];
+    CGFloat scaleX = CGRectGetWidth(icon.bounds) / (image.size.width * image.scale);
+    CGFloat scaleY = CGRectGetHeight(icon.bounds) / (image.size.height * image.scale);
+    CGRect visible = CGRectMake(CGRectGetMinX(pixels) * scaleX, CGRectGetMinY(pixels) * scaleY,
+                                CGRectGetWidth(pixels) * scaleX, CGRectGetHeight(pixels) * scaleY);
+    return [icon convertRect:visible toView:carrier];
+}
+
+// 把可见元素放进胶囊的圆端：元素两端的圆心与胶囊端部圆心重合（细长的箭头按中心，数字底板按其圆端）。
+static CGRect DKChatTopRoundEnds(CGRect visible, CGFloat height) {
+    CGFloat inset = MIN(CGRectGetWidth(visible), CGRectGetHeight(visible)) * 0.5 - height * 0.5;
+    return CGRectInset(visible, inset, 0.0);
+}
+
 static CGRect DKChatTopContentRect(UIView *source, UIView *carrier) {
     if (DKChatInputIsKind(source, @"AWEIMNavigationUnreadView")) {
         AWEIMNavigationUnreadView *unread = (id)source;
+        CGFloat height = CGRectGetHeight(carrier.bounds);
         CGRect rect = CGRectNull;
-        if (!DKPrefBool(DKKeyChatRemoveBack)) rect = [unread.backButton convertRect:unread.backButton.bounds toView:carrier];
+        if (!DKPrefBool(DKKeyChatRemoveBack)) rect = DKChatTopRoundEnds(DKChatTopArrowRect(unread.backButton, carrier), height);
         if (!DKPrefBool(DKKeyChatRemoveUnread) && DKChatTopVisible(unread.unreadCountView)) {
             CGRect count = [unread.unreadCountView convertRect:unread.unreadCountView.bounds toView:carrier];
+            count = DKChatTopRoundEnds(count, height);
             rect = CGRectIsNull(rect) ? count : CGRectUnion(rect, count);
         }
         return rect;
@@ -135,16 +160,17 @@ static BOOL DKChatTopIsTrailing(UIView *source) {
     return DKChatInputIsKind(source, @"AWEIMMessageVoipEntranceView") || objc_getAssociatedObject(source, &kDKChatMenuViewKey);
 }
 
-// 返回胶囊按可见箭头与数字加余量，无数字时等宽等高；通话与菜单为正圆。
+// 返回胶囊的内容区已含两端圆角，无数字时为正圆；通话与菜单为正圆。
 static CGFloat DKChatTopButtonWidth(UIView *source, CGRect content, CGFloat height) {
-    if (!DKChatInputIsKind(source, @"AWEIMNavigationUnreadView")) return height;
-    return MAX(height, CGRectGetWidth(content) + kDKChatTopGap);
+    return DKChatInputIsKind(source, @"AWEIMNavigationUnreadView") ? CGRectGetWidth(content) : height;
 }
 
 // 栈里可见排列项在 carrier 中的并集；没有可见项时为 CGRectNull。
+// 原生先排标题视图、后排内层栈，文字变长而标题尺寸不变时排列项还是旧宽度，先让栈排版再读。
 static CGRect DKChatTopArrangedRect(UIStackView *stack, UIView *excluded, UIView *carrier, NSMutableArray *views) {
     CGRect rect = CGRectNull;
     if (!DKChatTopVisible(stack)) return rect;
+    [stack layoutIfNeeded];
     for (UIView *view in stack.arrangedSubviews) {
         if (view == excluded || !DKChatTopVisible(view)) continue;
         [views addObject:view];
@@ -221,6 +247,14 @@ static UIView *DKChatTopOnlineDot(UIView *avatar) {
         if (dot) return dot;
     }
     return nil;
+}
+
+BOOL DKChatTopOnlineDotAway(UIView *dot) {
+    for (UIView *node = dot.superview; node; node = node.superview) {
+        DKChatTopLayout *layout = objc_getAssociatedObject(node, &kDKChatTopLayoutKey);
+        if (layout) return layout.onlineDot == dot;
+    }
+    return NO;
 }
 
 static DKChatTopPlace DKChatTopPlaceOfKey(NSString *key) {
@@ -384,8 +418,10 @@ void DKChatTopBarSync(UIView *view) {
         if (objc_getAssociatedObject(host, &kDKChatTopNativeLayoutKey)) return;
         DKChatTopLayout *layout = objc_getAssociatedObject(bar, &kDKChatTopLayoutKey);
         if (!DKChatInputGlassWanted(input)) {
+            UIView *dot = layout.onlineDot;
             [layout reset];
             objc_setAssociatedObject(bar, &kDKChatTopLayoutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            DKChatTopAvatarNotchSync(dot);
             [DKChatGlassStore removeStoreForOwner:bar];
             DKChatTopBlurSync(bar, nil, 0.0, UIUserInterfaceStyleUnspecified, NO);
             DKChatTopApplyExtra(host, 0.0);
@@ -398,6 +434,7 @@ void DKChatTopBarSync(UIView *view) {
             objc_setAssociatedObject(bar, &kDKChatTopLayoutKey, layout, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         __block CGFloat bottom = 0.0;
+        UIView *previousDot = layout.onlineDot;
         [store beginWithClear:DKPrefBool(DKKeyChatInputGlassClear) style:DKChatInputStyle(input)];
         [UIView performWithoutAnimation:^{
             [layout reset];
@@ -424,6 +461,9 @@ void DKChatTopBarSync(UIView *view) {
             }
         }];
         [store end];
+        // 圆点被居中布局接管或交还时，头像缺口随之撤掉或挂回。
+        DKChatTopAvatarNotchSync(previousDot);
+        if (layout.onlineDot != previousDot) DKChatTopAvatarNotchSync(layout.onlineDot);
         DKChatTopApplyExtra(host, MAX(0.0, bottom - CGRectGetHeight(bar.bounds)));
         DKChatTopBlurSync(bar, DKChatTopTable(host), bottom, DKChatInputStyle(input), DKPrefBool(DKKeyChatTopBlur));
     }

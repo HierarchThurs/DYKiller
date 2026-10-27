@@ -4,7 +4,8 @@
 //
 //  原生布局读取当前几何并写回列表容器、表格与 inset。每轮快照计算前撤掉本模块的延伸，
 //  布局后将列表上沿延伸到物理顶部，非键盘态再延伸到底部；inset 与 offset 同步补偿。
-//  居中头像加高顶部区域时，top inset 再让出加高量。按列表上沿定位的未读提示补回上沿延伸与让位量。
+//  居中头像加高顶部区域时，top inset 再让出加高量。按列表上沿定位的未读提示补回上沿延伸与让位量；
+//  按列表高度定位的底部提示（回到最新 / 新消息）扣掉底部延伸量，上沿伸缩时保持屏幕位置。
 //
 
 #import "DKChatInputList.h"
@@ -22,6 +23,7 @@ static char kDKChatListTopExtensionKey;
 static char kDKChatListTopPadKey;
 static char kDKChatListNativeLayoutKey;
 static NSHashTable *gDKChatListComponents;
+static BOOL gDKChatListMovingTips;      // 本模块平移底部提示时不再换算
 
 // 布局组件所在聊天页的消息表格与裁剪它的列表容器；结构不符时返回 nil。
 static UITableView *DKChatListTable(id component, UIView **container) {
@@ -58,7 +60,19 @@ static void DKChatListShift(UIView *container, UITableView *table, CGFloat delta
     if (!CGPointEqualToPoint(table.contentOffset, offset)) table.contentOffset = offset;
 }
 
-// 上沿延伸同时增加 top inset 并补偿 offset，消息的屏幕坐标保持不变。
+// 底部提示随容器上沿伸缩反向平移，屏幕位置不变。
+static void DKChatListKeepTips(UIView *container, CGFloat delta) {
+    for (UIView *tips in container.subviews) {
+        if (!DKChatInputIsKind(tips, @"AWEIMBottomNewMessageTipsImageView")) continue;
+        CGRect frame = tips.frame;
+        frame.origin.y += delta;
+        gDKChatListMovingTips = YES;
+        tips.frame = frame;
+        gDKChatListMovingTips = NO;
+    }
+}
+
+// 上沿延伸同时增加 top inset 并补偿 offset，消息与底部提示的屏幕坐标保持不变。
 static void DKChatListShiftTop(UIView *container, UITableView *table, CGFloat delta) {
     CGPoint offset = table.contentOffset;
     offset.y -= delta;
@@ -72,6 +86,7 @@ static void DKChatListShiftTop(UIView *container, UITableView *table, CGFloat de
     UIEdgeInsets indicator = table.verticalScrollIndicatorInsets;
     indicator.top += delta;
     container.frame = frame;
+    DKChatListKeepTips(container, delta);
     table.frame = tableFrame;
     table.contentInset = inset;
     table.verticalScrollIndicatorInsets = indicator;
@@ -190,6 +205,16 @@ static CGFloat DKChatListTopExtension(id component) {
         + [objc_getAssociatedObject(table, &kDKChatListTopPadKey) doubleValue];
 }
 
+// 底部提示的纵坐标由原生按所在列表视图的高度写；列表向下延伸时扣掉延伸量，停在原生列表底边上方。
+// 纵坐标不变的写入（换文案时只改宽度与居中）保留当前位置；原生布局期间延伸已撤销、记录为 0。
+static CGRect DKChatListTipsFrame(UIView *tips, CGRect frame) {
+    if (gDKChatListMovingTips || fabs(CGRectGetMinY(frame) - CGRectGetMinY(tips.frame)) < 0.5) return frame;
+    AWEIMMessageListViewController *list = (id)tips.superview.nextResponder;
+    if (!DKChatInputIsKind(list, @"AWEIMMessageListViewController")) return frame;
+    frame.origin.y -= [objc_getAssociatedObject(list.tableView, &kDKChatListExtensionKey) doubleValue];
+    return frame;
+}
+
 %group DKChatInputListHooks
 %hook AWEIMMessageListLayoutComponent
 - (void)p_layoutWithAnimation:(BOOL)animated coordinate:(id)coordinate {
@@ -203,6 +228,12 @@ static CGFloat DKChatListTopExtension(id component) {
 %hook AWEIMTopAnchorComponent
 - (double)__bubbleYOrigin {
     return %orig + DKChatListTopExtension(self);
+}
+%end
+// 出现、收起、换文案、页面布局与旋转都经 setBtd_top: / setFrame: 写到这里。
+%hook AWEIMBottomNewMessageTipsImageView
+- (void)setFrame:(CGRect)frame {
+    %orig(DKChatListTipsFrame(self, frame));
 }
 %end
 %end

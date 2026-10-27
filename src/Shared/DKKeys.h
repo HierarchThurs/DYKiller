@@ -56,9 +56,6 @@ static NSString *const DKKeyShareMenuHidePrefix  = @"DYKillerHideShareMenu.";
 static NSString *const DKKeySearchRemoveHistory = @"DYKillerSearchRemoveHistory";
 static NSString *const DKKeySearchRemoveGuess = @"DYKillerSearchRemoveGuess";
 static NSString *const DKKeySearchRemoveAllRanks = @"DYKillerSearchRemoveAllRanks";
-static NSString *const DKKeySearchRanks = @"DYKillerSearchRanks";
-static NSString *const DKKeySearchRankCatalog = @"DYKillerSearchRankCatalog";
-static NSString *const DKKeySearchRankHidePrefix = @"DYKillerHideSearchRank.";
 static NSString *const DKKeySearchRemoveRankFooter = @"DYKillerSearchRemoveRankFooter";
 static NSString *const DKKeySearchRemoveVoice = @"DYKillerSearchRemoveVoice";
 // 相机入口：0 显示 / 1 隐藏（保留位置与点击）/ 2 移除（原生布局收拢）。
@@ -81,6 +78,11 @@ static NSString *const DKKeyGlassTabBar      = @"DYKillerGlassTabBar";
 static NSString *const DKKeyGlassTabBarClear = @"DYKillerGlassTabBarClear";
 // iPad 玻璃底栏位置（单选）：0 默认居中 / 1 左端 / 2 右端；仅 iPad 生效（见 DKGlassPadElements.xm）。
 static NSString *const DKKeyGlassTabBarPadPosition = @"DYKillerGlassTabBarPadPosition";
+// 悬浮玻璃底栏尺寸（百分比，100 为抖音默认效果）：胶囊等比缩放、胶囊长度、拍摄圆键直径，三者都以底边为锚。
+// 常规范围见 DKAdjustRange.m，开启「扩展所有缩放与位移」后放宽。
+static NSString *const DKKeyGlassTabBarCapsuleHeight = @"DYKillerGlassTabBarCapsuleHeight";
+static NSString *const DKKeyGlassTabBarCapsuleLength = @"DYKillerGlassTabBarCapsuleLength";
+static NSString *const DKKeyGlassTabBarPlusSize      = @"DYKillerGlassTabBarPlusSize";
 // 自定义拍摄图标：图片本体存文件（见 DKPlusIcon.xm），这个键只作设置项 identifier，
 // NSUserDefaults 里不写值。是否使用由「拍摄按钮」（DKKeyPlusStyle）选「自定义图片」决定。
 static NSString *const DKKeyPlusIcon         = @"DYKillerPlusIcon";
@@ -146,6 +148,16 @@ static NSString *const DKKeyNicknameScale    = @"DYKillerNicknameScale";
 static NSString *const DKKeyDescriptionScale = @"DYKillerDescriptionScale";
 static NSString *const DKKeyInfoOffset       = @"DYKillerInfoOffset";
 
+#pragma mark - 功能组：进度条与图片指示器位置
+
+// 视频进度条上移、图文图片指示器上移：常规 0–100 pt，默认 0。范围登记在 DKAdjustRange.m。
+static NSString *const DKKeyProgressOffset       = @"DYKillerProgressOffset";
+static NSString *const DKKeyStoryIndicatorOffset = @"DYKillerStoryIndicatorOffset";
+// 本机实测缓存（不进备份）：进度条底边、图片指示器底边到交互层底边的原生距离（pt，不含本插件的上移），
+// 供「位置同图片指示器」提示使用。
+static NSString *const DKKeyProgressBaseBottom       = @"DYKillerProgressBaseBottom";
+static NSString *const DKKeyStoryIndicatorBaseBottom = @"DYKillerStoryIndicatorBaseBottom";
+
 #pragma mark - 功能组：弹幕改色
 
 // 颜色模式：0 固定颜色 / 1 随机纯色 / 2 随机渐变 / 3 固定彩虹 / 4 自定义渐变 / 5 旋转彩虹。
@@ -193,11 +205,16 @@ static NSString *const DKKeyAudioVizStyle = @"DYKillerAudioVizStyle";
 #pragma mark - 功能组：播放体验
 
 static NSString *const DKKeyDoubleTapOpenComment = @"DYKillerDoubleTapOpenComment";
+// 播放页长按左下昵称复制「@昵称」、长按文案复制作品完整文案。
+static NSString *const DKKeyLongPressCopyNickname = @"DYKillerLongPressCopyNickname";
+static NSString *const DKKeyLongPressCopyDescription = @"DYKillerLongPressCopyDescription";
 static NSString *const DKKeyDetailHideBottomBar = @"DYKillerHideChatVideoBottomBar";
 static NSString *const DKKeyDetailReturnMode = @"DYKillerDetailReturnMode";
 static NSString *const DKKeyDetailSearchMode = @"DYKillerDetailSearchMode";
 // 所有视频常态下都显示底部进度条。
 static NSString *const DKKeyProgressAlwaysVisible = @"DYKillerProgressAlwaysVisible";
+// 进度条只显示已播部分：隐藏未播放的那段轨道，显隐仍按抖音原逻辑。
+static NSString *const DKKeyProgressPlayedOnly = @"DYKillerProgressPlayedOnly";
 // 进度条旁的已播 / 总时长：0 关闭 / 1 两端（与进度条同一行）/ 2 右端 · 上方 / 3 右端 · 下方 / 4 两端 · 上方 / 5 两端 · 下方
 static NSString *const DKKeyProgressTimeStyle = @"DYKillerProgressTimeStyle";
 
@@ -225,6 +242,7 @@ static NSString *const DKKeyPlaybackStoreMode              = @"DYKillerPlaybackS
 static NSString *const DKKeyPlaybackChapterHighlightsMode  = @"DYKillerPlaybackChapterHighlightsMode";
 static NSString *const DKKeyPlaybackCoCreatorMode          = @"DYKillerPlaybackCoCreatorMode";
 static NSString *const DKKeyPlaybackSlidesTagMode          = @"DYKillerPlaybackSlidesTagMode";
+static NSString *const DKKeyPlaybackArticleTagMode         = @"DYKillerPlaybackArticleTagMode";
 // 文案下方
 static NSString *const DKKeyPlaybackRiskNoticeMode         = @"DYKillerPlaybackRiskNoticeMode";
 static NSString *const DKKeyPlaybackMusicInfoMode          = @"DYKillerPlaybackMusicInfoMode";
@@ -276,6 +294,13 @@ static NSString *const DKKeyBlockSideBarSwipe = @"DYKillerBlockSideBarSwipe";
 // 顶栏透明度：0–100，默认 100；作用于左侧栏入口、全部频道与搜索图标。
 static NSString *const DKKeyTopBarAlpha       = @"DYKillerTopBarAlpha";
 
+#pragma mark - 功能组：未读红点
+
+// 移除未读红点（点状 / 数字 / 文字）：底栏按钮、首页顶栏频道、左侧栏（≡ 入口与侧边栏面板）三处各一个开关。
+static NSString *const DKKeyTabBarRemoveBadge  = @"DYKillerTabBarRemoveBadge";
+static NSString *const DKKeyTopBarRemoveBadge  = @"DYKillerTopBarRemoveBadge";
+static NSString *const DKKeySideBarRemoveBadge = @"DYKillerSideBarRemoveBadge";
+
 #pragma mark - 功能组：朋友页精简
 
 // 每项单选，存整数：0 显示 / 1 隐藏（不显示、仍可点击，位置保留）/ 2 移除（不显示、不可点击，按抖音原生排布收拢）。
@@ -318,6 +343,7 @@ static NSString *const DKKeyChatRemoveUnread            = @"DYKillerChatRemoveUn
 static NSString *const DKKeyChatRemoveOnline            = @"DYKillerChatRemoveOnline";
 static NSString *const DKKeyChatRemoveCall              = @"DYKillerChatRemoveCall";
 static NSString *const DKKeyChatRemoveMenu              = @"DYKillerChatRemoveMenu";
+static NSString *const DKKeyChatGroupZoneNoAutoExpand   = @"DYKillerChatGroupZoneNoAutoExpand";
 // 聊天页顶栏自定义：子页面入口、顶部渐变模糊、居中头像（0 默认 / 1 居中）、火花与在线位置（0 居中 / 1 左侧 / 2 右侧）。
 static NSString *const DKKeyChatTopCustomPage           = @"DYKillerChatTopCustomPage";
 static NSString *const DKKeyChatTopBlur                 = @"DYKillerChatTopBlur";

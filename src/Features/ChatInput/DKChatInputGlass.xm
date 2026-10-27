@@ -220,6 +220,10 @@ void DKChatInputGlassRestore(id layout) {
     %orig;
     DKChatInputSync(self);
 }
+// 收起 / 语音态输入页位置的唯一来源；开关变化经 refreshLayout → refreshInputVCFrame 重新取值。
+- (CGRect)inputVCFoldedFrame:(CGFloat)height {
+    return DKChatInputFoldedFrame(self, %orig);
+}
 %end
 %hook IESIMInputAudioComponent
 - (void)refreshBackgroundWithBackGroundImage:(BOOL)hasImage {
@@ -261,9 +265,14 @@ void DKChatInputGlassRestore(id layout) {
     DKChatInputSync(DKChatInputLayoutForView(self));
 }
 %end
-// 格子的模糊层在 configWithModel: 返回之后才由 addBlurView 建出，各回调后都只清这一格。
+// 格子的模糊层在 configWithModel: 返回之后才由 addBlurView 建出；底色在图标异步加载完成后还会重写一次。
+// 各回调后都只清这一格。
 %hook AWEIMChatPanelCollectionViewCell
 - (void)configWithModel:(id)model {
+    %orig;
+    DKChatPanelCellSync(self);
+}
+- (void)__configCellBackgroundColorWithColor:(id)color {
     %orig;
     DKChatPanelCellSync(self);
 }
@@ -298,7 +307,7 @@ void DKChatInputGlassRestore(id layout) {
     DKSettingsRegister(DKKeyChatInputGlass, ^AWESettingItemModel *{
         return DKSettingsWithInfo(DKMakeGlassChoice(DKKeyChatInputGlass, DKKeyChatInputGlassClear,
             @"聊天页液态玻璃", ^{ DKChatInputRefresh(); }),
-            @"普通私聊与群聊的顶部和输入区悬浮在消息上：消息铺到物理屏幕顶部，顶栏返回、头像名称、通话与菜单各自为玻璃，群功能栏每项为小胶囊；消息铺到屏幕底部，未弹出键盘时滑动消息会从输入区下方经过。输入框与按住说话区为胶囊，独立按钮为圆形，发送键为粉色玻璃；表情 / 加号面板与最近照片为悬浮卡片，表情提示的每个芯片各自一块玻璃，表情面板的搜索为圆钮、页签为胶囊；小火人改趴在输入框中间。关闭时恢复原生外观。");
+            @"普通私聊与群聊的顶部和输入区悬浮在消息上：消息铺到物理屏幕顶部，顶栏返回、头像名称、通话与菜单各自为玻璃，群功能栏每项为小胶囊；消息铺到屏幕底部，未弹出键盘时输入区下移贴近屏幕底边，滑动消息会从输入区下方经过。输入框与按住说话区为胶囊，独立按钮为圆形，发送键为粉色玻璃；表情 / 加号面板与最近照片为悬浮卡片，表情提示的每个芯片各自一块玻璃，回到最新消息与新消息提示为玻璃，表情面板的搜索为圆钮、页签为胶囊；小火人改趴在输入框中间。关闭时恢复原生外观。");
     });
     if (DKGlassOSAvailable()) {
         %init(DKChatInputGlassHooks);

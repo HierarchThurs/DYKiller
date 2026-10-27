@@ -49,6 +49,13 @@ static void DKAdjustLoad(NSArray<NSString *> **outKeys, NSDictionary<NSString *,
         DKAdjustAdd(list, map, DKKeyNicknameScale, DKAdjustKindScale, 25, 100, 100);
         DKAdjustAdd(list, map, DKKeyDescriptionScale, DKAdjustKindScale, 25, 100, 100);
         DKAdjustAdd(list, map, DKKeyInfoOffset, DKAdjustKindOffset, 0, 100, 0);
+        // 进度条与图片指示器
+        DKAdjustAdd(list, map, DKKeyProgressOffset, DKAdjustKindOffset, 0, 100, 0);
+        DKAdjustAdd(list, map, DKKeyStoryIndicatorOffset, DKAdjustKindOffset, 0, 100, 0);
+        // 悬浮玻璃底栏
+        DKAdjustAdd(list, map, DKKeyGlassTabBarCapsuleHeight, DKAdjustKindScale, 60, 100, 100);
+        DKAdjustAdd(list, map, DKKeyGlassTabBarCapsuleLength, DKAdjustKindScale, 80, 100, 100);
+        DKAdjustAdd(list, map, DKKeyGlassTabBarPlusSize, DKAdjustKindScale, 60, 100, 100);
         keys = [list copy];
         specs = [map copy];
     });

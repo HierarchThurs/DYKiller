@@ -191,6 +191,7 @@ static NSString *DKCleanTagComponentKey(id component) {
     if (DKCleanIsKind(component, @"AWECoCreatorTagComponent")) return DKKeyPlaybackCoCreatorMode;
     if (DKCleanIsKind(component, @"AWESlidesTagComponent")
         || DKCleanIsKind(component, @"AWERichAwemeTagComponent")) return DKKeyPlaybackSlidesTagMode;
+    if (DKCleanIsKind(component, @"AWEArticleMarkComponent")) return DKKeyPlaybackArticleTagMode;
     // 日常作品昵称右侧的「日常」标签（朋友页精简）。
     if (DKCleanIsKind(component, @"AWENewStoryTagComponent")) return DKKeyFriendStoryTagMode;
     return nil;
