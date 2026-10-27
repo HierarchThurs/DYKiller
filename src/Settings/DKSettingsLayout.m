@@ -100,6 +100,11 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyTopChannels, @"ic_doublearrowup_outlined_20"),
             DKRow(DKKeyTopBarAlpha, @"ic_eyeslash_outlined_20"),
         ]),
+        DKSection(@"未读红点", @[
+            DKRow(DKKeyTabBarRemoveBadge, @"ic_bellslash_outlined"),
+            DKRow(DKKeyTopBarRemoveBadge, @"ic_bellslash_outlined"),
+            DKRow(DKKeySideBarRemoveBadge, @"ic_bellslash_outlined"),
+        ]),
         DKSection(@"视频播放", @[
             DKPage(@"播放页精简", @"ic_eyeslash_outlined_20", @[
                 DKSection(@"播放页元素", @[
@@ -369,6 +374,9 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                                                          sections:@[
         DKSection(@"底栏", @[
             DKRow(DKKeyGlassTabBar, @"ic_module_outlined_20"),
+            DKRow(DKKeyGlassTabBarCapsuleHeight, @"ic_zoomout_outlined_20"),
+            DKRow(DKKeyGlassTabBarCapsuleLength, @"ic_zoomoutrectangle_outlined"),
+            DKRow(DKKeyGlassTabBarPlusSize, @"ic_camera_outlined"),
             DKRow(DKKeyGlassTabBarPadPosition, @"ic_squaresplit_outlined_20"),
         ]),
         DKSection(@"音频可视化", @[
@@ -410,6 +418,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
         DKSection(@"视频", @[
             DKRow(DKKeyVideoFullscreen, @"ic_fullscreen_outlined_16"),
             DKRow(DKKeyProgressAlwaysVisible, @"ic_playertime_outlined_20"),
+            DKRow(DKKeyProgressPlayedOnly, @"ic_playerarrow_outlined"),
             DKRow(DKKeyProgressTimeStyle, @"ic_clock_outlined_20"),
             DKPage(@"发布时间与地区", @"ic_clock_outlined_20", @[
                 DKSection(@"显示内容", @[
@@ -630,6 +639,9 @@ NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {
         requires = @{
             DKKeyAudioVizPosition:       @[ DKKeyGlassTabBar ],
             DKKeyGlassTabBarPadPosition: @[ DKKeyGlassTabBar ],
+            DKKeyGlassTabBarCapsuleHeight: @[ DKKeyGlassTabBar ],
+            DKKeyGlassTabBarCapsuleLength: @[ DKKeyGlassTabBar ],
+            DKKeyGlassTabBarPlusSize:    @[ DKKeyGlassTabBar ],
             DKKeyAudioVizStyle:          @[ DKKeyAudioVizPosition ],
             DKKeyInnerNotiCorner:        @[ DKKeyInnerNotiGlass ],
             DKKeyChatTopCustomPage:      @[ DKKeyChatInputGlass ],
@@ -713,6 +725,7 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
             DKKeyPlusStyle: @[ DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
             DKKeyPlusIcon: @[ DKBlockNotEqual(DKKeyPlusStyle, 3, @"需先在「拍摄按钮」中选择「自定义图片」"),
                               DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
+            DKKeyGlassTabBarPlusSize: @[ DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
             DKKeyTabTitleHome: DKTitleBlockers(nil),
             DKKeyTabTitleFriends: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_familiar"]),
             DKKeyTabTitleMall: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_mall"]),

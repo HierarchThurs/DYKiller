@@ -78,6 +78,11 @@ static NSString *const DKKeyGlassTabBar      = @"DYKillerGlassTabBar";
 static NSString *const DKKeyGlassTabBarClear = @"DYKillerGlassTabBarClear";
 // iPad 玻璃底栏位置（单选）：0 默认居中 / 1 左端 / 2 右端；仅 iPad 生效（见 DKGlassPadElements.xm）。
 static NSString *const DKKeyGlassTabBarPadPosition = @"DYKillerGlassTabBarPadPosition";
+// 悬浮玻璃底栏尺寸（百分比，100 为抖音默认效果）：胶囊等比缩放、胶囊长度、拍摄圆键直径，三者都以底边为锚。
+// 常规范围见 DKAdjustRange.m，开启「扩展所有缩放与位移」后放宽。
+static NSString *const DKKeyGlassTabBarCapsuleHeight = @"DYKillerGlassTabBarCapsuleHeight";
+static NSString *const DKKeyGlassTabBarCapsuleLength = @"DYKillerGlassTabBarCapsuleLength";
+static NSString *const DKKeyGlassTabBarPlusSize      = @"DYKillerGlassTabBarPlusSize";
 // 自定义拍摄图标：图片本体存文件（见 DKPlusIcon.xm），这个键只作设置项 identifier，
 // NSUserDefaults 里不写值。是否使用由「拍摄按钮」（DKKeyPlusStyle）选「自定义图片」决定。
 static NSString *const DKKeyPlusIcon         = @"DYKillerPlusIcon";
@@ -208,6 +213,8 @@ static NSString *const DKKeyDetailReturnMode = @"DYKillerDetailReturnMode";
 static NSString *const DKKeyDetailSearchMode = @"DYKillerDetailSearchMode";
 // 所有视频常态下都显示底部进度条。
 static NSString *const DKKeyProgressAlwaysVisible = @"DYKillerProgressAlwaysVisible";
+// 进度条只显示已播部分：隐藏未播放的那段轨道，显隐仍按抖音原逻辑。
+static NSString *const DKKeyProgressPlayedOnly = @"DYKillerProgressPlayedOnly";
 // 进度条旁的已播 / 总时长：0 关闭 / 1 两端（与进度条同一行）/ 2 右端 · 上方 / 3 右端 · 下方 / 4 两端 · 上方 / 5 两端 · 下方
 static NSString *const DKKeyProgressTimeStyle = @"DYKillerProgressTimeStyle";
 
@@ -286,6 +293,13 @@ static NSString *const DKKeyTopBarSearchMode  = @"DYKillerTopBarSearchMode";
 static NSString *const DKKeyBlockSideBarSwipe = @"DYKillerBlockSideBarSwipe";
 // 顶栏透明度：0–100，默认 100；作用于左侧栏入口、全部频道与搜索图标。
 static NSString *const DKKeyTopBarAlpha       = @"DYKillerTopBarAlpha";
+
+#pragma mark - 功能组：未读红点
+
+// 移除未读红点（点状 / 数字 / 文字）：底栏按钮、首页顶栏频道、左侧栏（≡ 入口与侧边栏面板）三处各一个开关。
+static NSString *const DKKeyTabBarRemoveBadge  = @"DYKillerTabBarRemoveBadge";
+static NSString *const DKKeyTopBarRemoveBadge  = @"DYKillerTopBarRemoveBadge";
+static NSString *const DKKeySideBarRemoveBadge = @"DYKillerSideBarRemoveBadge";
 
 #pragma mark - 功能组：朋友页精简
 
