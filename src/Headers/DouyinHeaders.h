@@ -973,6 +973,14 @@
 - (void)refreshBackgroundColorWhileHasBackground:(BOOL)hasBackground;
 @end
 
+// 最近照片条里的单张照片格与「添加更多可访问照片」入口格。
+@interface AWEIMAssetListCollectionViewCell : UICollectionViewCell
+@end
+
+@interface AWEIMPhotoAddMoreCollectionViewCell : UICollectionViewCell
+- (void)addBlurView;
+@end
+
 // 最近照片条的分发方：输入形态切换时由浮动条分发询问能否展示，40.8.0 只在加号面板（类型 5）返回 YES。
 @interface AWEIMQuickSelectPhotoInteractor : AWEIMComponentBase
 - (BOOL)canShowBarWhenInputTypeChangedTo:(long long)type;
