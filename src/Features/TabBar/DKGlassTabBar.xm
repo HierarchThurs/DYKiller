@@ -41,7 +41,9 @@
 // 依赖的抖音/UIKit 私有符号集中在此，抖音改名时只改这里。
 static NSString *const kDKBadgeContainerClass = @"AWENormalModeTabBarBadgeContainerView";
 static NSString *const kDKBadgeClass = @"DUXBadge";
-static NSString *const kDKPlatterClass = @"_UITabBarItemPlatterView";
+// 悬浮胶囊底板：iOS 26 为该类本身，iOS 27 为其子类 _UITabBarItemPlatterView；底板内部的
+// ContentView / BadgeContainerView 是嵌套类而非子类，按 isKindOfClass 判定不会误中。
+static NSString *const kDKPlatterClass = @"UIKit._UITabBarPlatterView";
 static NSString *const kDKTabButtonClass = @"_UITabButton";
 static NSString *const kDKPlusClickSelector = @"plusTabBarButtonDidClick:";
 static NSString *const kDKTabClickSelector = @"tabBarButtonDidTouchUpInside:gestureRecognizer:";
@@ -189,7 +191,7 @@ UIGlassEffect *DKGlassTabBarMakeEffect(UIUserInterfaceStyle style, BOOL interact
     return DKGlassMakeGlassEffect(style, interactive);
 }
 
-// 悬浮胶囊的材质由 _UITabBarItemPlatterView 自己持有的 glassEffect 决定——
+// 悬浮胶囊的材质由底板（platter）自己持有的 glassEffect 决定——
 // UITabBarAppearance.backgroundEffect 是悬浮布局之前的旧 API，floating provider 根本不读它
 // （实测出厂态 / Regular / Clear 三者渲染逐像素相同，均为 9.x% 细节保留）。改写这个属性才
 // 拿得到清透，且原生透镜、长按拖动、角标完全不受影响：细节保留 5.9% → 26.8%，
@@ -199,18 +201,37 @@ UIGlassEffect *DKGlassTabBarMakeEffect(UIUserInterfaceStyle style, BOOL interact
 // · glassEffect 是 UIKit 内部属性，iOS 大版本可能改名。首次读不到就永久放弃，此后整段不进入
 //   （逐帧路径上反复 @try/@catch 既慢又吵），底栏保持系统默认磨砂，功能不受影响。
 // · 只还原自己改过的：首次接管前把原厂那只存在 platter 上，关开关时原样放回。
+//
+// 接管状态记在 platter 自己身上，不比较材质对象：glassEffect 是 copy 属性，回读的副本既不是
+// 同一只、也不携带档位（实测副本之间 isEqual 为指针比较；写入 Clear 后回读 style 仍为 0）。
+// 读回值只用来取 interactive 和留作还原快照，「装过没有」由已装档位这条记录回答。
 static NSString *const kDKPlatterGlassKey = @"glassEffect";
-static char kDKPlatterOriginalGlassKey;
+static char kDKPlatterOriginalGlassKey;     // 首次接管前的原厂材质（可能 NSNull）
+static char kDKPlatterAppliedStyleKey;      // 已装上的深浅档位；存在即本进程接管过这只 platter
 static BOOL gPlatterGlassProbed = NO;
 static BOOL gPlatterGlassSupported = NO;
-// glassEffect 是 copy 属性（实测回读指针 != 写入指针），所以记的是 platter 存下的那只【副本】。
-// 弱引用：platter 换掉它、或 platter 本身销毁，这里都会变，正好当作「需要重装」的信号。
-static __weak id gPlatterGlassInstalled = nil;
-static UIUserInterfaceStyle gPlatterGlassStyle = UIUserInterfaceStyleUnspecified;
 
 static void DKGlassApplyPlatterGlass(UIView *platter, UIUserInterfaceStyle style)
     API_AVAILABLE(ios(26.0)) {
-    if (!platter || (gPlatterGlassProbed && !gPlatterGlassSupported)) return;
+    if (!platter) return;
+    NSNumber *applied = objc_getAssociatedObject(platter, &kDKPlatterAppliedStyleKey);
+
+    if (!DKGlassTabBarUsesClear()) {
+        if (!applied) return;                       // 没接管过，无需还原
+        id original = objc_getAssociatedObject(platter, &kDKPlatterOriginalGlassKey);
+        @try {
+            [platter setValue:(original == NSNull.null ? nil : original)
+                       forKey:kDKPlatterGlassKey];
+        } @catch (__unused NSException *exception) {}
+        objc_setAssociatedObject(platter, &kDKPlatterAppliedStyleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(platter, &kDKPlatterOriginalGlassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [platter setNeedsLayout];
+        return;
+    }
+
+    // 同一只 platter 上已装同档就不再写：每写一次系统都要重建一次材质。
+    if (applied && applied.integerValue == (NSInteger)style) return;
+    if (gPlatterGlassProbed && !gPlatterGlassSupported) return;
 
     id current = nil;
     @try {
@@ -223,24 +244,6 @@ static void DKGlassApplyPlatterGlass(UIView *platter, UIUserInterfaceStyle style
     gPlatterGlassProbed = YES;
     gPlatterGlassSupported = YES;
 
-    BOOL patched = current && current == gPlatterGlassInstalled;
-
-    if (!DKGlassTabBarUsesClear()) {
-        if (!patched) return;                       // 没接管过，无需还原
-        id original = objc_getAssociatedObject(platter, &kDKPlatterOriginalGlassKey);
-        @try {
-            [platter setValue:(original == NSNull.null ? nil : original)
-                       forKey:kDKPlatterGlassKey];
-        } @catch (__unused NSException *exception) {}
-        gPlatterGlassInstalled = nil;
-        gPlatterGlassStyle = UIUserInterfaceStyleUnspecified;
-        [platter setNeedsLayout];
-        return;
-    }
-
-    // 装的还是我们那只、档位也没变，就什么都不做。逐帧无脑重写会打断系统的呈现过渡。
-    if (patched && style == gPlatterGlassStyle) return;
-
     if (!objc_getAssociatedObject(platter, &kDKPlatterOriginalGlassKey)) {
         objc_setAssociatedObject(platter, &kDKPlatterOriginalGlassKey, current ?: NSNull.null,
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -252,26 +255,28 @@ static void DKGlassApplyPlatterGlass(UIView *platter, UIUserInterfaceStyle style
         ? ((UIGlassEffect *)current).interactive : YES;
     @try {
         [platter setValue:DKGlassMakeGlassEffect(style, interactive) forKey:kDKPlatterGlassKey];
-        gPlatterGlassInstalled = [platter valueForKey:kDKPlatterGlassKey];
     } @catch (__unused NSException *exception) {
         gPlatterGlassSupported = NO;
         return;
     }
-    gPlatterGlassStyle = style;
+    objc_setAssociatedObject(platter, &kDKPlatterAppliedStyleKey, @(style), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [platter setNeedsLayout];
 }
 
 NSString *DKGlassPlatterGlassStatus(void) {
-    if (!gPlatterGlassProbed) return @"未尝试（功能关闭或 platter 尚未建立）";
-    if (!gPlatterGlassSupported) return @"属性不存在，已放弃——保持系统默认磨砂";
-    if (!DKGlassTabBarUsesClear()) return @"清透开关关闭 · 系统默认磨砂";
-    id installed = gPlatterGlassInstalled;
-    if (!installed) return @"清透开关开启但尚未装上，下一次布局补";
-    UIColor *tint = DKGlassTintForStyle(gPlatterGlassStyle);
-    BOOL interactive = [installed isKindOfClass:UIGlassEffect.class]
-        && ((UIGlassEffect *)installed).interactive;
-    return [NSString stringWithFormat:@"已改写 · Clear · interactive=%@ · 染色 %@",
-            interactive ? @"YES" : @"NO", tint ? tint.description : @"(nil，浅色档)"];
+    UIView *platter = DKGlassPlatterCurrent();
+    if (!platter) return @"未尝试（platter 尚未建立）";
+    if (gPlatterGlassProbed && !gPlatterGlassSupported) return @"属性不存在，已放弃——保持系统默认磨砂";
+    NSNumber *applied = objc_getAssociatedObject(platter, &kDKPlatterAppliedStyleKey);
+    if (!applied) {
+        return DKGlassTabBarUsesClear() ? @"清透开关开启但尚未装上，下一次布局补"
+                                        : @"清透开关关闭 · 系统默认磨砂";
+    }
+    UIUserInterfaceStyle style = (UIUserInterfaceStyle)applied.integerValue;
+    UIColor *tint = DKGlassTintForStyle(style);
+    return [NSString stringWithFormat:@"已改写 · Clear · %@档 · 染色 %@",
+            style == UIUserInterfaceStyleDark ? @"深色" : @"浅色",
+            tint ? tint.description : @"(nil，浅色档)"];
 }
 
 #pragma mark - 深浅色
@@ -824,13 +829,20 @@ static UIVisualEffectView *DKGlassMakePlusKey(id target) API_AVAILABLE(ios(26.0)
     return key;
 }
 
-static UIView *DKGlassFindPlatter(UIView *root) {
+static UIView *DKGlassFindKind(UIView *root, Class cls) {
     for (UIView *subview in root.subviews) {
-        if ([NSStringFromClass(subview.class) containsString:kDKPlatterClass]) return subview;
-        UIView *found = DKGlassFindPlatter(subview);
+        if ([subview isKindOfClass:cls]) return subview;
+        UIView *found = DKGlassFindKind(subview, cls);
         if (found) return found;
     }
     return nil;
+}
+
+static UIView *DKGlassFindPlatter(UIView *root) {
+    static Class platterClass;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ platterClass = NSClassFromString(kDKPlatterClass); });
+    return platterClass ? DKGlassFindKind(root, platterClass) : nil;
 }
 
 #pragma mark - 几何
@@ -1105,13 +1117,12 @@ static void DKGlassUpdate(AWENormalModeTabBar *douyinBar) API_AVAILABLE(ios(26.0
         gItemButtons = nil;
         gItemTabIDs = nil;
         gSignature = nil;
-        // 重新开启时材质与 platter 玻璃都要能重新装上；探测结果不复位，那是设备能力，一次为准。
+        // 重新开启时材质要能重新装上；platter 玻璃的记录挂在 platter 上，随新底栏一起重建。
+        // 探测结果不复位，那是设备能力，一次为准。
         gGlassStyle = UIUserInterfaceStyleUnspecified;
         gInkStyle = UIUserInterfaceStyleUnspecified;
         gInkHostColor = nil;
         gPlusIconInkStyle = UIUserInterfaceStyleUnspecified;
-        gPlatterGlassStyle = UIUserInterfaceStyleUnspecified;
-        gPlatterGlassInstalled = nil;
         // 玻璃底栏是可视化的落位基准，它一撤可视化必须跟着撤，否则会留下一层孤儿视图。
         DKAudioVisualizerLayout(douyinBar);
         DKGlassPadElementsLayout(douyinBar, CGRectNull);

@@ -280,16 +280,6 @@ NSDictionary *DKAudioRuntimeMediaSnapshot(void) {
     return DKRuntimeCollectCandidates();
 }
 
-static UIView *DKRuntimeFindSubview(UIView *root, NSString *classFragment) {
-    if (!root) return nil;
-    if ([NSStringFromClass(root.class) containsString:classFragment]) return root;
-    for (UIView *subview in root.subviews) {
-        UIView *found = DKRuntimeFindSubview(subview, classFragment);
-        if (found) return found;
-    }
-    return nil;
-}
-
 static NSArray *DKRuntimeClipAncestors(UIView *view) {
     NSMutableArray *ancestors = [NSMutableArray array];
     UIWindow *window = view.window;
@@ -335,7 +325,7 @@ NSDictionary *DKAudioRuntimeGlassTarget(void) {
     if (![NSThread isMainThread]) return @{ @"error": @"glass target must run on main thread" };
     UITabBar *bar = DKGlassTabBarCurrent();
     UIVisualEffectView *plus = DKGlassPlusKeyCurrent();
-    UIView *platter = DKRuntimeFindSubview(bar, @"_UITabBarItemPlatterView");
+    UIView *platter = DKGlassPlatterCurrent();
     UIWindow *window = bar.window ?: plus.window ?: DKDebugTargetWindow();
     CGRect unionRect = CGRectNull;
     if (platter.window) unionRect = [platter convertRect:platter.bounds toView:window];

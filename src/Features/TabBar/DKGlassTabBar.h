@@ -32,7 +32,7 @@ UIVisualEffectView *DKGlassPlusKeyCurrent(void);
 /// 底栏玻璃的材质：模糊 / 清透档与深色染色跟胶囊、拍摄圆键一致。供底栏上的其他玻璃共用。
 UIGlassEffect *DKGlassTabBarMakeEffect(UIUserInterfaceStyle style, BOOL interactive) API_AVAILABLE(ios(26.0));
 
-/// 悬浮胶囊本体（_UITabBarItemPlatterView）。音频可视化的环绕轮廓以它为准。
+/// 悬浮胶囊底板（iOS 26 的 _UITabBarPlatterView，iOS 27 的 _UITabBarItemPlatterView）。音频可视化的环绕轮廓以它为准。
 UIView *DKGlassPlatterCurrent(void);
 
 /// 悬浮胶囊玻璃改写的状态，一句话自述。胶囊材质由 platter 自己的 glassEffect 决定，
