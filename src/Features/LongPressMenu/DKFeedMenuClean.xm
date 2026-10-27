@@ -6,7 +6,8 @@
 //   - 面板每次装数据（首次加载、配置刷新）都经 -[AWELongPressPanelTableViewController setDataArray:]，
 //     在这里收录与过滤，之后的取数与插件保存项都基于过滤后的分组。
 //   - 原生项以 panelBizVMIdentifier 识别；插件加入的保存项没有该标识，不收录也不移除。
-//   - 分组里的项全部移除时整组去掉；所有菜单项都被移除时按原数据显示。
+//   - 分组里的项全部移除时整组去掉；原生项全部移除时只留第一个普通分组（groupType 0）的空副本作面板结构，
+//     插件保存项填入这一组，没有保存项时面板为空。
 //   - 勾选在下一次打开菜单时生效。
 //
 
@@ -39,6 +40,15 @@ static NSString *DKFeedScene(NSArray *groups) {
         }
     }
     return @"-";
+}
+
+// 原生项全部移除后留下的面板结构：第一个普通分组的空副本。普通分组的行数随条目数，空组不出行。
+static id DKFeedMenuEmptyGroup(NSArray *groups) {
+    Class groupClass = NSClassFromString(@"AWELongPressPanelViewGroupModel");
+    for (AWELongPressPanelViewGroupModel *group in groups) {
+        if ([group isKindOfClass:groupClass] && group.groupType == 0) return DKFeedMenuCopyGroup(group, @[]);
+    }
+    return nil;
 }
 
 static NSArray *DKFeedMenuFilter(NSArray *groups) {
@@ -83,8 +93,10 @@ static NSArray *DKFeedMenuFilter(NSArray *groups) {
         }
     }
     if (kept == 0) {
-        DKLongPressMenuNote(DKLongPressMenuFeed, [head stringByAppendingString:@"，勾选项覆盖全部菜单项，按原样显示"]);
-        return groups;
+        id empty = DKFeedMenuEmptyGroup(groups);
+        DKLongPressMenuNote(DKLongPressMenuFeed, [head stringByAppendingFormat:@"，移除全部 %lu 项%@",
+                                                  (unsigned long)removed, empty ? @"" : @"，无普通分组"]);
+        return empty ? @[ empty ] : @[];
     }
     DKLongPressMenuNote(DKLongPressMenuFeed, [head stringByAppendingFormat:@"，移除 %lu 项，剩 %lu 组",
                                               (unsigned long)removed, (unsigned long)result.count]);

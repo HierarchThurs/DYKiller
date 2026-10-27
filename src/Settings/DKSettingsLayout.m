@@ -180,6 +180,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyShareMenu, @"ic_share_outlined"),
         ]),
         DKSection(@"长按菜单", @[
+            DKRow(DKKeyFeedMenuNoPanel, @"ic_eyeslash_outlined_20"),
             DKRow(DKKeyFeedMenu, @"ic_video_outlined_20"),
             DKRow(DKKeyCommentMenu, @"ic_comment_outlined_20"),
         ]),
@@ -722,6 +723,7 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
         NSMutableDictionary *table = [NSMutableDictionary dictionary];
         [table addEntriesFromDictionary:@{
             DKKeySearchRemoveRankFooter: @[ DKBlockOn(DKKeySearchRemoveAllRanks, @"已移除全部榜单") ],
+            DKKeyFeedMenu: @[ DKBlockOn(DKKeyFeedMenuNoPanel, @"已开启「长按不弹出长按面板」") ],
             DKKeyPlusStyle: @[ DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
             DKKeyPlusIcon: @[ DKBlockNotEqual(DKKeyPlusStyle, 3, @"需先在「拍摄按钮」中选择「自定义图片」"),
                               DKBlockOn(DKKeyHidePlusButton, removedPlus) ],

@@ -114,8 +114,12 @@ static NSArray *DKFeedMerge(NSArray *groups, NSArray *added, BOOL removeNative) 
         id group = DKFeedGroup(groups[speedGroup], items);
         if (group) out[speedGroup] = group;
     } else {
-        id group = DKFeedGroup(groups.lastObject, added);
-        if (group) [out addObject:group];
+        id last = groups.lastObject;
+        NSArray *lastItems = DKMediaValue(last, @"groupArr");
+        id group = DKFeedGroup(last, added);
+        // 末组是空分组（作品长按菜单的原生项全部移除后留下的）时填入这一组，否则另起一组。
+        if (group && [lastItems isKindOfClass:NSArray.class] && lastItems.count == 0) out[out.count - 1] = group;
+        else if (group) [out addObject:group];
     }
     return out;
 }

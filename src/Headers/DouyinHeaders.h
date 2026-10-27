@@ -1294,6 +1294,8 @@
 @interface AWELongPressPanelManager : NSObject
 + (instancetype)shareInstance;
 - (void)dismissWithAnimation:(BOOL)animated completion:(id)completion;
+// 长按作品后是否弹出面板：各长按入口与 iPad「更多」按钮共用；两参数版本转调此方法。
+- (BOOL)shouldShowPanelWhenUserDidLongPressWithModel:(id)model referString:(id)referString scene:(id)scene;
 @end
 
 @interface AWELongPressPanelTableViewController : UIViewController   // 推荐页视频与图文共用

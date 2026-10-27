@@ -361,6 +361,8 @@ static NSString *const DKKeyFeedMenuCatalog       = @"DYKillerFeedMenuCatalog";
 static NSString *const DKKeyFeedMenuColumns       = @"DYKillerFeedMenuColumns";
 // 设置子页入口的 identifier，NSUserDefaults 里不写值。
 static NSString *const DKKeyFeedMenu              = @"DYKillerFeedMenu";
+// 长按作品不弹出长按面板（BOOL）。
+static NSString *const DKKeyFeedMenuNoPanel       = @"DYKillerFeedMenuNoPanel";
 // 评论长按菜单：每项一个 BOOL 键，前缀 + 菜单项标识（元素 elementType 数字，或分享行 share）。
 static NSString *const DKKeyCommentMenuHidePrefix = @"DYKillerHideCommentMenu.";
 static NSString *const DKKeyCommentMenuCatalog    = @"DYKillerCommentMenuCatalog";
