@@ -36,3 +36,6 @@ Copyright (c) 2026 Hierarch
 
 
 > 发布频道 https://t.me/DYKiller
+
+
+感谢赞助：[赞助入口](https://github.com/HierarchThurs/DYKiller/wiki/donate)
