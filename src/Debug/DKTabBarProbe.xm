@@ -28,6 +28,7 @@
 #import "DKProgressTime.h"
 #import "DKAdjustRange.h"
 #import "DKTabBarBackdrop.h"
+#import "DKTabBarPageImmersion.h"
 #import "DKTopBarAlpha.h"
 #import "DKUnreadBadge.h"
 #import "DKTabBarRemoval.h"
@@ -1208,6 +1209,10 @@ NSString *DKTabBarProbeReport(void) {
     // 玻璃底栏关闭时，视频页底栏背景是否让位，以及三个判据输入。
     [out appendString:@"\n----- 底栏背景让位 -----\n"];
     [out appendString:DKTabBarBackdropStatus()];
+
+    // 商城页与个人主页二级分页是否不再为底栏让出底部高度。
+    [out appendString:@"\n----- 底栏页面沉浸 -----\n"];
+    [out appendString:DKTabBarPageImmersionStatus()];
 
     // 外观定制：各项原文、自定义文字与覆盖层状态，判断改字与图标模式是否生效。
     [out appendString:@"\n----- 外观定制 -----\n"];
