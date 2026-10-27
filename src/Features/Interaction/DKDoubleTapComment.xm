@@ -220,10 +220,8 @@ static BOOL DKTapFeedComment(AWEPlayInteractionViewController *controller, id pl
         DKDoubleTapCommentStale();
         return YES;
     }
-    id video = DKDoubleTapCommentObject(controller, @selector(videoDelegate));
-    if (DKDoubleTapCommentBool(controller, @selector(pureMode))
-        || DKDoubleTapCommentBool(player, @selector(hasInlandscape))
-        || DKDoubleTapCommentBool(video, @selector(hasInlandscape))) return NO;
+    // 清屏透传原双击。横屏页的双击由横屏页自己的交互处理，不经过这里。
+    if (DKDoubleTapCommentBool(controller, @selector(pureMode))) return NO;
     id panel = DKDoubleTapCommentObject(controller, @selector(panelDelegate));
     if (!DKDoubleTapCommentMethod(object_getClass(panel), @selector(performCommentAction), "v")) {
         DKDoubleTapCommentMissing();
