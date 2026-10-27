@@ -24,7 +24,9 @@
 #import "DKTabBarIcons.h"
 #import "DKTabBarRemoval.h"
 #import "DouyinHeaders.h"
+#import "DKAdjustRange.h"
 #import "DKGlassGuard.h"
+#import "DKImageOpaque.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKUtils.h"
@@ -158,6 +160,11 @@ BOOL DKGlassTabBarActive(void) {
 
 static BOOL DKGlassTabBarUsesClear(void) {
     return DKGlassOSAvailable() && DKPrefBool(DKKeyGlassTabBarClear);
+}
+
+// 尺寸设置的生效比例。扩展范围下限为 0，而缩放为 0 的变换不可逆，按 1% 计。
+static CGFloat DKGlassSizeFactor(NSString *key) {
+    return MAX(DKAdjustValue(key), 1) / 100.0;
 }
 
 #pragma mark - 材质
@@ -529,40 +536,10 @@ static UIImage *DKGlassPlusSourceIcon(UIView *button) {
 // 按 alpha 裁掉四周透明留白。抖音给的图是 75×49 而字形只有约 33×30，直接缩进圆键会小到看不清；
 // 裁完再排版，换了图标也自适应，不必写死内缩。
 static UIImage *DKGlassTrimTransparent(UIImage *image) {
-    CGImageRef source = image.CGImage;
-    if (!source) return image;
+    CGRect opaque = DKImageOpaquePixelRect(image);
+    if (CGRectIsNull(opaque)) return image;   // 无位图或整张全透明，原样返回
 
-    size_t width = CGImageGetWidth(source);
-    size_t height = CGImageGetHeight(source);
-    if (width == 0 || height == 0) return image;
-
-    uint8_t *alpha = (uint8_t *)calloc(width * height, sizeof(uint8_t));
-    if (!alpha) return image;
-
-    CGContextRef context = CGBitmapContextCreate(alpha, width, height, 8, width, NULL,
-                                                 (CGBitmapInfo)kCGImageAlphaOnly);
-    if (!context) {
-        free(alpha);
-        return image;
-    }
-    CGContextDrawImage(context, CGRectMake(0.0, 0.0, width, height), source);
-    CGContextRelease(context);
-
-    size_t minX = width, minY = height, maxX = 0, maxY = 0;
-    for (size_t y = 0; y < height; y++) {
-        for (size_t x = 0; x < width; x++) {
-            if (alpha[y * width + x] == 0) continue;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-        }
-    }
-    free(alpha);
-    if (minX > maxX || minY > maxY) return image;   // 整张全透明，原样返回
-
-    CGImageRef cropped = CGImageCreateWithImageInRect(
-        source, CGRectMake(minX, minY, maxX - minX + 1, maxY - minY + 1));
+    CGImageRef cropped = CGImageCreateWithImageInRect(image.CGImage, opaque);
     if (!cropped) return image;
 
     UIImage *result = [UIImage imageWithCGImage:cropped
@@ -574,14 +551,16 @@ static UIImage *DKGlassTrimTransparent(UIImage *image) {
 
 // 图标同样走模板图：抖音会随页面在白/黑两版图标间切换，只取 alpha 则两版形状一致，
 // 着色跟内容极性走（见「内容取色」），黑视频上不会出现看不见的黑图标。
+// 各档内缩按默认直径调定，「拍摄键大小」缩放圆键时同比例缩放。
 CGFloat DKGlassPlusIconInset(void) {
+    CGFloat inset = kDKPlusIconInset;
     switch (DKPlusCurrentStyle()) {
-        case DKPlusStyleCustom: return kDKPlusIconCustomInset;
+        case DKPlusStyleCustom: inset = kDKPlusIconCustomInset; break;
         case DKPlusStyleCamera:
-        case DKPlusStyleBrand: return kDKPlusIconCameraInset;
+        case DKPlusStyleBrand: inset = kDKPlusIconCameraInset; break;
         case DKPlusStyleDefault: break;
     }
-    return kDKPlusIconInset;
+    return inset * DKGlassSizeFactor(DKKeyGlassTabBarPlusSize);
 }
 
 // 拍摄圆键的图按「拍摄按钮」选项出：默认镜像抖音原图；新图标 / 新双色图标为照相机，
@@ -862,7 +841,7 @@ static UIView *DKGlassFindPlatter(UIView *root) {
 typedef struct {
     CGFloat buttonWidth;   // b
     CGFloat buttonPad;     // pad
-    CGFloat height;        // 胶囊高，即圆键直径
+    CGFloat height;        // 胶囊高（缩放前），即圆键的默认直径
     CGFloat top;           // 胶囊在 UITabBar 内的 y
     CGFloat inset;         // UITabBar 左右到胶囊的内缩
 } DKGlassMetrics;
@@ -935,14 +914,16 @@ static BOOL DKGlassMeasure(UIView *platter, NSUInteger count) {
 
 // 胶囊宽度跟着 4+1 参考态走：参考态是 reference 个项目、右侧有拍摄圆键、整组占满底栏两侧内缩之间。
 // 由参考态得出相邻间距，少几项就少几个间距——每项的大小与位置间隔都与参考态相同，不拉长。
-static CGFloat DKGlassCapsuleWidth(NSUInteger count, NSUInteger reference, CGFloat barWidth) {
+// 「胶囊长度」按比例缩放参考态宽度，间距随之等比变化，由 UIKit 等距排布；间距最大到自然间距，
+// 放大到自然宽后不再变长。
+static CGFloat DKGlassCapsuleWidth(NSUInteger count, NSUInteger reference, CGFloat barWidth, CGFloat length) {
     CGFloat single = gMetrics.buttonWidth + 2.0 * gMetrics.buttonPad;
     CGFloat naturalPitch = MAX(gMetrics.buttonWidth - 2.0 * gMetrics.buttonPad, 0.0);
     reference = MAX(reference, count);
     if (count <= 1 || reference <= 1) return single;
 
     CGFloat available = barWidth - gMetrics.height - kDKPlusKeyGap - 2.0 * gMetrics.inset;
-    CGFloat referenceWidth = MIN(available, single + (reference - 1) * naturalPitch);
+    CGFloat referenceWidth = MIN(available, single + (reference - 1) * naturalPitch) * length;
     CGFloat pitch = MIN(MAX((referenceWidth - single) / (reference - 1), 0.0), naturalPitch);
     return single + (count - 1) * pitch;
 }
@@ -950,16 +931,26 @@ static CGFloat DKGlassCapsuleWidth(NSUInteger count, NSUInteger reference, CGFlo
 NSString *DKGlassGeometryStatus(void) {
     if (!gBar) return @"未建立（功能关闭或尚未布局）";
     return [NSString stringWithFormat:
-            @"项目 %lu / 参考 %lu · 胶囊目标 %.1f 实测 %.1f · 按钮宽 %.1f 首距 %.1f 高 %.1f · 内缩 %.1f（%@）",
+            @"项目 %lu / 参考 %lu · 胶囊目标 %.1f 实测 %.1f · 按钮宽 %.1f 首距 %.1f 高 %.1f · 内缩 %.1f（%@）"
+            @" · 尺寸 高 %ld%% 长 %ld%% 拍摄 %ld%% · 胶囊显示 %@ 圆键 %@",
             (unsigned long)gGeometryCount, (unsigned long)gGeometryReference, gGeometryTarget, gGeometryMeasured,
             gMetrics.buttonWidth, gMetrics.buttonPad, gMetrics.height, gMetrics.inset,
-            gInsetMeasured ? @"实测" : @"兜底"];
+            gInsetMeasured ? @"实测" : @"兜底",
+            (long)DKAdjustValue(DKKeyGlassTabBarCapsuleHeight), (long)DKAdjustValue(DKKeyGlassTabBarCapsuleLength),
+            (long)DKAdjustValue(DKKeyGlassTabBarPlusSize),
+            gPlatter ? NSStringFromCGRect([gPlatter convertRect:gPlatter.bounds toView:gBar.superview]) : @"-",
+            gPlusKey.isHidden ? @"隐藏" : NSStringFromCGRect(gPlusKey.frame)];
 }
 
 // 胶囊与拍摄圆键作为一组在抖音底栏内水平居中，项目少了只缩短胶囊、不拉长。
 // UITabBar 宽度按目标胶囊宽 + 两侧内缩写入后立即布局再量；量到的值变了就按新值再来一轮，首帧也一次到位。
-// 定位用实测胶囊宽，靠平移 UITabBar 让胶囊落到位——平移不改宽度，不会再触发重排。
-// 写入先比较，不会形成布局环。
+//
+// 尺寸设置：胶囊高 62pt 由 UIKit 内部决定，改 platter 或 UITabBar 的 frame 都会被写回，
+// 「胶囊高度」只能对整个 UITabBar 等比缩放，图标、文字、选中透镜随之缩放；拍摄圆键是自建视图，直接改直径。
+// 两者都以默认几何的底边为锚，离屏幕底边的距离不变。
+//
+// UITabBar 带变换后 frame 没有定义，宽度写 bounds、位置写 center。定位用实测胶囊宽，
+// 平移与缩放都不改 bounds，不会再触发重排。写入先比较，不会形成布局环。
 static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar, NSUInteger reference) API_AVAILABLE(ios(26.0)) {
     CGSize size = douyinBar.bounds.size;
     if (DKGlassMetricChanged(size.width, gMetricsBarWidth)) {
@@ -972,14 +963,16 @@ static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar, NSUInteger refere
     BOOL available = gPlusButton != nil;
     if (gPlusKey.isHidden == available) gPlusKey.hidden = !available;
 
+    CGFloat capsuleScale = DKGlassSizeFactor(DKKeyGlassTabBarCapsuleHeight);
+    CGFloat length = DKGlassSizeFactor(DKKeyGlassTabBarCapsuleLength);
     NSUInteger count = gBar.items.count;
     UIView *platterView = nil;
     for (NSUInteger pass = 0; pass < 2; pass++) {
-        gGeometryTarget = DKGlassCapsuleWidth(count, reference, size.width);
+        gGeometryTarget = DKGlassCapsuleWidth(count, reference, size.width, length);
         CGFloat barWidth = gGeometryTarget + 2.0 * gMetrics.inset;
-        CGRect frame = gBar.frame;
-        if (fabs(CGRectGetWidth(frame) - barWidth) > 0.01 || CGRectGetHeight(frame) != size.height) {
-            gBar.frame = CGRectMake(CGRectGetMinX(frame), 0.0, barWidth, size.height);
+        CGRect barBounds = gBar.bounds;
+        if (fabs(CGRectGetWidth(barBounds) - barWidth) > 0.01 || CGRectGetHeight(barBounds) != size.height) {
+            gBar.bounds = CGRectMake(0.0, 0.0, barWidth, size.height);
         }
         [gBar layoutIfNeeded];
         platterView = DKGlassFindPlatter(gBar);
@@ -992,25 +985,34 @@ static void DKGlassLayoutGlass(AWENormalModeTabBar *douyinBar, NSUInteger refere
     // 拍摄按钮被移除时下面会早退，但胶囊材质照样要生效。
     DKGlassApplyPlatterGlass(platterView, gGlassStyle);
 
+    // 实测量都在 UITabBar 自身坐标里，不受它的缩放影响。
     CGRect platter = platterView ? [platterView convertRect:platterView.bounds toView:gBar] : CGRectZero;
     BOOL measured = CGRectGetWidth(platter) > 0.0;
     CGFloat capsule = measured ? CGRectGetWidth(platter) : gGeometryTarget;
     CGFloat capsuleX = measured ? CGRectGetMinX(platter) : gMetrics.inset;
-    CGFloat diameter = gMetrics.height;
+    // 默认几何下胶囊的底边；UITabBar 不缩放时 y 为 0，两套坐标同值。
+    CGFloat bottom = gMetrics.top + gMetrics.height;
+    CGFloat capsuleWidth = capsule * capsuleScale;
+    CGFloat diameter = gMetrics.height * DKGlassSizeFactor(DKKeyGlassTabBarPlusSize);
     gGeometryMeasured = capsule;
 
-    CGFloat group = capsule + (available ? kDKPlusKeyGap + diameter : 0.0);
-    CGRect groupFrame = CGRectMake((size.width - group) / 2.0, gMetrics.top, group, diameter);
+    // 纵向取默认胶囊带：iPad 两侧元素按钮按它排高度，不随尺寸设置变化。
+    CGFloat group = capsuleWidth + (available ? kDKPlusKeyGap + diameter : 0.0);
+    CGRect groupFrame = CGRectMake((size.width - group) / 2.0, gMetrics.top, group, gMetrics.height);
     // iPad 可把玻璃组靠到左端 / 右端，两侧元素按钮随之重排（见 DKGlassPadElements.xm）。
     groupFrame.origin.x = DKGlassPadGroupLeft(douyinBar, groupFrame);
     CGFloat left = CGRectGetMinX(groupFrame);
-    CGRect barFrame = gBar.frame;
-    barFrame.origin.x = left - capsuleX;
-    if (!CGRectEqualToRect(gBar.frame, barFrame)) gBar.frame = barFrame;
+    // 以胶囊左下角为锚，缩放后落在 (left, bottom)。
+    CGRect barBounds = gBar.bounds;
+    CGPoint center = CGPointMake(left - capsuleScale * (capsuleX - CGRectGetMidX(barBounds)),
+                                 bottom - capsuleScale * (bottom - CGRectGetMidY(barBounds)));
+    if (!CGPointEqualToPoint(gBar.center, center)) gBar.center = center;
+    CGAffineTransform transform = CGAffineTransformMakeScale(capsuleScale, capsuleScale);
+    if (!CGAffineTransformEqualToTransform(gBar.transform, transform)) gBar.transform = transform;
     DKGlassPadElementsLayout(douyinBar, groupFrame);
     if (!available) return;
 
-    CGRect keyFrame = CGRectMake(left + capsule + kDKPlusKeyGap, gMetrics.top, diameter, diameter);
+    CGRect keyFrame = CGRectMake(left + capsuleWidth + kDKPlusKeyGap, bottom - diameter, diameter, diameter);
     if (!CGRectEqualToRect(gPlusKey.frame, keyFrame)) gPlusKey.frame = keyFrame;
 
     CGRect bounds = gPlusKey.bounds;

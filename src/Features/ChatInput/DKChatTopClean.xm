@@ -12,6 +12,7 @@ static NSHashTable *gDKChatUnreadViews;
 static NSHashTable *gDKChatAvatarComponents;
 static NSHashTable *gDKChatGroupBars;
 static char kDKChatUnreadCountKey;
+static char kDKChatAvatarNotchKey;
 
 static BOOL DKChatTopRemoved(id component, NSString *key) {
     return DKPrefBool(key) && DKChatInputController(component);
@@ -23,10 +24,29 @@ static void DKChatBackSync(AWEIMNavigationUnreadView *view) {
     DKAdjustFade(view.backButton, DKPrefBool(DKKeyChatRemoveBack) ? 0.0 : 1.0, CGSizeZero);
 }
 
+// 原生缺口只为头像上的圆点留外圈：圆点被移除或移出头像期间撤掉缺口，回到头像后按原生规则（圆点显示才挂）挂回；没撤过时不碰。
+static void DKChatAvatarNotchApply(AWEIMMessageListNaviBarTitleAvatarComponent *component) {
+    UIView *dot = component.onlineDotView;
+    BOOL away = DKPrefBool(DKKeyChatRemoveOnline) || DKChatTopOnlineDotAway(dot);
+    if (!away && !objc_getAssociatedObject(component, &kDKChatAvatarNotchKey)) return;
+    objc_setAssociatedObject(component, &kDKChatAvatarNotchKey, away ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    CALayer *layer = component.contentView.layer;
+    CALayer *mask = !away && dot && !dot.hidden ? component.notchLayer : nil;
+    if (layer.mask != mask) layer.mask = mask;
+}
+
 static void DKChatOnlineDotSync(AWEIMMessageListNaviBarTitleAvatarComponent *component) {
     if (!DKChatInputController(component)) return;
     [gDKChatAvatarComponents addObject:component];
     DKAdjustFade(component.onlineDotView, DKPrefBool(DKKeyChatRemoveOnline) ? 0.0 : 1.0, CGSizeZero);
+    DKChatAvatarNotchApply(component);
+}
+
+void DKChatTopAvatarNotchSync(UIView *dot) {
+    if (!dot) return;
+    for (AWEIMMessageListNaviBarTitleAvatarComponent *component in gDKChatAvatarComponents.allObjects) {
+        if (component.onlineDotView == dot) DKChatAvatarNotchApply(component);
+    }
 }
 
 static void DKChatGroupCleanSync(UIView *view) {
@@ -107,6 +127,13 @@ void DKChatTopCleanRefresh(void) {
 - (double)desiredGroupZoneHeight {
     return DKChatTopRemoved(self, DKKeyChatRemoveMenu) ? 0.0 : %orig;
 }
+// 原生只在这里同步算一次是否展开（不带动画），之后才进入转场与首帧；此时收起，首帧即为收起态。
+- (void)hostVC_viewDidLoad {
+    %orig;
+    if (DKPrefBool(DKKeyChatGroupZoneNoAutoExpand) && DKChatInputController(self) && self.isGroupZoneExpanded) {
+        [self toggleGroupZoneExpanded:NO];
+    }
+}
 %end
 %hook DKChatCleanGroupEntryBar
 - (void)layoutSubviews { %orig; DKChatGroupCleanSync(self); }
@@ -127,6 +154,8 @@ void DKChatTopCleanRefresh(void) {
         @[ DKKeyChatRemoveOnline, @"移除在线状态显示", @"移除聊天页顶部头像上的在线圆点及名称下方的在线状态文字。" ],
         @[ DKKeyChatRemoveCall, @"移除通话按钮", @"移除聊天页顶部的通话入口，并收回布局占位。" ],
         @[ DKKeyChatRemoveMenu, @"移除菜单按钮", @"移除群聊顶部的展开按钮与群功能栏并收回占位；私聊移除右上角聊天详情入口。" ],
+        @[ DKKeyChatGroupZoneNoAutoExpand, @"不自动展开群聊顶部",
+           @"进入群聊时，若群功能栏被自动展开（群主、管理员或功能项有新内容时），在页面显示前收起；未展开时不做处理，仍可点右上角按钮手动展开。" ],
     ];
     for (NSArray *row in rows) DKSettingsRegister(row[0], ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeSwitch(row[0], row[1], row[2]);

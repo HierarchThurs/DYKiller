@@ -1,18 +1,8 @@
-// 搜索中间页：原生榜单过滤、Lynx 显示配置与搜索入口显隐。
+// 搜索中间页：区块配置来源、整块榜单与语音入口。
 #import "DKSearchClean.h"
 #import "DKKeys.h"
 #import "DKUtils.h"
 #import <objc/runtime.h>
-
-@interface AWESearchMiddleNASingleTabModel : NSObject
-@property (nonatomic, copy) NSString *tabId;
-@property (nonatomic, copy) NSString *tabName;
-@end
-
-@interface AWESearchMiddleNATabDataModel : NSObject <NSCopying>
-@property (nonatomic, copy) NSArray<AWESearchMiddleNASingleTabModel *> *tabs;
-@property (nonatomic, copy) NSString *landingTab;
-@end
 
 @interface BDXLynxKitParams : NSObject
 @property (nonatomic, copy) NSString *originURL;
@@ -25,38 +15,33 @@
 
 %group DKSearchRanks
 %hook AWESearchMiddleNATabViewComponent
+// 移除全部榜单时返回空模型，走原生零尺寸分支。
 + (id)filerTabDataModel:(id)viewModel {
-    AWESearchMiddleNATabDataModel *model = %orig;
-    NSArray *tabs = model.tabs;
-    if (![tabs isKindOfClass:NSArray.class]) return model;
-    NSMutableArray *entries = [NSMutableArray arrayWithCapacity:tabs.count];
-    for (AWESearchMiddleNASingleTabModel *tab in tabs) {
-        if (tab.tabId.length) [entries addObject:@{ @"id": tab.tabId, @"title": tab.tabName ?: tab.tabId }];
-    }
-    DKSearchRecordRanks(entries);
-    NSArray *visible = DKSearchVisibleRanks(tabs, ^NSString *(AWESearchMiddleNASingleTabModel *tab) {
-        return tab.tabId;
-    });
-    if (visible == tabs) return model;
-    // 空模型走原生零尺寸分支；非空副本同时校正落地页标识。
-    if (!visible.count) return nil;
-    AWESearchMiddleNATabDataModel *copy = [model copy];
-    copy.tabs = visible;
-    BOOL hasLanding = NO;
-    for (AWESearchMiddleNASingleTabModel *tab in visible) {
-        if ([tab.tabId isEqualToString:copy.landingTab]) hasLanding = YES;
-    }
-    if (!hasLanding) copy.landingTab = ((AWESearchMiddleNASingleTabModel *)visible.firstObject).tabId;
-    return copy;
+    id model = %orig;
+    return DKPrefBool(DKKeySearchRemoveAllRanks) ? nil : model;
 }
 %end
 %end
 
-%group DKSearchLynxProps
+%group DKSearchSources
+// Lynx 卡片的 abParams 与 settings 最终都经此交给 LynxView。
 %hook BDXLynxKitParams
 - (NSDictionary *)globalProps {
-    NSDictionary *props = %orig;
-    return DKSearchCleanGlobalProps(props, self.originURL);
+    return DKSearchCleanGlobalProps(%orig, self.originURL);
+}
+%end
+
+// 原生中间页的各类型取值方法都汇到这里读取区块配置。
+%hook AWEBaseSettings
+- (id)objectForKeyPath:(NSString *)keyPath defaultValue:(id)defaultValue stable:(BOOL)stable {
+    id value = %orig;
+    return [keyPath isEqualToString:DKSearchPageConfigKey] ? DKSearchCleanPageConfig(value) : value;
+}
+%end
+
+%hook AWESearchABTestServiceObjc
++ (BOOL)middlePageRankClose {
+    return DKPrefBool(DKKeySearchRemoveAllRanks) || %orig;
 }
 %end
 %end
@@ -88,5 +73,5 @@ void DKSearchInstallNativeHooks(void) {
 }
 
 %ctor {
-    %init(DKSearchLynxProps);
+    %init(DKSearchSources);
 }

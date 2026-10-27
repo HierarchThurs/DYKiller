@@ -2,12 +2,13 @@
 //  DKChatFloatingGlass.xm
 //  DYKiller
 //
-//  表情提示条芯片与最近照片条的玻璃：
-//   - 芯片清掉自带的模糊与底色，垫一块胶囊玻璃；
-//   - 最近照片条去掉整条通栏大底座，改为逐卡独立液态玻璃：
-//     1. 每张照片格（AWEIMAssetListCollectionViewCell）外圈垫一块 80×80 交互态液态玻璃相框（R14），
-//        内部图片容器内缩 4pt（72×72，同心连续圆角 R10），四周留出 4pt 折射玻璃边框；「动图」角标同步换为胶囊玻璃。
-//     2. 「添加更多可访问照片」格（AWEIMPhotoAddMoreCollectionViewCell）清掉原生灰底与模糊，垫一块同规格 80×80 液态玻璃卡。
+//  表情提示条芯片、最近照片条与列表底部提示的玻璃。
+//   - 芯片清掉自带的模糊与底色，垫一块胶囊玻璃。
+//   - 最近照片条逐张垫玻璃：每张照片格（AWEIMAssetListCollectionViewCell）垫一块交互态圆角玻璃相框，
+//     照片内容四周内缩出折射边框并取同心连续圆角，「动图」角标换为胶囊玻璃；「添加更多可访问照片」格
+//     （AWEIMPhotoAddMoreCollectionViewCell）清掉原生灰底与模糊，垫同样的玻璃卡。
+//   - 芯片与照片条都是先配置排版、再挂进浮动容器，进入窗口时各补一次同步。
+//   - 底部提示（回到最新圆钮 / 新消息胶囊）每次出现才挂进列表、收起后移除，主题重载会重写白底。
 //
 
 #import "DKChatFloatingGlass.h"
@@ -34,6 +35,7 @@ static const char kDKChatPhotoCellClipsKey = 0;
 static const char kDKChatPhotoCellRadiusKey = 0;
 static const char kDKChatPhotoContentClipsKey = 0;
 static const char kDKChatPhotoContentRadiusKey = 0;
+static NSHashTable<UIView *> *gDKChatBottomTips;
 
 // 宿主所在聊天页的输入控制器；功能对它生效时返回，否则返回 nil。
 static UIViewController *DKChatFloatingInput(UIView *view, NSHashTable<UIView *> *seen) {
@@ -198,6 +200,25 @@ static void DKChatPhotoStripSync(UIView *picker) {
     }
 }
 
+// 原生白底与外圈阴影换成同形玻璃：圆钮 40×40 为圆，新消息胶囊两端半圆；图标与文字保持原生。
+static void DKChatBottomTipsSync(UIView *tips) {
+    if (@available(iOS 26.0, *)) {
+        UIViewController *input = DKChatFloatingInput(tips, gDKChatBottomTips);
+        if (!input) {
+            [DKChatGlassStore removeStoreForOwner:tips];
+            return;
+        }
+        DKChatGlassStore *store = [DKChatGlassStore storeForOwner:tips create:YES];
+        if (store.syncing) return;
+        [store beginWithClear:DKPrefBool(DKKeyChatInputGlassClear) style:DKChatInputStyle(input)];
+        [store clearBackingOfView:tips];
+        [store clearShadowOfView:tips];
+        [store placeGlassFor:tips in:tips frame:tips.bounds shape:DKChatGlassShapeRounded
+                      radius:CGRectGetHeight(tips.bounds) * 0.5 interactive:YES tint:nil];
+        [store end];
+    }
+}
+
 void DKChatFloatingGlassRefresh(void) {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{ DKChatFloatingGlassRefresh(); });
@@ -207,6 +228,7 @@ void DKChatFloatingGlassRefresh(void) {
     for (UIView *picker in gDKChatPhotoStrips.allObjects) DKChatPhotoStripSync(picker);
     for (UIView *cell in gDKChatPhotoAssetCells.allObjects) DKChatPhotoAssetCellSync((UICollectionViewCell *)cell);
     for (UIView *cell in gDKChatPhotoAddCells.allObjects) DKChatPhotoAddCellSync((UICollectionViewCell *)cell);
+    for (UIView *tips in gDKChatBottomTips.allObjects) DKChatBottomTipsSync(tips);
 }
 
 %group DKChatFloatingGlassHooks
@@ -272,6 +294,21 @@ void DKChatFloatingGlassRefresh(void) {
     DKChatPhotoAddCellSync(self);
 }
 %end
+// 圆钮与胶囊切换时宽度变化触发布局；出现时重新挂进列表；主题重载经 setBackgroundColor: 重写白底。
+%hook AWEIMBottomNewMessageTipsImageView
+- (void)layoutSubviews {
+    %orig;
+    DKChatBottomTipsSync(self);
+}
+- (void)didMoveToWindow {
+    %orig;
+    DKChatBottomTipsSync(self);
+}
+- (void)setBackgroundColor:(UIColor *)color {
+    %orig;
+    DKChatBottomTipsSync(self);
+}
+%end
 %end
 
 %ctor {
@@ -279,6 +316,7 @@ void DKChatFloatingGlassRefresh(void) {
     gDKChatPhotoStrips = [NSHashTable weakObjectsHashTable];
     gDKChatPhotoAssetCells = [NSHashTable weakObjectsHashTable];
     gDKChatPhotoAddCells = [NSHashTable weakObjectsHashTable];
+    gDKChatBottomTips = [NSHashTable weakObjectsHashTable];
     if (DKGlassOSAvailable()) {
         %init(DKChatFloatingGlassHooks);
     }

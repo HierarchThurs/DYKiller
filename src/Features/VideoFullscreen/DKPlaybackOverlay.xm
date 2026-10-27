@@ -152,14 +152,6 @@ void DKPlaybackOverlayRefresh(void) {
 %end
 %end
 
-// 剧集分段条与进度条同样锚在内容底边；容器随 cell 平移时不重新布局，挂入窗口时也同步一次。
-%group DKPureStoryProgress
-%hook AWEStoryProgressContainerView
-- (void)layoutSubviews { %orig; DKPlaybackOverlayLayoutProgress(self); }
-- (void)didMoveToWindow { %orig; DKPlaybackOverlayLayoutProgress(self); }
-%end
-%end
-
 %group DKSpeedBackdrop
 %hook AFDFastSpeedView
 - (void)layoutSubviews { %orig; DKSpeedSyncBackdrop(self); }
@@ -180,7 +172,6 @@ void DKPlaybackOverlayRefresh(void) {
     gDKPureControls = [NSHashTable weakObjectsHashTable];
     gDKPureProgressViews = [NSHashTable weakObjectsHashTable];
     if (NSClassFromString(@"AFDPureModePageContainerViewController")) { %init(DKPurePageFullscreen); }
-    if (NSClassFromString(@"AWEStoryProgressContainerView")) { %init(DKPureStoryProgress); }
     if (NSClassFromString(@"AFDFastSpeedView")) { %init(DKSpeedBackdrop); }
     if (NSClassFromString(@"AFDRoundRectangleBoxView")) { %init(DKPureControlBackdrop); }
 }

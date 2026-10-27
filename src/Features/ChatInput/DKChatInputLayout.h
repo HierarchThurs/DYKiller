@@ -3,7 +3,7 @@
 //  DYKiller
 //
 //  聊天输入区的悬浮几何：行内槽位（左右圆钮 + 胶囊）的纯计算、按原生左右分组取按钮、
-//  输入框文字区的 contentInset。同步入口 DKChatInputSync（声明在 DKChatInput.h）也在本模块实现。
+//  输入框文字区的 contentInset、收起态输入行的下沉。同步入口 DKChatInputSync（声明在 DKChatInput.h）也在本模块实现。
 //
 
 #ifndef DKChatInputLayout_h
@@ -33,6 +33,8 @@ extern const CGFloat kDKChatCapsuleTextPadding;
 extern const CGFloat kDKChatPanelInset;
 /// 面板卡片的顶部圆角，底部与屏幕圆角同心且不小于它。
 extern const CGFloat kDKChatPanelRadius;
+/// 收起 / 语音态输入行的下沉量：底部安全区 34pt 的机型上，输入底板底边距屏幕底 28pt（与系统「信息」一致）。
+extern const CGFloat kDKChatFoldedSink;
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,6 +53,10 @@ BOOL DKChatInputRowFrames(id layout, DKChatRowFrames *frames);
 /// 输入框 contentInset：左右让文字落在胶囊内并留 kDKChatCapsuleTextPadding，上下沿用原生值；
 /// 功能不生效或 growing 不是该输入页的输入框时原样返回 native。
 UIEdgeInsets DKChatInputTextInsets(id layout, UIView *growing, UIEdgeInsets native);
+
+/// 收起 / 语音态的输入页 frame：功能生效时下沉 kDKChatFoldedSink，最多下沉到原生给底部安全区的让位用完；
+/// 不生效时原样返回 native。表情提示行与消息列表底边由原生页面布局跟着输入页上沿走。
+CGRect DKChatInputFoldedFrame(id layout, CGRect native);
 
 /// 输入页所在场景：页面进出转场时输入页可能还未进入窗口，沿父控制器取第一个已在窗口中的场景。
 UIWindowScene *DKChatInputScene(UIViewController *input);

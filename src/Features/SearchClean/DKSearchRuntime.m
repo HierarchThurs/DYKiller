@@ -1,4 +1,4 @@
-// 搜索框架加载后安装原生 Hook；诊断记录当前方法归属与榜单目录。
+// 搜索框架加载后安装原生 Hook；诊断记录当前方法归属。
 #import "DKSearchClean.h"
 #import "DKKeys.h"
 #import "DKUtils.h"
@@ -29,6 +29,8 @@ NSDictionary *DKSearchCleanStatus(void) {
         @[ @"AWESearchViewController", @"scanButton", @NO ],
         @[ @"AWESearchTopBarScanElement", @"scanButton", @NO ],
         @[ @"BDXLynxKitParams", @"globalProps", @NO ],
+        @[ @"AWEBaseSettings", @"objectForKeyPath:defaultValue:stable:", @NO ],
+        @[ @"AWESearchABTestServiceObjc", @"middlePageRankClose", @YES ],
         @[ @"LynxUI", @"setAccessibilityLabel:requestReset:", @NO ],
     ];
     Dl_info ownImage = {0};
@@ -44,8 +46,7 @@ NSDictionary *DKSearchCleanStatus(void) {
         [hooks addObject:@{ @"class": target[0], @"selector": target[1], @"available": @(method != NULL),
                             @"owned": @(owned), @"image": image.dli_fname ? @(image.dli_fname) : @"" }];
     }
-    return @{ @"hooks": hooks, @"catalog": DKSearchRankCatalog(),
-              @"remove_all_ranks": @(DKPrefBool(DKKeySearchRemoveAllRanks)) };
+    return @{ @"hooks": hooks, @"remove_all_ranks": @(DKPrefBool(DKKeySearchRemoveAllRanks)) };
 }
 
 __attribute__((constructor))

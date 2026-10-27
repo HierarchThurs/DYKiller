@@ -32,7 +32,7 @@ static NSHashTable<AWEElementStackView *> *gDKInfoStacks;
 
 #pragma mark - 识别
 
-static id DKInfoRowElement(UIView *row) {
+id DKInfoRowElement(UIView *row) {
     static Class rowClass;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ rowClass = NSClassFromString(@"AWEBaseElementView"); });
