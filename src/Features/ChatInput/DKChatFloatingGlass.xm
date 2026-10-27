@@ -30,12 +30,11 @@ static NSHashTable<UIView *> *gDKChatChips;
 static NSHashTable<UIView *> *gDKChatPhotoStrips;
 static NSHashTable<UIView *> *gDKChatPhotoAssetCells;
 static NSHashTable<UIView *> *gDKChatPhotoAddCells;
-
-static const char kDKChatPhotoCellClipsKey = 0;
-static const char kDKChatPhotoCellRadiusKey = 0;
-static const char kDKChatPhotoContentClipsKey = 0;
-static const char kDKChatPhotoContentRadiusKey = 0;
 static NSHashTable<UIView *> *gDKChatBottomTips;
+// 照片格与其内容视图在接管前的裁剪、圆角与圆角曲线，关闭时还原。
+static char kDKChatPhotoClipsKey;
+static char kDKChatPhotoRadiusKey;
+static char kDKChatPhotoCurveKey;
 
 // 宿主所在聊天页的输入控制器；功能对它生效时返回，否则返回 nil。
 static UIViewController *DKChatFloatingInput(UIView *view, NSHashTable<UIView *> *seen) {
@@ -73,27 +72,35 @@ static UIView *DKChatQuickPhotoPickerForCell(UIView *cell) {
     return nil;
 }
 
-static void DKChatSaveViewClipState(UIView *view, const void *clipsKey, const void *radiusKey) {
+static void DKChatSaveViewClipState(UIView *view) {
     if (!view) return;
-    if (!objc_getAssociatedObject(view, clipsKey)) {
-        objc_setAssociatedObject(view, clipsKey, @(view.clipsToBounds), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!objc_getAssociatedObject(view, &kDKChatPhotoClipsKey)) {
+        objc_setAssociatedObject(view, &kDKChatPhotoClipsKey, @(view.clipsToBounds), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    if (!objc_getAssociatedObject(view, radiusKey)) {
-        objc_setAssociatedObject(view, radiusKey, @(view.layer.cornerRadius), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!objc_getAssociatedObject(view, &kDKChatPhotoRadiusKey)) {
+        objc_setAssociatedObject(view, &kDKChatPhotoRadiusKey, @(view.layer.cornerRadius), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (!objc_getAssociatedObject(view, &kDKChatPhotoCurveKey)) {
+        objc_setAssociatedObject(view, &kDKChatPhotoCurveKey, view.layer.cornerCurve, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }
 
-static void DKChatRestoreViewClipState(UIView *view, const void *clipsKey, const void *radiusKey) {
+static void DKChatRestoreViewClipState(UIView *view) {
     if (!view) return;
-    NSNumber *savedClips = objc_getAssociatedObject(view, clipsKey);
+    NSNumber *savedClips = objc_getAssociatedObject(view, &kDKChatPhotoClipsKey);
     if (savedClips) {
         view.clipsToBounds = savedClips.boolValue;
-        objc_setAssociatedObject(view, clipsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, &kDKChatPhotoClipsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    NSNumber *savedRadius = objc_getAssociatedObject(view, radiusKey);
+    NSNumber *savedRadius = objc_getAssociatedObject(view, &kDKChatPhotoRadiusKey);
     if (savedRadius) {
         view.layer.cornerRadius = savedRadius.doubleValue;
-        objc_setAssociatedObject(view, radiusKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, &kDKChatPhotoRadiusKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    CALayerCornerCurve savedCurve = objc_getAssociatedObject(view, &kDKChatPhotoCurveKey);
+    if (savedCurve) {
+        view.layer.cornerCurve = savedCurve;
+        objc_setAssociatedObject(view, &kDKChatPhotoCurveKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }
 
@@ -105,15 +112,15 @@ static void DKChatPhotoAssetCellSync(UICollectionViewCell *cell) {
         if (!input) {
             [DKChatGlassStore removeStoreForOwner:cell];
             DKAdjustTransform(content, CGAffineTransformIdentity);
-            DKChatRestoreViewClipState(cell, &kDKChatPhotoCellClipsKey, &kDKChatPhotoCellRadiusKey);
-            DKChatRestoreViewClipState(content, &kDKChatPhotoContentClipsKey, &kDKChatPhotoContentRadiusKey);
+            DKChatRestoreViewClipState(cell);
+            DKChatRestoreViewClipState(content);
             return;
         }
         DKChatGlassStore *store = [DKChatGlassStore storeForOwner:cell create:YES];
         if (store.syncing) return;
 
-        DKChatSaveViewClipState(cell, &kDKChatPhotoCellClipsKey, &kDKChatPhotoCellRadiusKey);
-        DKChatSaveViewClipState(content, &kDKChatPhotoContentClipsKey, &kDKChatPhotoContentRadiusKey);
+        DKChatSaveViewClipState(cell);
+        DKChatSaveViewClipState(content);
 
         [store beginWithClear:DKPrefBool(DKKeyChatInputGlassClear) style:DKChatInputStyle(input)];
         [store clearBackingOfView:cell];
@@ -152,13 +159,13 @@ static void DKChatPhotoAddCellSync(UICollectionViewCell *cell) {
         UIViewController *input = DKChatFloatingInput(cell, gDKChatPhotoAddCells);
         if (!input) {
             [DKChatGlassStore removeStoreForOwner:cell];
-            DKChatRestoreViewClipState(cell, &kDKChatPhotoCellClipsKey, &kDKChatPhotoCellRadiusKey);
+            DKChatRestoreViewClipState(cell);
             return;
         }
         DKChatGlassStore *store = [DKChatGlassStore storeForOwner:cell create:YES];
         if (store.syncing) return;
 
-        DKChatSaveViewClipState(cell, &kDKChatPhotoCellClipsKey, &kDKChatPhotoCellRadiusKey);
+        DKChatSaveViewClipState(cell);
         UIView *content = cell.contentView;
         [store beginWithClear:DKPrefBool(DKKeyChatInputGlassClear) style:DKChatInputStyle(input)];
         [store clearBackingOfView:cell];
