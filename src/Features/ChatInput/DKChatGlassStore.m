@@ -28,6 +28,13 @@ static char kDKChatGlassStoreKey;
 @implementation DKChatGlassLayerBacking
 @end
 
+@interface DKChatGlassShadowBacking : NSObject
+@property (nonatomic, weak) CALayer *layer;
+@property (nonatomic) float opacity;
+@end
+@implementation DKChatGlassShadowBacking
+@end
+
 // 一块玻璃：业务视图、玻璃本体与当前的形状、材质，未变化时不重写。
 @interface DKChatGlassSlot : NSObject
 @property (nonatomic, weak) UIView *source;
@@ -83,6 +90,7 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
 @implementation DKChatGlassStore {
     NSMutableArray<DKChatGlassBacking *> *_backings;
     NSMutableArray<DKChatGlassLayerBacking *> *_layerBackings;
+    NSMutableArray<DKChatGlassShadowBacking *> *_shadowBackings;
     NSMutableArray<DKChatGlassSlot *> *_slots;
     NSMutableArray<DKChatGlassMask *> *_masks;
     NSMutableSet *_wanted;
@@ -112,6 +120,7 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
     if ((self = [super init])) {
         _backings = [NSMutableArray array];
         _layerBackings = [NSMutableArray array];
+        _shadowBackings = [NSMutableArray array];
         _slots = [NSMutableArray array];
         _masks = [NSMutableArray array];
         _wanted = [NSMutableSet set];
@@ -135,6 +144,11 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
             backing.layer.fillColor = backing.color.CGColor;
         }
         [_layerBackings removeObject:backing];
+    }
+    for (DKChatGlassShadowBacking *backing in _shadowBackings.copy) {
+        if ([_wanted containsObject:backing]) continue;
+        if (backing.layer.shadowOpacity == 0.0f) backing.layer.shadowOpacity = backing.opacity;
+        [_shadowBackings removeObject:backing];
     }
     for (DKChatGlassSlot *slot in _slots.copy) {
         if ([_wanted containsObject:slot]) continue;
@@ -173,6 +187,22 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
     }
     [_wanted addObject:backing];
     layer.fillColor = UIColor.clearColor.CGColor;
+}
+
+- (void)clearShadowOfView:(UIView *)view {
+    CALayer *layer = view.layer;
+    if (!layer) return;
+    DKChatGlassShadowBacking *backing = nil;
+    for (DKChatGlassShadowBacking *item in _shadowBackings) if (item.layer == layer) { backing = item; break; }
+    if (!backing) {
+        backing = [DKChatGlassShadowBacking new];
+        backing.layer = layer;
+        [_shadowBackings addObject:backing];
+    }
+    // 宿主重设的阴影成为关闭功能后的恢复值。
+    if (layer.shadowOpacity > 0.0f) backing.opacity = layer.shadowOpacity;
+    [_wanted addObject:backing];
+    if (layer.shadowOpacity != 0.0f) layer.shadowOpacity = 0.0f;
 }
 
 - (DKChatGlassBacking *)backingOfView:(UIView *)view {

@@ -489,8 +489,10 @@
 @end
 
 // 播放进度条（首页、朋友页共用）。progressSliderDelegate 为 AWEDProgressCoreContainer。
+// sliderRightView 是整宽的未播放轨道（底色即 maximumTrackTintColor），已播段与拇指是叠在其上的图层。
 @interface AWEFeedProgressSlider : UIView
 @property (nonatomic, weak) id progressSliderDelegate;
+@property (nonatomic, strong) UIView *sliderRightView;
 @end
 
 // 进度条章节点：按 progressWidth 把章节时间换成点位（加在进度条上），吸附区间与拖动换算同一口径。
@@ -650,6 +652,14 @@
 // 顶栏搜索入口的控制器。评论区打开时由它配置一份搜索图标副本（普通 UIView），放在首页根视图上。
 @interface AWEHPTopBarSearchEntranceController : NSObject
 - (void)setupCopyFeedDiscoverEntranceView:(UIView *)view;
+@end
+
+#pragma mark - 未读红点功能组用到的类
+
+// 抖音通用红点（点状 / 数字 / 文字三种样式）。显示时写 hidden=NO；清除时写 YES 并移出父视图（40.8.0 反汇编）。
+@interface DUXBadge : UIView
+@property (nonatomic, assign) unsigned long long badgeNumber;
+@property (nonatomic, copy) NSString *badgeText;
 @end
 
 #pragma mark - 朋友页精简用到的类
@@ -852,6 +862,11 @@
 - (double)__bubbleYOrigin;
 @end
 
+// 消息列表底部的「回到最新」圆钮（40×40）与「N 条新消息」胶囊：AWEIMBottomAnchorComponent 的同一个容器，
+// 挂在列表视图上。纵坐标按列表视图高度写（出现 = 高 − 56，收起 = 高），换文案时只改宽度与横向居中（40.8.0 反汇编）。
+@interface AWEIMBottomNewMessageTipsImageView : UIView
+@end
+
 // 普通聊天输入控制器。公司会话、POI 会话、作品详情与图文详情内的输入页复用同一套组件，
 // 由下面四个只读标志区分，功能只接管四者都为假的那一种。
 @interface IESIMInputViewController : UIViewController
@@ -876,6 +891,9 @@
 - (void)p_layoutInputViewsAfterAdjustButtons;
 - (void)pp_layoutSubviewsWithAnimated:(BOOL)animated context:(id)context;
 - (void)refreshBackgroundWithBackGroundImage:(BOOL)hasImage;
+// 收起 / 语音态的输入页 frame：y = 父视图高 − 行高 − 底部安全区让位（40.8.0 反汇编）；
+// 输入控制器、最近照片与菜单组件取折叠位置都经它。
+- (CGRect)inputVCFoldedFrame:(CGFloat)height;
 @end
 
 // 左右按钮的供给策略，返回本轮参与布局的按钮数组。

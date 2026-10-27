@@ -3,7 +3,7 @@
 //  DYKiller
 //
 //  聊天页玻璃的槽位仓库：每个宿主对象一份，
-//  记下本模块建的玻璃、清掉的原生底色与挂上的 mask。每轮同步在 begin / end 之间声明“本轮需要什么”，
+//  记下本模块建的玻璃、清掉的原生底色与阴影、挂上的 mask。每轮同步在 begin / end 之间声明“本轮需要什么”，
 //  end 时撤掉没再声明的部分并还原原生值。
 //
 
@@ -42,6 +42,9 @@ API_AVAILABLE(ios(26.0))
 
 /// 清掉独立形状图层的填充色；下一轮未声明或关闭时恢复原生色。
 - (void)clearFillOfShapeLayer:(CAShapeLayer *)layer;
+
+/// 清掉视图图层的阴影（不透明度置 0）；下一轮未声明或关闭时恢复原生不透明度。
+- (void)clearShadowOfView:(UIView *)view;
 
 /// 该视图的底色是否已由本仓库接管。
 - (BOOL)tracksBackingOfView:(UIView *)view;
