@@ -84,14 +84,16 @@ UIImage *DKInteractionIconImage(DKInteractionIconSlot slot, NSInteger style, CGS
         UIGraphicsImageRendererFormat *format = UIGraphicsImageRendererFormat.preferredFormat;
         format.opaque = NO;
         format.scale = scale;
-        image = [[[UIGraphicsImageRenderer alloc] initWithSize:size format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {
-            CGFloat side = MIN(size.width, size.height);
+        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:format];
+        CGFloat side = MIN(size.width, size.height);
+        UIImage *icon = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+            DKInteractionIconDraw(context.CGContext, slot, style, CGRectMake((size.width - side) / 2, (size.height - side) / 2, side, side));
+        }];
+        // 图标成形后再整体投影。
+        image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
             CGContextSetShadowWithColor(context.CGContext, CGSizeMake(0, .5), light ? 1.4 : 1.2,
                 [UIColor colorWithWhite:0 alpha:light ? .55 : .34].CGColor);
-            BOOL useLayer = DKInteractionIconUsesTransparencyLayer();
-            if (useLayer) CGContextBeginTransparencyLayer(context.CGContext, NULL);
-            DKInteractionIconDraw(context.CGContext, slot, style, CGRectMake((size.width - side) / 2, (size.height - side) / 2, side, side));
-            if (useLayer) CGContextEndTransparencyLayer(context.CGContext);
+            [icon drawAtPoint:CGPointZero];
         }];
     }
     image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
