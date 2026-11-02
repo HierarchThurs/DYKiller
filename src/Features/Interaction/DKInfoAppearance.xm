@@ -9,6 +9,7 @@
 //     AWEPlayInteractionLeftElement 即左侧栈的行。元素实现作者协议的是昵称行，其余左侧元素行归文案组；
 //     不属于左侧元素的行（朋友页私信快捷回复栏）不改透明度与缩放，只随位置累计移动。
 //   - 透明度：逐行挂半透明 mask，不改 alpha，命中不变；抖音打开文案面板时写的栈 alpha 与之相乘。
+//     发布时间与发布地区行在本功能接管时不跟随文案透明度；仍由抖音原生显示时沿用文案组透明度。
 //   - 缩放：贴左缘逐行缩放，最底行以行内可见内容（非空文本、有图的图片）的底边为锚，
 //     文案行文字下方的滚动余量不会把文字推进进度条触控区。
 //   - 上移：整栈叠 transform；视频时长显示在进度条上方时至少上移它要的让位高度。
@@ -26,9 +27,13 @@ typedef NS_ENUM(NSInteger, DKInfoRowKind) {
     DKInfoRowOther = 0,        // 非左侧元素行
     DKInfoRowNickname = 1,     // 作者昵称
     DKInfoRowDescription = 2,  // 文案及其余左侧信息
+    DKInfoRowPublishInfo = 3,  // 发布时间与地区
 };
 
 static NSHashTable<AWEElementStackView *> *gDKInfoStacks;
+
+// 发布信息行仅在插件写入当前作品内容后独立透明度；声明放在此处以保持改动局部化。
+extern BOOL DKPublishInfoOwnsTimestampElement(id element);
 
 #pragma mark - 识别
 
@@ -46,14 +51,17 @@ id DKInfoRowElement(UIView *row) {
 
 static DKInfoRowKind DKInfoKindOfRow(UIView *row) {
     static Class leftClass;
+    static Class publishInfoClass;
     static Protocol *authorProtocol;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         leftClass = NSClassFromString(@"AWEPlayInteractionLeftElement");
+        publishInfoClass = NSClassFromString(@"AWEPlayInteractionTimestampElement");
         authorProtocol = NSProtocolFromString(@"AWEPlayInteractionAuthorElementProtocol");
     });
     id element = DKInfoRowElement(row);
     if (!leftClass || ![element isKindOfClass:leftClass]) return DKInfoRowOther;
+    if (publishInfoClass && [element isKindOfClass:publishInfoClass]) return DKInfoRowPublishInfo;
     if (authorProtocol && [element conformsToProtocol:authorProtocol]) return DKInfoRowNickname;
     return DKInfoRowDescription;
 }
@@ -68,10 +76,13 @@ static BOOL DKInfoIsLeftStack(AWEElementStackView *stack) {
 
 #pragma mark - 取值
 
-static CGFloat DKInfoAlpha(DKInfoRowKind kind) {
+static CGFloat DKInfoAlpha(UIView *row, DKInfoRowKind kind) {
     switch (kind) {
         case DKInfoRowNickname: return DKPrefFraction(DKKeyNicknameAlpha, 100);
         case DKInfoRowDescription: return DKPrefFraction(DKKeyDescriptionAlpha, 100);
+        case DKInfoRowPublishInfo:
+            return DKPublishInfoOwnsTimestampElement(DKInfoRowElement(row))
+                ? 1.0 : DKPrefFraction(DKKeyDescriptionAlpha, 100);
         default: return 1.0;
     }
 }
@@ -79,7 +90,8 @@ static CGFloat DKInfoAlpha(DKInfoRowKind kind) {
 static CGFloat DKInfoScale(DKInfoRowKind kind) {
     switch (kind) {
         case DKInfoRowNickname: return DKAdjustValue(DKKeyNicknameScale) / 100.0;
-        case DKInfoRowDescription: return DKAdjustValue(DKKeyDescriptionScale) / 100.0;
+        case DKInfoRowDescription:
+        case DKInfoRowPublishInfo: return DKAdjustValue(DKKeyDescriptionScale) / 100.0;
         default: return 1.0;
     }
 }
@@ -129,7 +141,7 @@ void DKInfoAppearanceApplyStack(AWEElementStackView *stack) {
     // mask 向四周外扩栈的尺寸，覆盖缩放与上移后越出行 bounds 的内容。
     CGSize outset = stack.bounds.size;
     for (UIView *row in stack.arrangedSubviews) {
-        DKAdjustFade(row, DKInfoAlpha(DKInfoKindOfRow(row)), outset);
+        DKAdjustFade(row, DKInfoAlpha(row, DKInfoKindOfRow(row)), outset);
     }
     DKAdjustStackRows(stack, DKStackEdgeLeft,
                       ^CGFloat(UIView *row) { return DKInfoScale(DKInfoKindOfRow(row)); },
@@ -154,15 +166,16 @@ static NSString *DKInfoKindText(DKInfoRowKind kind) {
     switch (kind) {
         case DKInfoRowNickname: return @"昵称";
         case DKInfoRowDescription: return @"文案";
+        case DKInfoRowPublishInfo: return @"发布信息";
         default: return @"其他";
     }
 }
 
 NSString *DKInfoAppearanceStatus(void) {
     NSMutableString *out = [NSMutableString string];
-    [out appendFormat:@"昵称透明度=%.0f%% 缩放=%ld%% · 文案透明度=%.0f%% 缩放=%ld%% · 上移=%ldpt\n",
-        DKInfoAlpha(DKInfoRowNickname) * 100.0, (long)DKAdjustValue(DKKeyNicknameScale),
-        DKInfoAlpha(DKInfoRowDescription) * 100.0, (long)DKAdjustValue(DKKeyDescriptionScale),
+    [out appendFormat:@"昵称透明度=%.0f%% 缩放=%ld%% · 文案透明度=%.0f%% 缩放=%ld%% · 发布信息透明度=接管时独立、原生时沿用文案组 · 上移=%ldpt\n",
+        DKInfoAlpha(nil, DKInfoRowNickname) * 100.0, (long)DKAdjustValue(DKKeyNicknameScale),
+        DKInfoAlpha(nil, DKInfoRowDescription) * 100.0, (long)DKAdjustValue(DKKeyDescriptionScale),
         (long)DKAdjustValue(DKKeyInfoOffset)];
     [out appendFormat:@"可见左侧栈=%lu\n", (unsigned long)gDKInfoStacks.allObjects.count];
     for (AWEElementStackView *stack in gDKInfoStacks.allObjects) {
@@ -172,10 +185,12 @@ NSString *DKInfoAppearanceStatus(void) {
             DKInfoRowKind kind = DKInfoKindOfRow(row);
             id element = DKInfoRowElement(row);
             CGAffineTransform t = row.transform;
-            [out appendFormat:@"    [%@] %@ bounds=%@ hidden=%d 内容底=%.1f 缩放=%.3f tx=%.1f ty=%.1f 淡出=%.2f\n",
+            [out appendFormat:@"    [%@] %@ bounds=%@ hidden=%d 内容底=%.1f 缩放=%.3f tx=%.1f ty=%.1f 淡出=%.2f 透明度路径=%@\n",
                 DKInfoKindText(kind), element ? NSStringFromClass([element class]) : @"-",
                 NSStringFromCGSize(row.bounds.size), row.isHidden, DKInfoRowContentBottom(row),
-                t.a, t.tx, t.ty, DKAdjustFadeFactor(row)];
+                t.a, t.tx, t.ty, DKAdjustFadeFactor(row),
+                kind == DKInfoRowPublishInfo
+                    ? (DKPublishInfoOwnsTimestampElement(element) ? @"独立" : @"文案组") : @"-" ];
         }
     }
     return out;

@@ -26,12 +26,12 @@ static AWESettingItemModel *DKInfoScaleItem(NSString *key, NSString *title, NSSt
 %ctor {
     DKSettingsRegister(DKKeyNicknameAlpha, ^AWESettingItemModel *{
         return DKInfoAlphaItem(DKKeyNicknameAlpha, @"昵称透明度",
-                               @"调整视频左下作者昵称一行（含标签与发布时间）的透明度；不影响点击进入作者主页。");
+                               @"调整视频左下作者昵称一行（含标签）的透明度；发布时间与发布地区在发布信息插件接管时使用自身透明度；不影响点击进入作者主页。");
     });
 
     DKSettingsRegister(DKKeyDescriptionAlpha, ^AWESettingItemModel *{
         return DKInfoAlphaItem(DKKeyDescriptionAlpha, @"文案透明度",
-                               @"调整作品文案及左下方其余信息（弹幕入口、话题、定位等）的透明度；不影响点击。"
+                               @"调整作品文案及左下方其余非发布时间/地区信息的透明度；发布信息插件接管的时间与地区使用自身透明度；不影响点击。"
                                @"朋友页的私信快捷回复栏不受影响。");
     });
 
@@ -42,7 +42,7 @@ static AWESettingItemModel *DKInfoScaleItem(NSString *key, NSString *title, NSSt
 
     DKSettingsRegister(DKKeyDescriptionScale, ^AWESettingItemModel *{
         return DKInfoScaleItem(DKKeyDescriptionScale, @"文案缩放",
-                               @"缩小作品文案及左下方其余信息行。左下信息整列贴左排布，底部与进度条的间距不变，"
+                               @"缩小作品文案及左下方其余信息行（含发布时间与发布地区）。左下信息整列贴左排布，底部与进度条的间距不变，"
                                @"行间距随之等比缩小。朋友页的私信快捷回复栏不缩放。");
     });
 

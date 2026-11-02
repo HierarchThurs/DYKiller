@@ -6,10 +6,10 @@
 //
 //  实现：
 //   - 借用左侧栈的原生时间元素 AWEPlayInteractionTimestampElement。开启任一项时强制激活它，作为文案下方
-//     独立一行参与原生排布与收拢；它是左侧元素，透明度与缩放随「昵称文案外观」的文案组。
+//     独立一行参与原生排布与收拢；插件实际写入当前行时，透明度不跟随文案组，缩放仍随原文案组。
 //   - 原生只在少数页面激活这一行（shouldActiveWithData:context: 按页面判定）；换作品时先 setModel:，
 //     再由 layoutElementView 重写文字。接管点就是 layoutElementView：能写出本功能的一行时不调原生实现，
-//     原生与本功能不会在每轮布局里交替写入。
+//     原生与本功能不会在每轮布局里交替写入；没有本功能内容时保留原生文字与透明度路径。
 //   - 换作品时用原生激活判定记下原生是否本来显示这一行；原生显示的页面，未开启的一项保留原生内容
 //     （原生日期、原生属地），原生不显示且本功能无内容时收起这一行。
 //   - 一行为「时间  地区」，地区不带前缀。原生把标签宽度钉成行宽；文字更长时加大该约束常量向右延伸，
@@ -23,6 +23,7 @@
 #import "DKPublishRegion.h"
 #import "DouyinHeaders.h"
 #import "DKColorScheme.h"
+#import "DKInfoAppearance.h"
 #import "DKKeys.h"
 #import "DKUtils.h"
 #import <objc/message.h>
@@ -69,6 +70,12 @@ static BOOL DKPublishInfoWanted(void) {
 
 static DKPublishInfoState *DKPublishState(AWEPlayInteractionTimestampElement *element) {
     return objc_getAssociatedObject(element, &kDKPublishStateKey);
+}
+
+// 仅当前作品已有本功能写入内容时，发布时间/地区行才拥有独立透明度。
+BOOL DKPublishInfoOwnsTimestampElement(id element) {
+    if (!element || !DKPublishInfoWanted()) return NO;
+    return DKPublishState(element).applied;
 }
 
 #pragma mark - 字段
@@ -179,7 +186,9 @@ static NSAttributedString *DKPublishLine(AWEPlayInteractionTimestampElement *ele
 
     UIFont *font = state.baseFont ?: [UIFont systemFontOfSize:12];
     UIColor *baseColor = state.baseColor ?: UIColor.whiteColor;
-    CGFloat scale = label.traitCollection.displayScale > 0 ? label.traitCollection.displayScale : UIScreen.mainScreen.scale;
+    CGFloat scale = label.traitCollection.displayScale;
+    if (scale <= 0) scale = label.window.windowScene.screen.scale;
+    if (scale <= 0) scale = 1.0;
     NSMutableAttributedString *line = [NSMutableAttributedString new];
     if (time) DKAppendPart(line, time, ownTime ? DKPartColors(state, NO) : nil, font, baseColor, scale);
     if (location) {
@@ -312,6 +321,7 @@ static void DKPublishInfoRefreshGeoname(NSString *geonameId) {
         AWEAwemeModel *model = DKPublishState(element).model;
         if ([DKModelString(model, @selector(cityCode)) isEqualToString:geonameId]) [element layoutElementView];
     }
+    DKInfoAppearanceRefresh();
 }
 
 void DKPublishInfoRefresh(void) {
@@ -319,8 +329,9 @@ void DKPublishInfoRefresh(void) {
         dispatch_async(dispatch_get_main_queue(), ^{ DKPublishInfoRefresh(); });
         return;
     }
-    // 开启时写入本功能的一行；关闭时写回原生文字并恢复原生的显示判定。
+    // 先完成文字与原生显隐恢复，再重排左侧栈，使时间行的透明度 mask 与接管状态同步。
     for (AWEPlayInteractionTimestampElement *element in gDKPublishElements.allObjects) [element layoutElementView];
+    DKInfoAppearanceRefresh();
 }
 
 #pragma mark - 诊断
@@ -342,8 +353,10 @@ NSString *DKPublishInfoStatus(void) {
         AWEAwemeModel *model = state.model;
         UILabel *label = element.timestampLabel;
         UIView *row = label.superview;
-        [out appendFormat:@"  原生激活=%d appear=%d 接管=%d 行=%@ hidden=%d window=%d 标签宽=%.0f 需要=%.0f 延伸=%.0f 可用=%.0f\n",
-            state.nativeActive, element.appear, state.applied, row ? NSStringFromCGRect(row.frame) : @"-", row.isHidden,
+        [out appendFormat:@"  原生激活=%d appear=%d 接管=%d 透明度路径=%@ 行=%@ hidden=%d window=%d 标签宽=%.0f 需要=%.0f 延伸=%.0f 可用=%.0f\n",
+            state.nativeActive, element.appear, state.applied,
+            DKPublishInfoOwnsTimestampElement(element) ? @"独立" : @"文案组",
+            row ? NSStringFromCGRect(row.frame) : @"-", row.isHidden,
             row.window != nil, CGRectGetWidth(label.bounds), ceil(label.attributedText.size.width),
             state.widthConstraint.constant - state.baseWidthConstant, label ? DKPublishAvailableWidth(label) : 0];
         [out appendFormat:@"    createTime=%.0f city=%@ region=%@ ip=%@ 文字=%@\n", DKCreateSeconds(model),
