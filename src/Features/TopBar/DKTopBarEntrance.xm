@@ -11,12 +11,13 @@
 //   - layoutSubviews / didMoveToWindow 时按当前设置挂上或摘掉自己的 mask，从设置页返回首页即生效。
 //   - 评论区打开时的搜索图标副本由 AWEHPTopBarSearchEntranceController 配置，跟随搜索图标设置：
 //     隐藏同样挂全透明 mask；移除另关掉副本的交互，触摸交给下层视图。显示时按顶栏透明度淡出，
-//     一个 mask 只由这里管理。
+//     一个 mask 只由这里管理。顶栏液态玻璃开启时，副本垫同样的圆钮（DKTopBarGlass.xm）。
 //
 
 #import "DouyinHeaders.h"
 #import "DKKeys.h"
 #import "DKTopBarAlpha.h"
+#import "DKTopBarGlass.h"
 #import "DKUtils.h"
 #import "DKViewAdjust.h"
 #import <objc/runtime.h>
@@ -80,6 +81,7 @@ static void DKEntranceApplySearchCopy(UIView *copy) {
     if (![copy isKindOfClass:UIView.class]) return;
     DKTopBarEntranceMode mode = DKEntranceMode(DKTopBarEntranceSearch);
     DKAdjustFade(copy, mode == DKTopBarEntranceShown ? DKTopBarAlphaFactor() : 0.0, copy.bounds.size);
+    DKTopBarGlassApplySearchCopy(copy, mode == DKTopBarEntranceShown);
 
     BOOL disabledByUs = [objc_getAssociatedObject(copy, &kDKEntranceInteractionKey) boolValue];
     if (mode == DKTopBarEntranceRemoved) {
@@ -106,6 +108,7 @@ static void DKEntranceApplySearchCopy(UIView *copy) {
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     if (DKEntranceMode(DKEntranceCachedKind(self)) == DKTopBarEntranceRemoved) return nil;
+    if (DKTopBarGlassSlotRejectsPoint(self, point)) return nil;
     return %orig;
 }
 
