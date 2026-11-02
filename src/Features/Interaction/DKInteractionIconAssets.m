@@ -88,9 +88,10 @@ UIImage *DKInteractionIconImage(DKInteractionIconSlot slot, NSInteger style, CGS
             CGFloat side = MIN(size.width, size.height);
             CGContextSetShadowWithColor(context.CGContext, CGSizeMake(0, .5), light ? 1.4 : 1.2,
                 [UIColor colorWithWhite:0 alpha:light ? .55 : .34].CGColor);
-            CGContextBeginTransparencyLayer(context.CGContext, NULL);
+            BOOL useLayer = DKInteractionIconUsesTransparencyLayer();
+            if (useLayer) CGContextBeginTransparencyLayer(context.CGContext, NULL);
             DKInteractionIconDraw(context.CGContext, slot, style, CGRectMake((size.width - side) / 2, (size.height - side) / 2, side, side));
-            CGContextEndTransparencyLayer(context.CGContext);
+            if (useLayer) CGContextEndTransparencyLayer(context.CGContext);
         }];
     }
     image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
