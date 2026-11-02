@@ -10,6 +10,8 @@
 @end
 @interface AWESearchFeedArticleViewController : UIViewController
 @end
+@interface AWEFeedPOIDynamicCardCellViewController : UIViewController
+@end
 @interface DKMusicCardController : UIViewController
 @end
 
@@ -79,12 +81,50 @@ static void DKSpecialCardBackdrop(UIViewController *controller, BOOL refreshImag
 %end
 %end
 
+// POI 动态卡片的 Lynx 内容容器；容器收短后 Lynx 视图不跟约束缩放，需同步 frame。
+static UIView *DKPOIDynamicContainer(UIViewController *controller) {
+    Class containerClass = NSClassFromString(@"AWEDynamicCardContainer");
+    UIView *root = controller.viewIfLoaded;
+    for (UIView *subview in root.subviews) {
+        if ([subview isKindOfClass:containerClass]) return subview;
+    }
+    return nil;
+}
+
+static void DKPOIDynamicCardFit(UIViewController *controller) {
+    if (!DKVideoFullscreenOn()) return;
+    UIView *container = DKPOIDynamicContainer(controller);
+    if (!container) return;
+    CGFloat inset = DKFeedCardInset(container);
+    DKFeedCardFitContainer(container, inset, DKFeedCardTypeSpecial);
+    if (DKFeedCardContainerIsFitted(container)) {
+        for (UIView *card in container.subviews) {
+            if (fabs(card.bounds.size.height - container.bounds.size.height) > 0.5) {
+                card.frame = CGRectMake(0, 0, container.bounds.size.width, container.bounds.size.height);
+            }
+        }
+    }
+}
+
 static void DKArticleBackdrop(UIViewController *controller, BOOL refreshImage) {
     if (!DKVideoFullscreenOn()) return;
     UIView *root = controller.viewIfLoaded;
     DKFeedCardSyncBackdrop(root, DKFeedCardInset(root), DKFeedCardTypeArticle);
     if (refreshImage) DKFeedCardRequestBackdropSample(root);
 }
+
+%group DKPOICardFit
+%hook AWEFeedPOIDynamicCardCellViewController
+- (void)viewWillLayoutSubviews {
+    DKPOIDynamicCardFit(self);
+    %orig;
+}
+- (void)viewDidLayoutSubviews {
+    %orig;
+    DKPOIDynamicCardFit(self);
+}
+%end
+%end
 
 %group DKArticleFit
 %hook AWESearchFeedArticleViewController
@@ -132,6 +172,8 @@ static void DKArticleImageAdded(const struct mach_header *header, intptr_t slide
     }
     Class music = NSClassFromString(@"AWEMusicStreamingSwiftImpl.MusicCardViewController");
     if ([music isSubclassOfClass:UIViewController.class]) { %init(DKMusicCardFit, DKMusicCardController = music); }
+    Class poiCard = NSClassFromString(@"AWEFeedPOIDynamicCardCellViewController");
+    if ([poiCard isSubclassOfClass:UIViewController.class]) { %init(DKPOICardFit); }
     DKArticleInstallHooks();
     _dyld_register_func_for_add_image(DKArticleImageAdded);
     DKVideoFullscreenRegisterRestore(DKFeedCardRestore);
