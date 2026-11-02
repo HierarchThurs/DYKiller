@@ -183,11 +183,11 @@ static void DKSyncBackdrop(id owner, UIView *anchor, UIColor *color) {
                              OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-// 抖音把横屏智能背景色画在 playerBackgroundView 上；该色在首帧渲染出图后才算出来，
-// 因此同步点必须是抖音自己落色的时刻，而不是 setModel:/setFrame: 这类首帧之前的入口。
-// 仅当背景层确实挂在视图树上并可见时才算「抖音画了背景」，避免跟随已摘除的残留层。
+// 原生访问入口覆盖显示容器持有背景的路径；缺少该入口的宿主沿用控制器属性。
+// 只跟随已挂载且可见的背景层。
 static UIColor *DKPlayerBackdropColor(AWEPlayVideoViewController *controller) {
-    UIView *backdrop = controller.playerBackgroundView;
+    UIView *backdrop = [controller respondsToSelector:@selector(getPlayerBackgroundView)]
+        ? [controller getPlayerBackgroundView] : controller.playerBackgroundView;
     return (backdrop.superview && !backdrop.hidden) ? backdrop.backgroundColor : nil;
 }
 
@@ -213,18 +213,28 @@ static BOOL DKIsUnderRichContent(UIViewController *controller) {
     return NO;
 }
 
+static void DKSyncPlayerBackdrop(AWEPlayVideoViewController *controller) {
+    if (DKIsUnderRichContent(controller)) return;
+    DKSyncBackdrop(controller, controller.viewIfLoaded,
+                   DKVideoFullscreenOn() ? DKPlayerBackdropColor(controller) : nil);
+}
+
 %hook AWEPlayVideoViewController
 
 - (void)setPlayerBackgroundView:(UIView *)backgroundView {
     %orig;
-    if (DKIsUnderRichContent(self)) return;
-    DKSyncBackdrop(self, self.viewIfLoaded, DKPlayerBackdropColor(self));
+    DKSyncPlayerBackdrop(self);
+}
+
+// 原生更新会同步转发到显示容器，返回时背景已经落色并挂载。
+- (void)updatePlayerBackgroundViewIfNeededWhenLandscape:(BOOL)landscape fromHomepageHot:(BOOL)fromHomepageHot {
+    %orig;
+    DKSyncPlayerBackdrop(self);
 }
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DKIsUnderRichContent(self)) return;
-    DKSyncBackdrop(self, self.viewIfLoaded, DKPlayerBackdropColor(self));
+    DKSyncPlayerBackdrop(self);
 }
 
 %end
@@ -646,6 +656,7 @@ static void DKRestoreUnusedRichCollectionState(
 }
 
 static void DKSyncRichCollection(AWEStoryContainerCollectionView *collection) {
+    NSArray<UIView *> *media = DKRichContentCenterCollection(collection);
     CGFloat contentHeight = CGRectGetHeight(collection.bounds);
     CGFloat fullHeight = DKVideoFullscreenOn() ? DKFullCellHeight(collection) : 0.0;
     if (contentHeight <= 0.0
@@ -656,6 +667,13 @@ static void DKSyncRichCollection(AWEStoryContainerCollectionView *collection) {
 
     NSMutableSet<UIView *> *activeGradients = [NSMutableSet set];
     NSMutableSet<UIView *> *activeClipViews = [NSMutableSet set];
+    for (UIView *content in media) {
+        UIView *canvas = DKCellContentView(content);
+        for (UIView *ancestor = content.superview; ancestor && ancestor != canvas; ancestor = ancestor.superview) {
+            DKAllowRichOverflow(ancestor);
+            if (objc_getAssociatedObject(ancestor, &kDKRichClipKey)) [activeClipViews addObject:ancestor];
+        }
+    }
     for (UIView *gradient in DKRichBottomGradients(collection)) {
         UIView *contentView = DKCellContentView(gradient);
         UIView *parent = gradient.superview;

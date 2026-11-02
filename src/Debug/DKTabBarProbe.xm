@@ -30,6 +30,7 @@
 #import "DKTabBarBackdrop.h"
 #import "DKTabBarPageImmersion.h"
 #import "DKTopBarAlpha.h"
+#import "DKTopBarGlass.h"
 #import "DKUnreadBadge.h"
 #import "DKTabBarRemoval.h"
 #import "DouyinHeaders.h"
@@ -1133,6 +1134,7 @@ NSString *DKTabBarProbeReport(void) {
     DKProbeAppendFrozenMedia(out);
 
     [out appendString:@"\n----- 图文 -----\n"];
+    [out appendFormat:@"%@\n", DKRichContentCenterStats()];
     DKProbeAppendRichContent(out);
 
     // 视频表这一节必须在「没找到 UITabBarController 就返回」之前：其他用户主页、搜索页这些
@@ -1192,6 +1194,9 @@ NSString *DKTabBarProbeReport(void) {
 
     [out appendString:@"\n----- 顶栏透明度 -----\n"];
     [out appendString:DKTopBarAlphaStatus()];
+
+    [out appendString:@"\n----- 顶栏液态玻璃 -----\n"];
+    [out appendString:DKTopBarGlassStatus()];
 
     [out appendString:@"\n----- 未读红点 -----\n"];
     [out appendString:DKUnreadBadgeStatus()];

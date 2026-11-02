@@ -66,6 +66,12 @@ UIColor *DKRichBackdropColor(UIViewController *container);
 /// 图文可见 Cell 的贴底压暗层状态：transform 后底边、Cell 满高与剩余裁剪数。供探针核对。
 NSString *DKRichBottomGradientStats(UIView *collectionView);
 
+/// 同步可见图文画面的位置，返回需要向外层 Cell 溢出的内容视图。
+NSArray<UIView *> *DKRichContentCenterCollection(UICollectionView *collection);
+
+/// 图文原生变换写入的转换次数与当前接管数，供设备核对。
+NSString *DKRichContentCenterStats(void);
+
 /// 直播预览 HUD 抬升的现场：位移量、4 层容器的具名槽位、抬升目标的 identity frame 与实际底边。
 /// 参数是 AWELivePreStream4LayerContainerView，返回多行文本。供探针核对。
 NSString *DKLiveChromeStats(UIView *container);
