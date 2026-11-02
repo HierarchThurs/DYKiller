@@ -13,6 +13,8 @@ static void DKMigrateSwitchesToModes(void) {
         @"DYKillerHideMusicInfo":         DKKeyPlaybackMusicInfoMode,
         @"DYKillerHideCommentBottomBar":  DKKeyCommentReplyBottomBarMode,
         @"DYKillerHideFollowButton":      DKKeyFollowButtonDisplay,
+        DKKeyPlaybackRemoveAllAnchors:   DKKeyPlaybackAllAnchorsMode,
+        DKKeyPlaybackRemoveAllBottomBars: DKKeyPlaybackAllBottomBarsMode,
     };
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     BOOL changed = NO;

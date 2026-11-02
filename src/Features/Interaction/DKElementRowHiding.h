@@ -21,6 +21,9 @@ BOOL DKElementRowShouldRemove(UIView *row);
 /// 按当前设置重写一次行的显隐。
 void DKElementRowSync(UIView *row);
 
+/// 抖音最近一次请求的行显隐；登记目录时区分原生隐藏与插件移除。
+BOOL DKElementRowHostHidden(UIView *row);
+
 #ifdef __cplusplus
 }
 #endif

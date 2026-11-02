@@ -7,6 +7,7 @@
 
 #import "DKSettingsLayout.h"
 #import "DKKeys.h"
+#import "DKPlaybackCatalog.h"
 
 @implementation DKSettingsRow
 - (instancetype)initWithKey:(NSString *)key icon:(NSString *)icon {
@@ -116,14 +117,8 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyDetailSearchMode, @"ic_videosearch_outlined_20"),
                     DKRow(DKKeyDetailHideBottomBar, @"ic_xmark_outlined_20"),
                 ]),
-                DKSection(@"锚点标签", @[
-                    DKRow(DKKeyPlaybackRemoveAllAnchors, @"ic_eyeslash_outlined_20"),
-                    DKRow(DKKeyPlaybackGameTagMode, @"ic_module_outlined_20"),
-                    DKRow(DKKeyPlaybackMusicAnchorMode, @"ic_quaver_outlined_20"),
-                    DKRow(DKKeyPlaybackPropEffectMode, @"ic_cameralogo_outlined_20"),
-                    DKRow(DKKeyPlaybackJianyingMode, @"ic_cameralogo_outlined_20"),
-                    DKRow(DKKeyPlaybackPaidContentMode, @"ic_bag_outlined_20"),
-                    DKRow(DKKeyPlaybackLocationMode, @"ic_location_outlined_20"),
+                DKSection(@"昵称上方标签", @[
+                    DKRow(DKKeyPlaybackAnchorsPage, @"ic_tag_outlined_20"),
                 ]),
                 DKSection(@"文案上方", @[
                     DKRow(DKKeyPlaybackOtherUserRecommendMode, @"ic_user_outlined_20"),
@@ -143,13 +138,8 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                     DKRow(DKKeyPlaybackMusicInfoMode, @"ic_quaver_outlined_20"),
                     DKRow(DKKeyPlaybackQuickReplyMode, @"ic_msg_outlined_20"),
                 ]),
-                DKSection(@"底部栏目", @[
-                    DKRow(DKKeyPlaybackRemoveAllBottomBars, @"ic_eyeslash_outlined_20"),
-                    DKRow(DKKeyPlaybackRelatedSearchMode, @"ic_videosearch_outlined_20"),
-                    DKRow(DKKeyPlaybackRelatedVideoMode, @"ic_playsquarestack_outlined_20"),
-                    DKRow(DKKeyPlaybackVideoCollectionMode, @"ic_playsquarestack_outlined_20"),
-                    DKRow(DKKeyPlaybackHotspotMode, @"ic_module_outlined_20"),
-                    DKRow(DKKeyPlaybackAppDownloadMode, @"ic_boxarrowdown_outlined"),
+                DKSection(@"底部相关栏目", @[
+                    DKRow(DKKeyPlaybackBottomBarsPage, @"ic_collection_outlined_20"),
                 ]),
             ]),
             DKPage(@"评论区精简", @"ic_comment_outlined_20", @[
@@ -366,6 +356,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             ]),
             DKRow(DKKeyProgressOffset, @"ic_doublearrowup_outlined_20"),
             DKRow(DKKeyStoryIndicatorOffset, @"ic_doublearrowup_outlined_20"),
+            DKRow(DKKeyRelatedBarOffset, @"ic_doublearrowup_outlined_20"),
         ]),
     ]);
 
@@ -373,11 +364,17 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                                                              icon:@"ic_rectangleonrectangleup_outlined_20"
                                                        identifier:DKKeySettingsPageGlass
                                                          sections:@[
+        DKSection(@"顶栏", @[
+            DKRow(DKKeyTopBarGlass, @"ic_module_outlined_20"),
+            DKRow(DKKeyTopBarGlassHeight, @"ic_zoomout_outlined_20"),
+            DKRow(DKKeyTopBarGlassLength, @"ic_zoomoutrectangle_outlined"),
+        ]),
         DKSection(@"底栏", @[
             DKRow(DKKeyGlassTabBar, @"ic_module_outlined_20"),
             DKRow(DKKeyGlassTabBarCapsuleHeight, @"ic_zoomout_outlined_20"),
             DKRow(DKKeyGlassTabBarCapsuleLength, @"ic_zoomoutrectangle_outlined"),
             DKRow(DKKeyGlassTabBarPlusSize, @"ic_camera_outlined"),
+            DKRow(DKKeyGlassTabBarCollapse, @"ic_squaresplit_outlined_20"),
             DKRow(DKKeyGlassTabBarPadPosition, @"ic_squaresplit_outlined_20"),
         ]),
         DKSection(@"音频可视化", @[
@@ -638,11 +635,14 @@ NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         requires = @{
+            DKKeyTopBarGlassHeight:      @[ DKKeyTopBarGlass ],
+            DKKeyTopBarGlassLength:      @[ DKKeyTopBarGlass ],
             DKKeyAudioVizPosition:       @[ DKKeyGlassTabBar ],
             DKKeyGlassTabBarPadPosition: @[ DKKeyGlassTabBar ],
             DKKeyGlassTabBarCapsuleHeight: @[ DKKeyGlassTabBar ],
             DKKeyGlassTabBarCapsuleLength: @[ DKKeyGlassTabBar ],
             DKKeyGlassTabBarPlusSize:    @[ DKKeyGlassTabBar ],
+            DKKeyGlassTabBarCollapse:    @[ DKKeyGlassTabBar ],
             DKKeyAudioVizStyle:          @[ DKKeyAudioVizPosition ],
             DKKeyInnerNotiCorner:        @[ DKKeyInnerNotiGlass ],
             DKKeyChatTopCustomPage:      @[ DKKeyChatInputGlass ],
@@ -716,6 +716,20 @@ static NSArray<DKSettingsBlocker *> *DKTitleBlockers(NSString *removalKey) {
 }
 
 NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
+    NSString *master = ([key hasPrefix:DKKeyPlaybackAnchorModePrefix]
+        || [DKPlaybackCatalogLegacyKeys(DKPlaybackCatalogAnchors) containsObject:key]) ? DKKeyPlaybackAllAnchorsMode
+        : ([key hasPrefix:DKKeyPlaybackBottomBarModePrefix]
+        || [DKPlaybackCatalogLegacyKeys(DKPlaybackCatalogBottomBars) containsObject:key]) ? DKKeyPlaybackAllBottomBarsMode : nil;
+    if (master) {
+        NSString *title = [master isEqualToString:DKKeyPlaybackAllAnchorsMode] ? @"全部昵称上方标签" : @"全部底栏相关";
+        return @[
+            [[DKSettingsBlocker alloc] initWithKey:master match:DKSettingsBlockerWhenEqual value:1
+                reason:[NSString stringWithFormat:@"已由「%@」统一隐藏", title] shownValue:@1],
+            [[DKSettingsBlocker alloc] initWithKey:master match:DKSettingsBlockerWhenEqual value:2
+                reason:[NSString stringWithFormat:@"已由「%@」统一移除", title] shownValue:@2],
+        ];
+    }
+
     static NSDictionary<NSString *, NSArray<DKSettingsBlocker *> *> *blockers;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
@@ -723,6 +737,7 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
         NSMutableDictionary *table = [NSMutableDictionary dictionary];
         [table addEntriesFromDictionary:@{
             DKKeySearchRemoveRankFooter: @[ DKBlockOn(DKKeySearchRemoveAllRanks, @"已移除全部榜单") ],
+            DKKeyPlaybackBottomBarTransparent: @[ DKBlockNotEqual(DKKeyPlaybackAllBottomBarsMode, 0, @"已由「全部底栏相关」统一隐藏或移除") ],
             DKKeyFeedMenu: @[ DKBlockOn(DKKeyFeedMenuNoPanel, @"已开启「长按不弹出长按面板」") ],
             DKKeyPlusStyle: @[ DKBlockOn(DKKeyHidePlusButton, removedPlus) ],
             DKKeyPlusIcon: @[ DKBlockNotEqual(DKKeyPlusStyle, 3, @"需先在「拍摄按钮」中选择「自定义图片」"),
@@ -751,14 +766,6 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
             DKKeyFilterRecommendedGame, DKKeyFilterRecommendedSocial, DKKeyFilterRecommendedInterest,
             DKKeyFilterRecommendedMicroApp,
         ], 1, @"已由「推荐过滤特殊卡片」统一开启");
-        DKAddMasterBlockers(table, DKKeyPlaybackRemoveAllAnchors, @[
-            DKKeyPlaybackGameTagMode, DKKeyPlaybackMusicAnchorMode, DKKeyPlaybackPropEffectMode,
-            DKKeyPlaybackJianyingMode, DKKeyPlaybackPaidContentMode, DKKeyPlaybackLocationMode,
-        ], 2, @"已由「移除全部昵称上方标签」统一移除");
-        DKAddMasterBlockers(table, DKKeyPlaybackRemoveAllBottomBars, @[
-            DKKeyPlaybackRelatedSearchMode, DKKeyPlaybackRelatedVideoMode, DKKeyPlaybackVideoCollectionMode,
-            DKKeyPlaybackHotspotMode, DKKeyPlaybackAppDownloadMode,
-        ], 2, @"已由「移除全部底部栏目」统一移除");
         DKAddMasterBlockers(table, DKKeyCommentRemoveAllTopTags, @[
             DKKeyCommentSearchAnchorMode, DKKeyCommentLunaAnchorMode, DKKeyCommentLocationMode,
             DKKeyCommentGameAnchorMode, DKKeyCommentSeriesAnchorMode, DKKeyCommentDramaAnchorMode,

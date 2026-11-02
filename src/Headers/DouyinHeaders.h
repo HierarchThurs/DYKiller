@@ -121,11 +121,13 @@
 - (BOOL)videoShouldPlay;                                            // 播放前的总闸门
 @end
 
-// 视频播放控制器。抖音把横屏智能背景色画在 playerBackgroundView 上（插入其 view 的最底层）。
+// 视频播放控制器。getPlayerBackgroundView 按原生配置取得控制器或显示容器持有的背景。
 // playerWillLoopPlaying: 是播放引擎的循环回调，本类自己实现（发 OnPlayerWillLoopPlayingEvent、
 // 写 loopTimes、finishLogIfNeeded），播完一遍必到；它是 Merge 的子控制器。
 @interface AWEPlayVideoViewController : UIViewController
 @property (nonatomic, strong) UIView *playerBackgroundView;
+- (UIView *)getPlayerBackgroundView;
+- (void)updatePlayerBackgroundViewIfNeededWhenLandscape:(BOOL)landscape fromHomepageHot:(BOOL)fromHomepageHot;
 - (void)playerWillLoopPlaying:(id)player;
 @end
 
@@ -148,6 +150,9 @@
 @interface AWEPlayInteractionViewController : UIViewController      // HUD 控制器；评论态其 view 顶部会被塞状态栏黑底，全屏时需压掉
 @property (nonatomic, assign) BOOL hideMusicInfo;
 @property (nonatomic, copy) NSString *referString;
+@property (nonatomic, assign) BOOL isDisplaying;
+@property (nonatomic, assign) BOOL isPreload;
+@property (nonatomic, readonly, strong) UIView *bottomContainerView;
 - (void)performCommentAction;
 - (BOOL)isCommentVCShowing;
 - (void)onPlayer:(id)player didDoubleClick:(id)event;
@@ -666,10 +671,42 @@
 
 #pragma mark - 顶栏入口功能组用到的类
 
-@interface AWEFeedTopBarContainer : UIView                         // 首页顶栏容器：左侧栏入口、频道与搜索槽位
+@interface AWEHPTopTabCTAItemLayoutConfig : NSObject               // 入口槽位的边距配置，updateConfig: 时写进约束
+@property (nonatomic, assign) double leftMargin;
+@property (nonatomic, assign) double rightMargin;
+@property (nonatomic, assign) double leftPadding;
+@property (nonatomic, assign) double rightPadding;
 @end
 
 @interface AWEHPTopBarCTAItemView : UIView                         // 顶栏左右两侧的入口槽位（侧边栏 / 搜索）
+@property (nonatomic, strong) UIView *customView;                  // 入口视图
+@property (nonatomic, strong) AWEHPTopTabCTAItemLayoutConfig *config;
+- (void)updateConfig:(AWEHPTopTabCTAItemLayoutConfig *)config;
+@end
+
+@interface AWEHPTopTabItemView : UIView                            // 顶栏单个频道
+@property (nonatomic, weak) UIGestureRecognizer *singleTap;
+@end
+
+@interface AWEMultiTabNavigationArrowView : UIView                 // 频道条右端的「返回推荐」箭头
+@property (nonatomic, strong) UIImageView *arrowImageView;
+@end
+
+@interface AWEFeedMultiTabSegmentedControl : UIView                // 顶栏频道条：滚动、选中线、点按切换
+@property (nonatomic, strong) AWEMultiTabNavigationArrowView *rightNavigationArrowView;
+@property (nonatomic, readonly, strong) NSMutableArray<AWEHPTopTabItemView *> *itemViews;  // 从左到右，下标即频道下标
+@property (nonatomic, readonly, assign) long long selectedIndex;
+@property (nonatomic, assign) BOOL isLightTheme;                   // 浅色页面：文字与图标为深色
+@property (nonatomic, strong) UIScrollView *multiTabSegmentedControlScollWrapperView;
+@property (nonatomic, strong) UIView *selectedLineContainerView;   // 选中线与活动样式图
+- (void)segmentedControlTapped:(long long)index;                   // 点按切换的统一入口
+- (void)scrollSegmentedControlItemViewToIndex:(unsigned long long)index animated:(BOOL)animated;
+@end
+
+@interface AWEFeedTopBarContainer : UIView                         // 首页顶栏容器：左侧栏入口、频道与搜索槽位
+@property (nonatomic, strong) UIView *leftContentView;             // 左侧栏入口槽位
+@property (nonatomic, strong) UIView *discoverEntranceContentView; // 搜索入口槽位
+@property (nonatomic, strong) AWEFeedMultiTabSegmentedControl *segmentControlView;
 @end
 
 @interface AWELeftSideBarEntranceView : UIView                     // 左侧栏入口（≡）

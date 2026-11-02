@@ -3,8 +3,7 @@
 //  DYKiller
 //
 //  播放页精简：显示 / 隐藏 / 移除。
-//  「移除全部昵称上方标签」开启时，锚点行（含没有单独设置项的业务号）一律按移除处理，各锚点项的存值不动。
-//  「移除全部底部栏目」按播放交互控制器的底部容器归属覆盖业务行，包含未登记元素。
+//  昵称上方标签与底部相关栏目由动态目录管理，统一档位覆盖未知类型，独立选择保持不变。
 //
 //  实现：
 //   - 隐藏：对目标挂透明 mask（DKAdjustFade 系数 0），不改 alpha / hidden，命中与位置不变。整行项淡出行的直接子视图，
@@ -17,7 +16,9 @@
 
 #import "DKPlaybackClean.h"
 #import "DKPlaybackCleanRules.h"
+#import "DKPlaybackCatalog.h"
 #import "DKElementRowHiding.h"
+#import "DKRelatedBarBackground.h"
 #import "DouyinHeaders.h"
 #import "DKKeys.h"
 #import "DKUtils.h"
@@ -39,9 +40,10 @@ static CGFloat DKCleanFadeFactor(DKDisplayMode mode) {
 #pragma mark - 行档位
 
 // 总开关优先于单项档位；未登记的锚点与底部栏目同样受各自总开关管理。
-static DKDisplayMode DKCleanRowMode(UIView *row, NSString *key) {
-    if (DKPrefBool(DKKeyPlaybackRemoveAllAnchors) && DKCleanIsAnchorRow(row)) return DKDisplayModeRemove;
-    if (DKPrefBool(DKKeyPlaybackRemoveAllBottomBars) && DKCleanIsBottomRow(row)) return DKDisplayModeRemove;
+static DKDisplayMode DKCleanRowMode(UIView *row) {
+    DKDisplayMode mode;
+    if (DKPlaybackCatalogRowMode(row, &mode)) return mode;
+    NSString *key = DKCleanKeyForRow(row);
     return key ? DKPrefDisplayMode(key) : DKDisplayModeShow;
 }
 
@@ -151,9 +153,8 @@ static void DKCleanApplyEntry(UIView *entry) {
 BOOL DKPlaybackCleanRowRemoved(UIView *row) {
     id element = DKCleanRowElement(row);
     if (!element) return NO;
-    NSString *key = DKCleanKeyForRow(row);
-    if (DKCleanRowMode(row, key) == DKDisplayModeRemove) return YES;
-    if (key || DKCleanIsAnchorRow(row)) return NO;
+    if (DKCleanRowMode(row) == DKDisplayModeRemove) return YES;
+    if (DKCleanIsAnchorRow(row) || DKCleanIsBottomRow(row) || DKCleanKeyForRow(row)) return NO;
     return DKCleanIsTagsElement(element) && DKCleanTagsRowRemoved(row, element);
 }
 
@@ -165,7 +166,8 @@ void DKPlaybackCleanApplyStack(AWEElementStackView *stack) {
     for (UIView *row in stack.arrangedSubviews) {
         id element = DKCleanRowElement(row);
         if (element) {
-            DKCleanFadeRowContent(row, DKCleanRowMode(row, DKCleanKeyForRow(row)));
+            DKCleanFadeRowContent(row, DKCleanRowMode(row));
+            DKPlaybackCatalogRecordRow(row);
             DKCleanEnumerateTagsElementViews(element, ^(UIView *view, NSString *key) { DKCleanSyncSubview(view, key); });
             DKCleanEnumerateAuthorTags(element, ^(UIView *tagView, NSString *key) { DKCleanApplyAuthorTag(tagView, key); });
         }
@@ -213,8 +215,7 @@ NSString *DKPlaybackCleanStatus(void) {
         DKDisplayMode mode = DKPrefDisplayMode(key);
         if (mode != DKDisplayModeShow) [changed addObject:[NSString stringWithFormat:@"%@=%@", DKCleanShortName(key), DKCleanModeText(mode)]];
     }
-    [out appendFormat:@"移除全部昵称上方标签=%@\n", DKPrefBool(DKKeyPlaybackRemoveAllAnchors) ? @"开启" : @"关闭"];
-    [out appendFormat:@"移除全部底部栏目=%@\n", DKPrefBool(DKKeyPlaybackRemoveAllBottomBars) ? @"开启" : @"关闭"];
+    [out appendString:DKPlaybackCatalogStatus()];
     [out appendFormat:@"非默认存值：%@\n", changed.count ? [changed componentsJoinedByString:@" "] : @"无"];
 
     for (UIView *entry in gDKCleanEntries.allObjects) {
@@ -233,8 +234,9 @@ NSString *DKPlaybackCleanStatus(void) {
                 : DKCleanIsBottomRow(row) ? @"未登记底部栏目" : nil);
             [out appendFormat:@"    %@ → %@ hidden=%d 移除=%d 高=%.1f\n",
                 element ? NSStringFromClass([element class]) : NSStringFromClass(row.class),
-                owner ? [NSString stringWithFormat:@"%@(%@)", owner, DKCleanModeText(DKCleanRowMode(row, key))] : @"-",
+                owner ? [NSString stringWithFormat:@"%@(%@)", owner, DKCleanModeText(DKCleanRowMode(row))] : @"-",
                 row.isHidden, DKElementRowShouldRemove(row), CGRectGetHeight(row.bounds)];
+            if (DKCleanIsBottomRow(row)) [out appendString:DKRelatedBarBackgroundRowStatus(row)];
             DKCleanEnumerateTagsElementViews(element, ^(UIView *view, NSString *subKey) {
                 [out appendFormat:@"      子视图 %@ → %@(%@) hidden=%d 淡出=%.2f\n", NSStringFromClass(view.class),
                     DKCleanShortName(subKey), DKCleanModeText(DKPrefDisplayMode(subKey)), view.isHidden, DKAdjustFadeFactor(view)];
