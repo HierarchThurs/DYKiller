@@ -2,6 +2,13 @@
 #import "DKInteractionIconDraw.h"
 #import "DKTabBarIconDraw.h"
 
+BOOL DKInteractionIconUsesTransparencyLayer(void) {
+    // iOS 16.x 在 UIGraphicsImageRenderer 的位图上下文里开透明层会崩在
+    // CGGStateSetFillColor -> CFRetain（arm64e 指针认证 trap）；17 起保持原绘制路径。
+    if (@available(iOS 17.0, *)) return YES;
+    return NO;
+}
+
 static void DKIconPath(CGContextRef context, const char *data, CGPathDrawingMode mode) {
     CGPathRef path = DKSVGPathCreate(data);
     if (!path) return;
@@ -54,7 +61,10 @@ void DKInteractionIconDraw(CGContextRef context, DKInteractionIconSlot slot, NSI
         default: break;
     }
     if (DKInteractionIconIsActive(slot)) {
-        CGContextBeginTransparencyLayer(context, NULL);
+        // iOS 16.x 没有透明层时，图标仍画在全新的透明画布上，SourceIn 渐变只会给
+        // 已有像素的图标区域染色；iOS 17+ 仍走原来的透明层，视觉效果不变。
+        BOOL useLayer = DKInteractionIconUsesTransparencyLayer();
+        if (useLayer) CGContextBeginTransparencyLayer(context, NULL);
         DKIconPath(context, body, kCGPathFillStroke);
         if (extra) DKIconPath(context, extra, kCGPathFillStroke);
         CGContextSetBlendMode(context, kCGBlendModeSourceIn);
@@ -69,7 +79,7 @@ void DKInteractionIconDraw(CGContextRef context, DKInteractionIconSlot slot, NSI
         CGGradientRelease(gradient);
         CGColorSpaceRelease(space);
         CGContextSetBlendMode(context, kCGBlendModeNormal);
-        CGContextEndTransparencyLayer(context);
+        if (useLayer) CGContextEndTransparencyLayer(context);
         CGContextSetRGBStrokeColor(context, 1, 1, 1, .55);
         CGContextSetLineWidth(context, 1.3);
         DKIconPath(context, gloss, kCGPathStroke);
