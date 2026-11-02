@@ -20,6 +20,8 @@ typedef AWESettingItemModel *(^DKSettingItemBuilder)(void);
 /// alphaNote 由该不透明度给出说明文字（如「抖音原生不透明度 62%（只读）」），未给不显示。
 @interface DKColorSample : NSObject
 @property (nonatomic, copy) NSString *text;
+/// 是否允许在颜色选择器里调不透明度：发布信息为 YES，弹幕为 NO（继承抖音原生）。
+@property (nonatomic) BOOL alphaEditable;
 @property (nonatomic, copy) CGFloat (^alpha)(void);
 @property (nonatomic, copy) NSString *(^alphaNote)(CGFloat alpha);
 @end
@@ -115,13 +117,13 @@ AWESettingItemModel *DKMakeAction(NSString *key, NSString *title, NSString *deta
 /// 网页入口：点击用系统浏览器打开 url，不进备份。
 AWESettingItemModel *DKMakeWebLink(NSString *key, NSString *title, NSString *url);
 
-/// 固定颜色：点击打开色谱 / RGB 选色页，存为 #RRGGBB。值自动声明为单色。
+/// 固定颜色：点击打开系统 UIColorPickerViewController，存为 #AARRGGBB；sample.alphaEditable 控制是否提供透明度。
 AWESettingItemModel *DKMakeColorPicker(NSString *key, NSString *title, DKColorSample *sample);
 
 /// 固定颜色的十六进制入口：identifier 只作行标识，读写 colorKey 的存值，不进备份。
 AWESettingItemModel *DKMakeColorHexInput(NSString *identifier, NSString *colorKey, NSString *title, DKColorSample *sample);
 
-/// 渐变颜色：2–8 个十六进制颜色，英文逗号分隔。值自动声明为渐变。
+/// 渐变颜色：进入设置子页面编辑 2–8 个颜色，保存为逗号分隔的 #AARRGGBB。
 AWESettingItemModel *DKMakeColorGradientInput(NSString *key, NSString *title, DKColorSample *sample);
 
 /// 重算当前设置页的联动灰显并刷新整页。改完某项的 detail 或写入取值后调用。

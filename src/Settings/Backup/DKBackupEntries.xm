@@ -18,6 +18,8 @@ static NSString *DKValueSlot(DKSettingsValue *value) {
     switch (value.kind) {
         case DKSettingsValueKindBool:
         case DKSettingsValueKindInteger:
+        case DKSettingsValueKindIntegerMap:
+        case DKSettingsValueKindStringMap:
         case DKSettingsValueKindColor:
         case DKSettingsValueKindString: return [@"settings/" stringByAppendingString:value.key];
         case DKSettingsValueKindIDSet: return [@"sets/" stringByAppendingString:value.key];

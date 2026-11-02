@@ -35,10 +35,10 @@ static AWESettingItemModel *DKDanmakuRefreshing(AWESettingItemModel *item, NSStr
     });
     DKSettingsRegister(DKKeyDanmakuHexColor, ^AWESettingItemModel *{
         return DKDanmakuRefreshing(DKMakeColorHexInput(DKKeyDanmakuHexColor, DKKeyDanmakuFixedColor, @"十六进制颜色入口", DKDanmakuSample()),
-            @"支持 #RGB、#RRGGBB 和 #AARRGGBB，# 可省略；八位输入忽略前两位透明度，仅保存 RGB。与颜色面板共用固定颜色值。");
+            @"支持 #RGB、#RRGGBB；弹幕不透明度继承抖音原生设置，这里只保存颜色。与颜色选择器共用固定颜色值。");
     });
     DKSettingsRegister(DKKeyDanmakuGradientColors, ^AWESettingItemModel *{
         return DKDanmakuRefreshing(DKMakeColorGradientInput(DKKeyDanmakuGradientColors, @"渐变颜色", DKDanmakuSample()),
-            @"输入 2–8 个十六进制颜色并用英文逗号分隔，例如 #FF2C55,#25F4EE,#FE2C55；八位输入忽略透明度。仅在「自定义渐变」模式生效。");
+            @"点「＋ 添加颜色」逐个选色，拖动排序决定从左至右的渐变顺序；弹幕不透明度继承抖音原生设置。仅在「自定义渐变」模式生效。");
     });
 }

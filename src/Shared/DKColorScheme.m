@@ -16,7 +16,17 @@ DKColorSchemeMode DKColorSchemeStoredMode(NSString *key) {
 
 NSString *DKColorSchemeStoredColor(NSString *key, BOOL gradient) {
     id raw = [NSUserDefaults.standardUserDefaults objectForKey:key];
-    return DKColorHexNormalizeScheme(raw, gradient, NULL) ?: (gradient ? DKColorSchemeDefaultGradient : DKColorSchemeDefaultColor);
+    return DKColorHexNormalizeSchemeAlpha(raw, gradient, NULL) ?: (gradient ? DKColorSchemeDefaultGradient : DKColorSchemeDefaultColor);
+}
+
+// 存值可能是 #AARRGGBB（自带不透明度）或旧版 #RRGGBB（按不透明处理）。
+static UIColor *DKColorSchemeColor(NSString *hex) {
+    NSString *canonical = DKColorHexNormalizeAlpha(hex) ?: DKColorHexNormalizeAlpha(DKColorSchemeDefaultColor);
+    NSString *body = [canonical substringFromIndex:1];
+    unsigned int rgba = 0;
+    [[NSScanner scannerWithString:body] scanHexInt:&rgba];
+    return [UIColor colorWithRed:((rgba >> 16) & 255) / 255.0 green:((rgba >> 8) & 255) / 255.0
+                            blue:(rgba & 255) / 255.0 alpha:((rgba >> 24) & 255) / 255.0];
 }
 
 UIColor *DKColorSchemeRGB(NSString *hex) {
@@ -39,13 +49,13 @@ static UIColor *DKRandomRGB(void) {
 NSArray<UIColor *> *DKColorSchemePalette(DKColorSchemeMode mode, NSString *fixedHex, NSString *gradientHex,
                                          NSUInteger rotation) {
     switch (mode) {
-        case DKColorSchemeFixed: return @[ DKColorSchemeRGB(fixedHex) ];
+        case DKColorSchemeFixed: return @[ DKColorSchemeColor(fixedHex) ];
         case DKColorSchemeRandom: return @[ DKRandomRGB() ];
         case DKColorSchemeRandomGradient: return @[ DKRandomRGB(), DKRandomRGB(), DKRandomRGB() ];
         case DKColorSchemeCustomGradient: {
-            NSString *scheme = DKColorHexNormalizeScheme(gradientHex, YES, NULL) ?: DKColorSchemeDefaultGradient;
+            NSString *scheme = DKColorHexNormalizeSchemeAlpha(gradientHex, YES, NULL) ?: DKColorSchemeDefaultGradient;
             NSMutableArray *colors = [NSMutableArray array];
-            for (NSString *hex in [scheme componentsSeparatedByString:@","]) [colors addObject:DKColorSchemeRGB(hex)];
+            for (NSString *hex in [scheme componentsSeparatedByString:@","]) [colors addObject:DKColorSchemeColor(hex)];
             return colors;
         }
         case DKColorSchemeRainbow:
@@ -71,7 +81,7 @@ UIColor *DKColorSchemeRender(NSArray<UIColor *> *colors, CGFloat start, CGFloat 
     for (UIColor *color in colors) {
         CGFloat r = 0, g = 0, b = 0, a = 1;
         [color getRed:&r green:&g blue:&b alpha:&a];
-        [components addObject:[NSString stringWithFormat:@"%.5f,%.5f,%.5f", r, g, b]];
+        [components addObject:[NSString stringWithFormat:@"%.5f,%.5f,%.5f,%.5f", r, g, b, a]];
     }
     NSString *key = [NSString stringWithFormat:@"%@/%.3f/%.3f/%.2f", [components componentsJoinedByString:@";"], start, width, scale];
     static NSCache *cache;
@@ -81,7 +91,7 @@ UIColor *DKColorSchemeRender(NSArray<UIColor *> *colors, CGFloat start, CGFloat 
     if (cached) return cached;
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
     format.scale = scale;
-    format.opaque = YES;
+    format.opaque = NO;
     CGSize size = CGSizeMake(imageWidth, 1 / scale);
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:format];
     UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {

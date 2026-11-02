@@ -5,13 +5,14 @@
 #import "DKSettings.h"
 #import "DKUtils.h"
 
-// 样例按「文案透明度」显示：这一行属于文案组。
+// 颜色自带不透明度（#AARRGGBB），不再跟随「文案透明度」；样例按默认不透明显示。
 static DKColorSample *DKPublishSample(NSString *text) {
     DKColorSample *sample = [DKColorSample new];
     sample.text = text;
-    sample.alpha = ^CGFloat { return DKPrefFraction(DKKeyDescriptionAlpha, 100); };
+    sample.alphaEditable = YES;
+    sample.alpha = ^CGFloat { return 1; };
     sample.alphaNote = ^NSString *(CGFloat alpha) {
-        return [NSString stringWithFormat:@"不透明度跟随「文案透明度」（当前 %.0f%%），样例按此显示。", alpha * 100];
+        return @"不透明度由颜色自己决定（选择器里的「不透明度」），不再跟随「文案透明度」。";
     };
     return sample;
 }
@@ -47,7 +48,7 @@ static void DKRegisterPartColors(BOOL location) {
     });
     DKSettingsRegister(hexKey, ^AWESettingItemModel *{
         return DKPublishRefreshing(DKMakeColorHexInput(hexKey, fixedKey, [NSString stringWithFormat:@"%@十六进制颜色入口", part], DKPublishSample(sampleText)),
-            @"支持 #RGB、#RRGGBB 和 #AARRGGBB，# 可省略；八位输入忽略前两位透明度，仅保存 RGB。与颜色面板共用固定颜色值。");
+            @"支持 #RGB、#RRGGBB 和 #AARRGGBB，# 可省略；八位输入的前两位就是不透明度，会一并保存。与颜色选择器共用固定颜色值。");
     });
     DKSettingsRegister(gradientKey, ^AWESettingItemModel *{
         return DKPublishRefreshing(DKMakeColorGradientInput(gradientKey, [NSString stringWithFormat:@"%@渐变颜色", part], DKPublishSample(sampleText)),

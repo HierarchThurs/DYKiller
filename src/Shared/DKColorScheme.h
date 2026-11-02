@@ -1,7 +1,7 @@
 //
 //  DKColorScheme.h
 //  文字改色的颜色方案：六种互斥模式、存值读取、颜色序列与渐变图案色。弹幕改色与发布时间地区共用。
-//  存值只有 RGB（规范化见 DKColorHex），输出均为不透明颜色，透明度由使用方继承宿主。
+// 固定色与自定义渐变保留存值中的 alpha；弹幕消费端按原生透明度策略使用颜色。
 //
 
 #ifndef DKColorScheme_h
@@ -32,7 +32,7 @@ NSArray<NSString *> *DKColorSchemeModeTitles(void);
 /// 读模式存值；未设置或越界按固定颜色。
 DKColorSchemeMode DKColorSchemeStoredMode(NSString *key);
 
-/// 读颜色存值的规范值；未设置或不合法时取默认值。
+/// 读颜色存值的规范值；未设置或不合法时取默认值。固定色与自定义渐变保留 #AARRGGBB。
 NSString *DKColorSchemeStoredColor(NSString *key, BOOL gradient);
 
 /// #RRGGBB → 不透明颜色；不合法按白色。

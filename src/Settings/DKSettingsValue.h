@@ -34,6 +34,8 @@ typedef NS_ENUM(NSInteger, DKSettingsValueKind) {
     DKSettingsValueKindImage,     // 沙盒内的图片文件，值为文件数据
     DKSettingsValueKindString,    // NSUserDefaults 字符串，限定显示宽度
     DKSettingsValueKindColor,     // 单色或逗号分隔的颜色方案
+    DKSettingsValueKindIntegerMap, // 「前缀 + ID」一族有界整数键，值为 ID 到整数的字典
+    DKSettingsValueKindStringMap,  // 「前缀 + ID」一族单行文字键，值为 ID 到文字的字典
 };
 
 /// 文字的显示宽度：按字形簇计，ASCII 字符计 1，其他（汉字、全角、emoji）计 2。
@@ -42,7 +44,7 @@ NSUInteger DKSettingsTextWidth(NSString *text);
 @interface DKSettingsValue : NSObject
 
 @property (nonatomic, readonly) DKSettingsValueKind kind;
-/// 备份里的名字：Bool / Integer / String 为 NSUserDefaults 键，IDSet 为键前缀，Image 为图片名。
+/// 备份里的名字：Bool / Integer / String 为 NSUserDefaults 键，IDSet / IntegerMap / StringMap 为键前缀，Image 为图片名。
 @property (nonatomic, copy, readonly) NSString *key;
 @property (nonatomic, readonly) long long minimum;                           // Integer
 @property (nonatomic, readonly) long long maximum;                           // Integer
@@ -53,14 +55,18 @@ NSUInteger DKSettingsTextWidth(NSString *text);
 @property (nonatomic, readonly) NSUInteger maxSide;                          // Image：像素
 @property (nonatomic, readonly) BOOL square;                                 // Image
 @property (nonatomic, readonly) NSUInteger minimumColorCount;             // Color：1 单色 / 2 渐变
-@property (nonatomic, readonly) NSUInteger maxWidth;                         // String：DKSettingsTextWidth 上限
+@property (nonatomic, readonly) NSUInteger maxWidth;                         // String / StringMap：DKSettingsTextWidth 上限
 
 + (instancetype)boolWithKey:(NSString *)key;
 + (instancetype)integerWithKey:(NSString *)key minimum:(long long)minimum maximum:(long long)maximum;
 + (instancetype)idSetWithPrefix:(NSString *)prefix;
+/// 动态目录的独立单选值；目录不参与备份，未在本机出现的 ID 也能恢复其配置。
++ (instancetype)integerMapWithPrefix:(NSString *)prefix minimum:(long long)minimum maximum:(long long)maximum;
 /// 单行文字：去掉首尾空白后存，空串视为未设置；不允许换行与控制字符。
 + (instancetype)stringWithKey:(NSString *)key maxWidth:(NSUInteger)maxWidth;
-/// 颜色方案：gradient=NO 为单色，YES 为 2–8 色渐变。八位 AARRGGBB 输入忽略 alpha。
+/// 动态目录的自定义名称：ID 到单行文字的字典，空文字表示未命名；未在本机出现的 ID 也能恢复。
++ (instancetype)stringMapWithPrefix:(NSString *)prefix maxWidth:(NSUInteger)maxWidth;
+/// 颜色方案：gradient=NO 为单色，YES 为 2–8 色渐变。颜色统一规范为 #AARRGGBB。
 + (instancetype)colorWithKey:(NSString *)key gradient:(BOOL)gradient;
 /// 图片文件。types 为允许的 UTType 标识（如 public.png）；GIF 允许多帧，其余类型只允许单帧。
 + (instancetype)imageWithName:(NSString *)name path:(NSString *)path types:(NSArray<NSString *> *)types
@@ -71,13 +77,14 @@ NSUInteger DKSettingsTextWidth(NSString *text);
 
 /// 规范化：合法时返回规范值——Bool 为 @YES / @NO，Integer 为 NSNumber，IDSet 为排好序的 ID 数组
 /// （nil / NSNull 视为空集），Image 为文件数据，String 为去掉首尾空白的文字（空串按未设置）；
-/// 「未设置」返回 NSNull。不合法返回 nil，reason 给出原因。
+/// IntegerMap 为 ID 到有界整数的字典，StringMap 为 ID 到单行文字的字典，nil / NSNull 视为空字典。
+/// 其他种类「未设置」返回 NSNull。不合法返回 nil，reason 给出原因。
 - (nullable id)normalize:(nullable id)raw reason:(NSString *_Nullable *_Nullable)reason;
 
 /// 当前存值的规范值。存值不合法时按未设置；Image 只读文件，不做图片校验（超过 maxBytes 按未设置）。
 - (id)currentValueInStore:(id<DKSettingsStore>)store;
 
-/// 写入 Bool / Integer / String / IDSet 的规范值；NSNull 清除存值，IDSet 清掉不在新集合里的键。
+/// 写入 Bool / Integer / String / IDSet / IntegerMap / StringMap 的规范值；NSNull 清除单值，集合清掉不在新值里的键。
 /// Image 由 DKBackupStore 两段式提交，这里不处理。
 - (void)writeValue:(id)value toStore:(id<DKSettingsStore>)store;
 

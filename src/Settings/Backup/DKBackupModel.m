@@ -14,6 +14,24 @@ static NSString *DKDefaultText(DKSettingsValue *value, id normalized, BOOL brief
             return [normalized isKindOfClass:NSNumber.class] && [normalized boolValue] ? @"开" : @"关";
         case DKSettingsValueKindInteger:
             return [normalized isKindOfClass:NSNumber.class] ? [normalized stringValue] : @"未设置";
+        case DKSettingsValueKindIntegerMap: {
+            NSDictionary *map = [normalized isKindOfClass:NSDictionary.class] ? normalized : @{};
+            if (brief) return [NSString stringWithFormat:@"已配置 %lu 项", (unsigned long)map.count];
+            NSMutableArray *parts = [NSMutableArray array];
+            for (NSString *identifier in [map.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+                [parts addObject:[NSString stringWithFormat:@"%@=%@", identifier, map[identifier]]];
+            }
+            return parts.count ? [parts componentsJoinedByString:@"、"] : @"未配置";
+        }
+        case DKSettingsValueKindStringMap: {
+            NSDictionary *map = [normalized isKindOfClass:NSDictionary.class] ? normalized : @{};
+            if (brief) return [NSString stringWithFormat:@"已命名 %lu 项", (unsigned long)map.count];
+            NSMutableArray *parts = [NSMutableArray array];
+            for (NSString *identifier in [map.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+                [parts addObject:[NSString stringWithFormat:@"%@=%@", identifier, map[identifier]]];
+            }
+            return parts.count ? [parts componentsJoinedByString:@"、"] : @"未命名";
+        }
         case DKSettingsValueKindIDSet: {
             NSArray *ids = [normalized isKindOfClass:NSArray.class] ? normalized : @[];
             if (ids.count == 0) return @"未选择";
@@ -147,6 +165,8 @@ static BOOL DKDocumentRawValue(DKBackupDocument *document, DKSettingsValue *valu
     switch (value.kind) {
         case DKSettingsValueKindBool:
         case DKSettingsValueKindInteger:
+        case DKSettingsValueKindIntegerMap:
+        case DKSettingsValueKindStringMap:
         case DKSettingsValueKindColor:
         case DKSettingsValueKindString: section = document.settings; break;
         case DKSettingsValueKindIDSet: section = document.sets; break;
@@ -191,6 +211,8 @@ DKBackupPlan *DKBackupMakePlan(DKBackupDocument *document, NSArray<DKBackupEntry
             switch (value.kind) {
                 case DKSettingsValueKindBool:
                 case DKSettingsValueKindInteger:
+                case DKSettingsValueKindIntegerMap:
+                case DKSettingsValueKindStringMap:
                 case DKSettingsValueKindColor:
                 case DKSettingsValueKindString: [claimedSettings addObject:value.key]; break;
                 case DKSettingsValueKindIDSet: [claimedSets addObject:value.key]; break;

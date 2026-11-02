@@ -6,6 +6,7 @@
 #import <CommonCrypto/CommonDigest.h>
 #import <ImageIO/ImageIO.h>
 #import "DKSVGImage.h"
+#import "DKKeys.h"
 
 NSString *const DKBackupErrorDomain = @"DYKiller.Backup";
 const unsigned long long DKBackupMaxFileBytes = 16ULL * 1024 * 1024;
@@ -112,6 +113,8 @@ NSData *DKBackupEncode(NSArray<DKBackupEntry *> *entries, id<DKSettingsStore> st
             switch (value.kind) {
                 case DKSettingsValueKindBool:
                 case DKSettingsValueKindInteger:
+                case DKSettingsValueKindIntegerMap:
+                case DKSettingsValueKindStringMap:
                 case DKSettingsValueKindColor:
                 case DKSettingsValueKindString: settings[value.key] = current; break;
                 case DKSettingsValueKindIDSet: sets[value.key] = current; break;
@@ -242,7 +245,17 @@ DKBackupDocument *DKBackupDecode(NSData *data, NSError **error) {
     document.source = source;
     id createdAt = root[@"createdAt"];
     if ([createdAt isKindOfClass:NSString.class]) document.createdAt = [DKDateFormatter() dateFromString:createdAt];
-    document.settings = settings;
+    NSMutableDictionary *migrated = [settings mutableCopy];
+    NSDictionary *masterModes = @{ DKKeyPlaybackRemoveAllAnchors: DKKeyPlaybackAllAnchorsMode,
+                                  DKKeyPlaybackRemoveAllBottomBars: DKKeyPlaybackAllBottomBarsMode };
+    for (NSString *oldKey in masterModes) {
+        id old = settings[oldKey];
+        if (![old isKindOfClass:NSNumber.class] || ([old integerValue] != 0 && [old integerValue] != 1)) continue;
+        NSString *newKey = masterModes[oldKey];
+        if (!migrated[newKey]) migrated[newKey] = [old boolValue] ? @2 : @0;
+        [migrated removeObjectForKey:oldKey];
+    }
+    document.settings = migrated;
     document.sets = sets;
 
     NSMutableDictionary *files = [NSMutableDictionary dictionary];
@@ -289,6 +302,8 @@ DKBackupDocument *DKBackupDefaultsDocument(NSArray<DKBackupEntry *> *entries) {
                 case DKSettingsValueKindInteger:
                 case DKSettingsValueKindColor:
                 case DKSettingsValueKindString: settings[value.key] = NSNull.null; break;
+                case DKSettingsValueKindIntegerMap: settings[value.key] = @{}; break;
+                case DKSettingsValueKindStringMap: settings[value.key] = @{}; break;
                 case DKSettingsValueKindIDSet: sets[value.key] = @[]; break;
                 case DKSettingsValueKindImage: files[value.key] = NSNull.null; break;
             }

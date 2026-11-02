@@ -1,5 +1,6 @@
 #import "DKDanmakuColor.h"
 #import "DKColorScheme.h"
+#import "DKColorHex.h"
 #import "DKKeys.h"
 #import "DKUtils.h"
 #import <objc/runtime.h>
@@ -188,8 +189,14 @@ static void DKApplyHeart(UIImageView *heart, NSArray<UIColor *> *palette, NSStri
     heart.image = state.appliedImage;
 }
 
-static NSString *DKFixedColor(void) { return DKColorSchemeStoredColor(DKKeyDanmakuFixedColor, NO); }
-static NSString *DKGradientColors(void) { return DKColorSchemeStoredColor(DKKeyDanmakuGradientColors, YES); }
+static NSString *DKFixedColor(void) {
+    return DKColorHexNormalize(DKColorSchemeStoredColor(DKKeyDanmakuFixedColor, NO)) ?: DKColorSchemeDefaultColor;
+}
+
+static NSString *DKGradientColors(void) {
+    return DKColorHexNormalizeScheme(DKColorSchemeStoredColor(DKKeyDanmakuGradientColors, YES), YES, NULL)
+        ?: DKColorSchemeDefaultGradient;
+}
 
 static NSString *DKConfiguration(DKColorSchemeMode mode) {
     return DKColorSchemeSignature(mode, DKFixedColor(), DKGradientColors());

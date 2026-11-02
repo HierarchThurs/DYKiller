@@ -123,8 +123,21 @@ NSUInteger DKSettingsTextWidth(NSString *text) {
     return [[self alloc] initWithKind:DKSettingsValueKindIDSet key:prefix];
 }
 
++ (instancetype)integerMapWithPrefix:(NSString *)prefix minimum:(long long)minimum maximum:(long long)maximum {
+    DKSettingsValue *value = [[self alloc] initWithKind:DKSettingsValueKindIntegerMap key:prefix];
+    value->_minimum = minimum;
+    value->_maximum = maximum;
+    return value;
+}
+
 + (instancetype)stringWithKey:(NSString *)key maxWidth:(NSUInteger)maxWidth {
     DKSettingsValue *value = [[self alloc] initWithKind:DKSettingsValueKindString key:key];
+    value->_maxWidth = maxWidth;
+    return value;
+}
+
++ (instancetype)stringMapWithPrefix:(NSString *)prefix maxWidth:(NSUInteger)maxWidth {
+    DKSettingsValue *value = [[self alloc] initWithKind:DKSettingsValueKindStringMap key:prefix];
     value->_maxWidth = maxWidth;
     return value;
 }
@@ -151,14 +164,17 @@ NSUInteger DKSettingsTextWidth(NSString *text) {
 #pragma mark - 规范化
 
 - (id)normalize:(id)raw reason:(NSString **)reason {
-    if (self.kind != DKSettingsValueKindIDSet && (!raw || raw == NSNull.null)) return NSNull.null;
+    if (self.kind != DKSettingsValueKindIDSet && self.kind != DKSettingsValueKindIntegerMap
+        && self.kind != DKSettingsValueKindStringMap && (!raw || raw == NSNull.null)) return NSNull.null;
     switch (self.kind) {
         case DKSettingsValueKindBool: return [self normalizeBool:raw reason:reason];
         case DKSettingsValueKindInteger: return [self normalizeInteger:raw reason:reason];
         case DKSettingsValueKindIDSet: return [self normalizeIDSet:raw reason:reason];
+        case DKSettingsValueKindIntegerMap: return [self normalizeIntegerMap:raw reason:reason];
+        case DKSettingsValueKindStringMap: return [self normalizeStringMap:raw reason:reason];
         case DKSettingsValueKindImage: return [self normalizeImage:raw reason:reason];
         case DKSettingsValueKindString: return [self normalizeString:raw reason:reason];
-        case DKSettingsValueKindColor: return DKColorHexNormalizeScheme(raw, self.minimumColorCount == 2, reason);
+        case DKSettingsValueKindColor: return DKColorHexNormalizeSchemeAlpha(raw, self.minimumColorCount == 2, reason);
     }
     return nil;
 }
@@ -223,6 +239,52 @@ NSUInteger DKSettingsTextWidth(NSString *text) {
         [ids addObject:item];
     }
     return [ids.allObjects sortedArrayUsingSelector:@selector(compare:)];
+}
+
+- (NSDictionary<NSString *, NSNumber *> *)normalizeIntegerMap:(id)raw reason:(NSString **)reason {
+    if (!raw || raw == NSNull.null) return @{};
+    if (![raw isKindOfClass:NSDictionary.class]) {
+        DKSetReason(reason, @"类型不符");
+        return nil;
+    }
+    if ([raw count] > kDKMaxSetCount) {
+        DKSetReason(reason, @"条目过多");
+        return nil;
+    }
+    NSMutableDictionary *values = [NSMutableDictionary dictionary];
+    for (id identifier in raw) {
+        if (!DKValidID(identifier)) {
+            DKSetReason(reason, @"包含无效的条目");
+            return nil;
+        }
+        NSNumber *number = [self normalizeInteger:raw[identifier] reason:reason];
+        if (!number) return nil;
+        values[identifier] = number;
+    }
+    return values;
+}
+
+- (NSDictionary<NSString *, NSString *> *)normalizeStringMap:(id)raw reason:(NSString **)reason {
+    if (!raw || raw == NSNull.null) return @{};
+    if (![raw isKindOfClass:NSDictionary.class]) {
+        DKSetReason(reason, @"类型不符");
+        return nil;
+    }
+    if ([raw count] > kDKMaxSetCount) {
+        DKSetReason(reason, @"条目过多");
+        return nil;
+    }
+    NSMutableDictionary *values = [NSMutableDictionary dictionary];
+    for (id identifier in raw) {
+        if (!DKValidID(identifier)) {
+            DKSetReason(reason, @"包含无效的条目");
+            return nil;
+        }
+        id text = [self normalizeString:raw[identifier] reason:reason];
+        if (!text) return nil;
+        if (text != NSNull.null) values[identifier] = text;
+    }
+    return values;
 }
 
 - (NSData *)normalizeImage:(id)raw reason:(NSString **)reason {
@@ -304,6 +366,24 @@ NSUInteger DKSettingsTextWidth(NSString *text) {
             }
             return [ids sortedArrayUsingSelector:@selector(compare:)];
         }
+        case DKSettingsValueKindIntegerMap: {
+            NSMutableDictionary *values = [NSMutableDictionary dictionary];
+            for (NSString *key in [store dk_keysWithPrefix:self.key]) {
+                NSString *identifier = [key substringFromIndex:self.key.length];
+                NSNumber *number = [self normalizeInteger:[store objectForKey:key] reason:NULL];
+                if (DKValidID(identifier) && number) values[identifier] = number;
+            }
+            return values;
+        }
+        case DKSettingsValueKindStringMap: {
+            NSMutableDictionary *values = [NSMutableDictionary dictionary];
+            for (NSString *key in [store dk_keysWithPrefix:self.key]) {
+                NSString *identifier = [key substringFromIndex:self.key.length];
+                id text = [self normalizeString:[store objectForKey:key] reason:NULL];
+                if (DKValidID(identifier) && [text isKindOfClass:NSString.class]) values[identifier] = text;
+            }
+            return values;
+        }
         case DKSettingsValueKindImage: {
             NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:self.path error:NULL];
             if (!attributes || attributes.fileSize == 0 || attributes.fileSize > self.maxBytes) return NSNull.null;
@@ -330,6 +410,28 @@ NSUInteger DKSettingsTextWidth(NSString *text) {
             for (NSString *identifier in selected) {
                 NSString *key = [self.key stringByAppendingString:identifier];
                 if (![[self normalizeBool:[store objectForKey:key] reason:NULL] boolValue]) [store setObject:@YES forKey:key];
+            }
+            break;
+        }
+        case DKSettingsValueKindIntegerMap: {
+            NSDictionary *values = value;
+            for (NSString *key in [store dk_keysWithPrefix:self.key]) {
+                if (!values[[key substringFromIndex:self.key.length]]) [store removeObjectForKey:key];
+            }
+            for (NSString *identifier in values) {
+                NSString *key = [self.key stringByAppendingString:identifier];
+                if (![[store objectForKey:key] isEqual:values[identifier]]) [store setObject:values[identifier] forKey:key];
+            }
+            break;
+        }
+        case DKSettingsValueKindStringMap: {
+            NSDictionary *values = value;
+            for (NSString *key in [store dk_keysWithPrefix:self.key]) {
+                if (!values[[key substringFromIndex:self.key.length]]) [store removeObjectForKey:key];
+            }
+            for (NSString *identifier in values) {
+                NSString *key = [self.key stringByAppendingString:identifier];
+                if (![[store objectForKey:key] isEqual:values[identifier]]) [store setObject:values[identifier] forKey:key];
             }
             break;
         }

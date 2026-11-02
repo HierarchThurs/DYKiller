@@ -7,23 +7,35 @@
 #import "DKSettingsInternal.h"
 #import "DKSettingsColorEditors.h"
 #import "DKColorScheme.h"
+#import "DKColorHex.h"
 #import <objc/runtime.h>
 
-static char kDKColorKeyKey;   // 行读写的颜色存值键
+static char kDKColorKeyKey;       // 行读写的颜色存值键
+static char kDKColorAlphaKey;      // 行是否允许颜色自身 alpha
 
 @implementation DKColorSample
 @end
 
+static NSString *DKColorDisplayValue(NSString *colorKey, BOOL gradient, BOOL allowsAlpha) {
+    NSString *value = DKColorSchemeStoredColor(colorKey, gradient);
+    if (allowsAlpha) return value;
+    return DKColorHexNormalizeScheme(value, gradient, NULL)
+        ?: (gradient ? DKColorSchemeDefaultGradient : DKColorSchemeDefaultColor);
+}
+
 static void DKColorRefreshDetails(NSString *colorKey, BOOL gradient) {
-    NSString *detail = DKColorSchemeStoredColor(colorKey, gradient);
     DKSettingsEnumerateItems(DKSettingsCurrentPage(), ^(AWESettingItemModel *item) {
-        if ([objc_getAssociatedObject(item, &kDKColorKeyKey) isEqual:colorKey]) item.detail = detail;
+        if (![objc_getAssociatedObject(item, &kDKColorKeyKey) isEqual:colorKey]) return;
+        BOOL allowsAlpha = [objc_getAssociatedObject(item, &kDKColorAlphaKey) boolValue];
+        item.detail = DKColorDisplayValue(colorKey, gradient, allowsAlpha);
     });
 }
 
-static void DKColorCommit(NSString *colorKey, BOOL gradient, NSString *value, dispatch_block_t onChange) {
+static void DKColorCommit(NSString *colorKey, BOOL gradient, BOOL allowsAlpha, NSString *value, dispatch_block_t onChange) {
     DKSettingsValue *declaration = [DKSettingsValue colorWithKey:colorKey gradient:gradient];
-    id canonical = [declaration normalize:value reason:NULL];
+    NSString *normalized = allowsAlpha ? DKColorHexNormalizeSchemeAlpha(value, gradient, NULL)
+                                        : DKColorHexNormalizeScheme(value, gradient, NULL);
+    id canonical = [declaration normalize:normalized reason:NULL];
     if (![canonical isKindOfClass:NSString.class]) return;
     [declaration writeValue:canonical toStore:NSUserDefaults.standardUserDefaults];
     DKColorRefreshDetails(colorKey, gradient);
@@ -37,19 +49,27 @@ static void DKColorPresent(UIViewController *presenter, UIViewController *editor
     [presenter presentViewController:navigation animated:YES completion:nil];
 }
 
-typedef UIViewController *(^DKColorEditorBuilder)(NSString *current, void (^commit)(NSString *value));
+static void DKPushGradient(UIViewController *presenter, DKGradientColorController *editor) {
+    UINavigationController *navigation = presenter.navigationController;
+    if (navigation && editor) [navigation pushViewController:editor animated:YES];
+}
+
+typedef void (^DKColorEditor)(UIViewController *presenter, NSString *current, void (^commit)(NSString *value));
+
 
 static AWESettingItemModel *DKColorItem(NSString *identifier, NSString *colorKey, NSString *title, BOOL gradient,
-                                        DKColorEditorBuilder builder) {
-    AWESettingItemModel *item = DKMakeAction(identifier, title, DKColorSchemeStoredColor(colorKey, gradient),
+                                        DKColorSample *sample, DKColorEditor editor) {
+    BOOL allowsAlpha = sample.alphaEditable;
+    AWESettingItemModel *item = DKMakeAction(identifier, title, DKColorDisplayValue(colorKey, gradient, allowsAlpha),
         ^(AWESettingItemModel *sender, UIViewController *presenter) {
             dispatch_block_t onChange = DKSettingsItemOnChange(sender);
-            NSString *current = DKColorSchemeStoredColor(colorKey, gradient);
-            DKColorPresent(presenter, builder(current, ^(NSString *value) {
-                DKColorCommit(colorKey, gradient, value, onChange);
-            }));
+            NSString *current = DKColorDisplayValue(colorKey, gradient, allowsAlpha);
+            editor(presenter, current, ^(NSString *value) {
+                DKColorCommit(colorKey, gradient, allowsAlpha, value, onChange);
+            });
         });
     objc_setAssociatedObject(item, &kDKColorKeyKey, colorKey, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    objc_setAssociatedObject(item, &kDKColorAlphaKey, @(allowsAlpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return item;
 }
 
@@ -62,22 +82,27 @@ static AWESettingItemModel *DKColorDeclared(AWESettingItemModel *item, NSString 
 }
 
 AWESettingItemModel *DKMakeColorPicker(NSString *key, NSString *title, DKColorSample *sample) {
-    AWESettingItemModel *item = DKColorItem(key, key, title, NO, ^UIViewController *(NSString *current, void (^commit)(NSString *)) {
-        return [[DKColorPickerController alloc] initWithTitle:title color:current sample:sample completion:commit];
+    AWESettingItemModel *item = DKColorItem(key, key, title, NO, sample, ^(UIViewController *presenter, NSString *current,
+                                                                   void (^commit)(NSString *)) {
+        DKSettingsPresentSystemColorPicker(presenter, title, current, sample.alphaEditable, commit);
     });
     return DKColorDeclared(item, key, NO);
 }
 
 AWESettingItemModel *DKMakeColorHexInput(NSString *identifier, NSString *colorKey, NSString *title, DKColorSample *sample) {
-    AWESettingItemModel *item = DKColorItem(identifier, colorKey, title, NO, ^UIViewController *(NSString *current, void (^commit)(NSString *)) {
-        return [[DKColorTextController alloc] initWithTitle:title value:current gradient:NO sample:sample completion:commit];
+    AWESettingItemModel *item = DKColorItem(identifier, colorKey, title, NO, sample, ^(UIViewController *presenter, NSString *current,
+                                                                             void (^commit)(NSString *)) {
+        DKColorPresent(presenter, [[DKColorTextController alloc] initWithTitle:title value:current sample:sample
+                                                                    completion:commit]);
     });
     return DKSettingsWithoutBackup(item);
 }
 
 AWESettingItemModel *DKMakeColorGradientInput(NSString *key, NSString *title, DKColorSample *sample) {
-    AWESettingItemModel *item = DKColorItem(key, key, title, YES, ^UIViewController *(NSString *current, void (^commit)(NSString *)) {
-        return [[DKColorTextController alloc] initWithTitle:title value:current gradient:YES sample:sample completion:commit];
+    AWESettingItemModel *item = DKColorItem(key, key, title, YES, sample, ^(UIViewController *presenter, NSString *current,
+                                                                   void (^commit)(NSString *)) {
+        DKPushGradient(presenter, [[DKGradientColorController alloc] initWithTitle:title value:current sample:sample
+                                                                        completion:commit]);
     });
     return DKColorDeclared(item, key, YES);
 }

@@ -78,6 +78,8 @@ static NSString *const DKKeyGlassTabBar      = @"DYKillerGlassTabBar";
 static NSString *const DKKeyGlassTabBarClear = @"DYKillerGlassTabBarClear";
 // iPad 玻璃底栏位置（单选）：0 默认居中 / 1 左端 / 2 右端；仅 iPad 生效（见 DKGlassPadElements.xm）。
 static NSString *const DKKeyGlassTabBarPadPosition = @"DYKillerGlassTabBarPadPosition";
+// 底栏动态收缩（单选）：0 关闭 / 1 左侧 / 2 右侧；仅 iPhone 生效（见 DKTabBarCollapse.xm）
+static NSString *const DKKeyGlassTabBarCollapse = @"DYKillerGlassTabBarCollapse";
 // 悬浮玻璃底栏尺寸（百分比，100 为抖音默认效果）：胶囊等比缩放、胶囊长度、拍摄圆键直径，三者都以底边为锚。
 // 常规范围见 DKAdjustRange.m，开启「扩展所有缩放与位移」后放宽。
 static NSString *const DKKeyGlassTabBarCapsuleHeight = @"DYKillerGlassTabBarCapsuleHeight";
@@ -153,6 +155,7 @@ static NSString *const DKKeyInfoOffset       = @"DYKillerInfoOffset";
 // 视频进度条上移、图文图片指示器上移：常规 0–100 pt，默认 0。范围登记在 DKAdjustRange.m。
 static NSString *const DKKeyProgressOffset       = @"DYKillerProgressOffset";
 static NSString *const DKKeyStoryIndicatorOffset = @"DYKillerStoryIndicatorOffset";
+static NSString *const DKKeyRelatedBarOffset = @"DYKillerRelatedBarOffset";
 // 本机实测缓存（不进备份）：进度条底边、图片指示器底边到交互层底边的原生距离（pt，不含本插件的上移），
 // 供「位置同图片指示器」提示使用。
 static NSString *const DKKeyProgressBaseBottom       = @"DYKillerProgressBaseBottom";
@@ -224,8 +227,15 @@ static NSString *const DKKeyProgressTimeStyle = @"DYKillerProgressTimeStyle";
 static NSString *const DKKeyPlaybackFullscreenMode         = @"DYKillerPlaybackFullscreenMode";
 static NSString *const DKKeyPlaybackDanmakuMode            = @"DYKillerPlaybackDanmakuMode";
 // 锚点标签：同一种锚点元素，按锚点业务号区分。
-// 总开关为 BOOL：开启后所有锚点行（含未登记的业务号）按「移除」处理，各锚点项锁定显示为「移除」，存值不动。
+// 旧 BOOL 键迁移为统一三档；目录只记录实际遇到的类型，独立档位沿用既有键或动态前缀。
 static NSString *const DKKeyPlaybackRemoveAllAnchors       = @"DYKillerPlaybackRemoveAllAnchors";
+static NSString *const DKKeyPlaybackAllAnchorsMode         = @"DYKillerPlaybackAllAnchorsMode";
+static NSString *const DKKeyPlaybackAnchorsPage            = @"DYKillerPlaybackAnchorsPage";
+static NSString *const DKKeyPlaybackAnchorCatalog          = @"DYKillerPlaybackAnchorCatalog";
+static NSString *const DKKeyPlaybackAnchorModePrefix       = @"DYKillerPlaybackAnchorMode.";
+// 自定义名称：前缀 + 编码后的身份 → 单行文字；进备份，目录本身不进。
+static NSString *const DKKeyPlaybackAnchorNamePrefix       = @"DYKillerPlaybackAnchorName.";
+static NSString *const DKKeyPlaybackAnchorRenamePage       = @"DYKillerPlaybackAnchorRenamePage";
 static NSString *const DKKeyPlaybackGameTagMode            = @"DYKillerPlaybackGameTagMode";
 static NSString *const DKKeyPlaybackMusicAnchorMode        = @"DYKillerPlaybackMusicAnchorMode";
 static NSString *const DKKeyPlaybackPropEffectMode         = @"DYKillerPlaybackPropEffectMode";
@@ -247,8 +257,16 @@ static NSString *const DKKeyPlaybackArticleTagMode         = @"DYKillerPlaybackA
 static NSString *const DKKeyPlaybackRiskNoticeMode         = @"DYKillerPlaybackRiskNoticeMode";
 static NSString *const DKKeyPlaybackMusicInfoMode          = @"DYKillerPlaybackMusicInfoMode";
 static NSString *const DKKeyPlaybackQuickReplyMode         = @"DYKillerPlaybackQuickReplyMode";
-// 底部栏目：总开关覆盖原生底部容器中的全部业务行，单项存值保持不变。
+// 底部栏目：统一三档覆盖原生底部容器中的全部业务行，独立档位保持不变。
 static NSString *const DKKeyPlaybackRemoveAllBottomBars    = @"DYKillerPlaybackRemoveAllBottomBars";
+static NSString *const DKKeyPlaybackAllBottomBarsMode      = @"DYKillerPlaybackAllBottomBarsMode";
+static NSString *const DKKeyPlaybackBottomBarsPage         = @"DYKillerPlaybackBottomBarsPage";
+static NSString *const DKKeyPlaybackBottomBarCatalog       = @"DYKillerPlaybackBottomBarCatalog";
+static NSString *const DKKeyPlaybackBottomBarModePrefix    = @"DYKillerPlaybackBottomBarMode.";
+static NSString *const DKKeyPlaybackBottomBarNamePrefix    = @"DYKillerPlaybackBottomBarName.";
+// 底部栏目背景透明：覆盖原生底部容器中的全部业务行。
+static NSString *const DKKeyPlaybackBottomBarTransparent   = @"DYKillerPlaybackBottomBarTransparent";
+static NSString *const DKKeyPlaybackBottomBarRenamePage    = @"DYKillerPlaybackBottomBarRenamePage";
 static NSString *const DKKeyPlaybackRelatedSearchMode      = @"DYKillerPlaybackRelatedSearchMode";
 static NSString *const DKKeyPlaybackRelatedVideoMode       = @"DYKillerPlaybackRelatedVideoMode";
 static NSString *const DKKeyPlaybackVideoCollectionMode    = @"DYKillerPlaybackVideoCollectionMode";
@@ -293,6 +311,12 @@ static NSString *const DKKeyTopBarSearchMode  = @"DYKillerTopBarSearchMode";
 static NSString *const DKKeyBlockSideBarSwipe = @"DYKillerBlockSideBarSwipe";
 // 顶栏透明度：0–100，默认 100；作用于左侧栏入口、全部频道与搜索图标。
 static NSString *const DKKeyTopBarAlpha       = @"DYKillerTopBarAlpha";
+// 顶栏液态玻璃的材质单选（DKMakeGlassChoice）：总开关 + 清透档两个 BOOL，清透档关即系统 Regular。
+static NSString *const DKKeyTopBarGlass        = @"DYKillerTopBarGlass";
+static NSString *const DKKeyTopBarGlassClear   = @"DYKillerTopBarGlassClear";
+// 顶栏液态玻璃尺寸：圆钮与胶囊的统一高度（百分比）、胶囊长度（百分比）。
+static NSString *const DKKeyTopBarGlassHeight  = @"DYKillerTopBarGlassHeight";
+static NSString *const DKKeyTopBarGlassLength  = @"DYKillerTopBarGlassLength";
 
 #pragma mark - 功能组：未读红点
 
