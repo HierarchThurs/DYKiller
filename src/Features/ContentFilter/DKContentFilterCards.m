@@ -12,7 +12,7 @@ static NSArray<NSDictionary *> *DKCardDefinitions(void) {
             @{ @"name": @"创作引导", @"key": DKKeyFilterRecommendedCreation, @"title": @"推荐过滤创作引导",
                @"info": @"过滤作品里程碑、发布周年、往日回忆、主题日常、拍同款、道具与配乐推荐、挑战与话题等发布引导卡片。", @"families": @[@"creation"], @"exact": @[] },
             @{ @"name": @"电商", @"key": DKKeyFilterRecommendedEcommerce, @"title": @"推荐过滤电商卡片",
-               @"info": @"过滤店铺动态、商品搜索等购物卡片；普通带货视频保留。", @"families": @[], @"exact": @[@"shop_moment", @"video_query"] },
+               @"info": @"过滤店铺动态、商品搜索、POI 动态卡片（团购/门店卡）等购物卡片；普通带货视频保留。", @"families": @[], @"exact": @[@"shop_moment", @"video_query"] },
             @{ @"name": @"游戏", @"key": DKKeyFilterRecommendedGame, @"title": @"推荐过滤游戏卡片",
                @"info": @"过滤小游戏与云游戏卡片（含即点即玩）；普通游戏视频保留。", @"families": @[@"minigame", @"cloud_game"], @"exact": @[] },
             @{ @"name": @"社交推荐", @"key": DKKeyFilterRecommendedSocial, @"title": @"推荐过滤社交推荐",

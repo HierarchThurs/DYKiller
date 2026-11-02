@@ -46,9 +46,16 @@ BOOL DKFilterSpecialCard(id model, DKFilterCardKind *kind) {
     if (!DKFilterIsClass(model, @"AWEAwemeModel")) return NO;
     // 原生与 Lynx 特殊卡共用该卡模型，过滤按业务号分类。
     id card = DKFilterObject(model, @selector(hotSpotLynxCardModel));
-    if (!card) return NO;
-    if (kind) *kind = DKFilterCardKindForBusiness(DKFilterObject(card, @selector(businessID)));
-    return YES;
+    if (card) {
+        if (kind) *kind = DKFilterCardKindForBusiness(DKFilterObject(card, @selector(businessID)));
+        return YES;
+    }
+    // POI 动态卡片（团购/门店卡）没有 hotSpotLynxCardModel，按 dCardModel 归电商。
+    if (DKFilterObject(model, @selector(dCardModel))) {
+        if (kind) *kind = DKFilterCardEcommerce;
+        return YES;
+    }
+    return NO;
 }
 
 BOOL DKFilterIsArticle(id model) {
