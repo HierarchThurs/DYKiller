@@ -13,6 +13,8 @@
 #import "DKInteractionAppearance.h"
 #import "DKPlaybackClean.h"
 #import "DKPublishInfo.h"
+#import "DKRelatedBarBackground.h"
+#import "DKRelatedBarOffset.h"
 
 %hook AWEElementStackView
 
@@ -24,6 +26,8 @@
     DKInfoAppearanceApplyStack(self);
     DKInfoLongPressCopyApplyStack(self);
     DKPublishInfoApplyStack(self);
+    DKRelatedBarOffsetApplyStack(self);
+    DKRelatedBarBackgroundApplyStack(self);
 }
 
 %end

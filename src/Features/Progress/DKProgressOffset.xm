@@ -27,6 +27,7 @@
 #import "DKSettings.h"
 #import "DKUtils.h"
 #import "DKViewAdjust.h"
+#import "DKRelatedBarOffset.h"
 
 static const long long DKProgressStateStable = 1;  // 状态机常态
 static const long long DKProgressStateWakeup = 2;  // 状态机唤醒态（暂停、拖动）
@@ -155,7 +156,7 @@ static void DKStoryIndicatorRefresh(void) {
 #pragma mark - 位置同图片指示器
 
 // 按已见视图补测一次，再比较两者的最终底边：进度条上移取整后等于「指示器原生底边 + 指示器上移 − 进度条原生底边」即重合。
-static NSString *DKProgressOffsetNote(NSInteger value) {
+static void DKProgressOffsetRefreshBases(void) {
     CGFloat base = 0;
     for (UIView *container in gDKProgressOffsetContainers.allObjects) {
         if (DKProgressOffsetMeasureBar(container, &base)) DKProgressOffsetStoreBase(DKKeyProgressBaseBottom, base);
@@ -165,6 +166,20 @@ static NSString *DKProgressOffsetNote(NSInteger value) {
             DKProgressOffsetStoreBase(DKKeyStoryIndicatorBaseBottom, base);
         }
     }
+}
+
+static NSString *DKProgressOffsetNote(NSInteger value) {
+    DKProgressOffsetRefreshBases();
+    CGFloat bar = 0, indicator = 0;
+    if (!DKProgressOffsetStoredBase(DKKeyProgressBaseBottom, &bar)
+        || !DKProgressOffsetStoredBase(DKKeyStoryIndicatorBaseBottom, &indicator)) return nil;
+    NSInteger aligned = lround(indicator + DKAdjustValue(DKKeyStoryIndicatorOffset) - bar);
+    return value == aligned ? @"位置同图片指示器" : nil;
+}
+
+NSString *DKRelatedBarOffsetNote(NSInteger value) {
+    if (value == (NSInteger)DKAdjustValue(DKKeyProgressOffset)) return @"位置同进度条";
+    DKProgressOffsetRefreshBases();
     CGFloat bar = 0, indicator = 0;
     if (!DKProgressOffsetStoredBase(DKKeyProgressBaseBottom, &bar)
         || !DKProgressOffsetStoredBase(DKKeyStoryIndicatorBaseBottom, &indicator)) return nil;
@@ -183,6 +198,7 @@ NSString *DKProgressOffsetStatus(void) {
     NSMutableString *out = [NSMutableString string];
     NSInteger barOffset = DKAdjustValue(DKKeyProgressOffset), indicatorOffset = DKAdjustValue(DKKeyStoryIndicatorOffset);
     [out appendFormat:@"进度条上移=%ldpt 图片指示器上移=%ldpt\n", (long)barOffset, (long)indicatorOffset];
+    [out appendString:DKRelatedBarOffsetStatus()];
     CGFloat bar = 0, indicator = 0;
     BOOL measured = DKProgressOffsetStoredBase(DKKeyProgressBaseBottom, &bar)
         && DKProgressOffsetStoredBase(DKKeyStoryIndicatorBaseBottom, &indicator);

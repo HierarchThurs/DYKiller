@@ -21,6 +21,9 @@ void DKProgressOffsetLayoutContainer(UIView *container);
 /// 由图片指示器的统一布局入口调用。
 void DKStoryIndicatorLayout(UIView *view);
 
+/// 底部栏目以进度条原位为对齐零点；两条参考线重合时优先提示进度条。
+NSString *DKRelatedBarOffsetNote(NSInteger value);
+
 /// 设置、本机实测位置与各进度条 / 图片指示器的当前状态，一段多行文字，供探针输出。
 NSString *DKProgressOffsetStatus(void);
 
