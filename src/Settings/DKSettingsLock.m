@@ -4,7 +4,7 @@
 //  - 玻璃锁：低于 iOS 26 时守卫表里的项灰显、加「 (iOS26+)」、按关显示（偏好已被守卫清掉），运行期不会解除。
 //  - 联动锁：前置项未生效（「任一」前置项全部未生效）、或阻断条件成立时灰显，只改 isEnable、不动存值，条件解除后照原值显示。
 //    带显示值的阻断项（总开关）成立时，子项另按该值显示。
-//  - 设备锁：仅 iPad 生效的项在其他设备上灰显、加「 (iPad)」，只改 isEnable、不动存值。
+//  - 设备锁：仅 iPad 或仅 iPhone 生效的项在其他设备上灰显、加对应后缀，只改 isEnable、不动存值。
 //  灰显由抖音 cell 按 isEnable 完成（关开关交互、调暗 realContentView）；点击由页面 hook 拦截。
 //
 
@@ -23,6 +23,7 @@ static NSString *const kDKGlassTitleSuffix = @" (iOS26+)";
 static const NSUInteger kDKMaxRequireDepth = 8;
 
 static NSString *const kDKPadTitleSuffix = @" (iPad)";
+static NSString *const kDKPhoneTitleSuffix = @" (iPhone)";
 
 static BOOL DKKeyGlassLocked(NSString *key) {
     return !DKGlassOSAvailable() && DKGlassIsGatedKey(key);
@@ -31,6 +32,11 @@ static BOOL DKKeyGlassLocked(NSString *key) {
 static BOOL DKKeyPadLocked(NSString *key) {
     return UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad
         && [key isEqualToString:DKKeyGlassTabBarPadPosition];
+}
+
+static BOOL DKKeyPhoneLocked(NSString *key) {
+    return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad
+        && [key isEqualToString:DKKeyGlassTabBarCollapse];
 }
 
 static BOOL DKKeyLocked(NSString *key, NSUInteger depth);
@@ -46,7 +52,7 @@ static BOOL DKBlockerHolds(DKSettingsBlocker *blocker) {
 
 // 联动的有效值与总开关显示值一致；玻璃守卫优先于总开关。
 static BOOL DKKeyActive(NSString *key, NSUInteger depth) {
-    if (DKKeyGlassLocked(key) || DKKeyPadLocked(key)) return NO;
+    if (DKKeyGlassLocked(key) || DKKeyPadLocked(key) || DKKeyPhoneLocked(key)) return NO;
     for (DKSettingsBlocker *blocker in DKSettingsLayoutBlockers(key)) {
         if (blocker.shownValue && DKBlockerHolds(blocker)) return blocker.shownValue.integerValue != 0;
     }
@@ -74,7 +80,7 @@ static BOOL DKSyncShownValue(AWESettingItemModel *item) {
 }
 
 static BOOL DKKeyLocked(NSString *key, NSUInteger depth) {
-    if (DKKeyGlassLocked(key) || DKKeyPadLocked(key)) return YES;
+    if (DKKeyGlassLocked(key) || DKKeyPadLocked(key) || DKKeyPhoneLocked(key)) return YES;
     if (DKKeyBlocked(key)) return YES;
     if (depth >= kDKMaxRequireDepth) return NO;
     for (NSString *parent in DKSettingsLayoutRequires(key)) {
@@ -114,6 +120,10 @@ void DKSettingsPrepareItem(AWESettingItemModel *item, NSString *icon) {
         && item.title.length && ![item.title hasSuffix:kDKPadTitleSuffix]) {
         item.title = [item.title stringByAppendingString:kDKPadTitleSuffix];
     }
+    if (DKKeyPhoneLocked(item.identifier) && !DKKeyGlassLocked(item.identifier)
+        && item.title.length && ![item.title hasSuffix:kDKPhoneTitleSuffix]) {
+        item.title = [item.title stringByAppendingString:kDKPhoneTitleSuffix];
+    }
 }
 
 void DKSettingsSetItemEnabled(AWESettingItemModel *item, BOOL enabled) {
@@ -151,6 +161,7 @@ BOOL DKSettingsKeyIsLocked(NSString *key) { return DKKeyLocked(key, 0); }
 NSString *DKSettingsKeyLockReason(NSString *key) {
     if (DKKeyGlassLocked(key)) return @"需要 iOS 26 或更高版本";
     if (DKKeyPadLocked(key)) return @"仅 iPad 可用";
+    if (DKKeyPhoneLocked(key)) return @"仅 iPhone 可用";
     NSMutableArray<NSString *> *parts = [NSMutableArray array];
     for (NSString *parent in DKSettingsLayoutRequires(key)) {
         if (DKKeyActive(parent, 1)) continue;

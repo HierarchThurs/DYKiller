@@ -20,6 +20,20 @@ BOOL DKGlassTabBarActive(void);
 /// 当前挂载中的玻璃底栏；功能关闭时为 nil。
 UITabBar *DKGlassTabBarCurrent(void);
 
+/// 当前挂在抖音底栏下的玻璃底栏视图：动态收缩开启时是私有控制器的 view，否则是 UITabBar 本身。
+UIView *DKGlassBarHostCurrent(void);
+
+/// 动态收缩：切换收缩状态。形变由系统完成；系统入口不可用时保持展开。
+void DKGlassTabBarSetCollapsed(BOOL collapsed);
+/// 底板被系统显示时调用：收缩状态下胶囊显示，说明点圆键开始展开，同步内部状态。
+void DKGlassTabBarPlatterDidShow(UIView *platter);
+/// 收缩底板；未建立时为 nil。
+UIView *DKGlassTabBarCollapsePlatter(void);
+/// 收缩底板在 UITabBar 内的位置与尺寸。UIKit 写入时一律换成这个值。
+CGRect DKGlassTabBarCollapseFrame(void);
+/// 收缩状态下接收触摸的圆键；未收缩时为 nil。
+UIView *DKGlassTabBarCollapsedHitView(void);
+
 /// 按当前设置重跑一次挂载与几何。给设置页用：改完立刻生效，不必等抖音下一次布局。
 void DKGlassTabBarRefresh(void);
 

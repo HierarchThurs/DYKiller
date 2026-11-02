@@ -420,7 +420,7 @@ void DKAudioVisualizerLayout(UIView *douyinBar) {
         gVisible = NO;
     }
     // 挂在玻璃【之下】：条根塞在玻璃边缘底下，不会出现硬接缝。
-    UITabBar *glass = DKGlassTabBarCurrent();
+    UIView *glass = DKGlassBarHostCurrent();
     if (gHost.superview != douyinBar) {
         if (glass.superview == douyinBar) [douyinBar insertSubview:gHost belowSubview:glass];
         else [douyinBar addSubview:gHost];
