@@ -10,6 +10,7 @@
 #import <math.h>
 #import <objc/runtime.h>
 
+static char kDKAdjustBackgroundKey;
 static char kDKAdjustBaseAlphaKey;
 static char kDKAdjustAppliedAlphaKey;
 static char kDKAdjustBaseTransformKey;
@@ -102,6 +103,26 @@ CGFloat DKAdjustFadeFactor(UIView *view) {
     CALayer *mask = objc_getAssociatedObject(view, &kDKAdjustFadeMaskKey);
     if (!mask || view.layer.mask != mask) return 1.0;
     return CGColorGetAlpha(mask.backgroundColor);
+}
+
+void DKAdjustClearBackground(UIView *view, BOOL clear) {
+    if (!view) return;
+    id original = objc_getAssociatedObject(view, &kDKAdjustBackgroundKey);
+    BOOL isClear = [view.backgroundColor isEqual:UIColor.clearColor];
+    if (clear) {
+        if (!original || !isClear) {
+            objc_setAssociatedObject(view, &kDKAdjustBackgroundKey,
+                view.backgroundColor ?: NSNull.null, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (!isClear) view.backgroundColor = UIColor.clearColor;
+    } else if (original) {
+        if (isClear) view.backgroundColor = original == NSNull.null ? nil : original;
+        objc_setAssociatedObject(view, &kDKAdjustBackgroundKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+BOOL DKAdjustBackgroundCleared(UIView *view) {
+    return objc_getAssociatedObject(view, &kDKAdjustBackgroundKey) != nil;
 }
 
 void DKAdjustStackRows(UIStackView *stack, DKStackEdge edge,

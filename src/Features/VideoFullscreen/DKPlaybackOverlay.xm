@@ -9,7 +9,6 @@ static NSHashTable<AFDPureModePageContainerViewController *> *gDKPurePages;
 static NSHashTable<AFDFastSpeedView *> *gDKSpeedViews;
 static NSHashTable<AFDRoundRectangleBoxView *> *gDKPureControls;
 static NSHashTable<UIView *> *gDKPureProgressViews;
-static char kDKOverlayColorKey;
 static char kDKPureBottomKey;
 static char kDKPureInsetKey;
 
@@ -29,31 +28,13 @@ BOOL DKPlaybackOverlayIsPureControl(UIView *view) {
     return DKPurePageForView(view) != nil;
 }
 
-// 只保存本功能接管的底色；原生再次落色时更新恢复基线。
-static void DKOverlayClearColor(UIView *view, BOOL clear) {
-    if (!view) return;
-    id original = objc_getAssociatedObject(view, &kDKOverlayColorKey);
-    if (clear) {
-        if (!original || ![view.backgroundColor isEqual:UIColor.clearColor]) {
-            objc_setAssociatedObject(view, &kDKOverlayColorKey,
-                view.backgroundColor ?: NSNull.null, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        if (![view.backgroundColor isEqual:UIColor.clearColor]) view.backgroundColor = UIColor.clearColor;
-    } else if (original) {
-        if ([view.backgroundColor isEqual:UIColor.clearColor]) {
-            view.backgroundColor = original == NSNull.null ? nil : original;
-        }
-        objc_setAssociatedObject(view, &kDKOverlayColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-}
-
 static void DKPureSyncPage(AFDPureModePageContainerViewController *page) {
     UIView *root = page.viewIfLoaded;
     if (!root) return;
     [gDKPurePages addObject:page];
     BOOL active = DKPlaybackOverlayActive();
     objc_setAssociatedObject(page, &kDKPureInsetKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    DKOverlayClearColor(root, active);
+    DKAdjustClearBackground(root, active);
     Class listClass = NSClassFromString(@"AFDPureModePageListViewController");
     for (UIViewController *child in page.childViewControllers) {
         if (![child isKindOfClass:listClass]) continue;
@@ -112,14 +93,14 @@ static void DKSpeedSyncBackdrop(AFDFastSpeedView *view) {
                                   view.bottomBackGroundView ?: NSNull.null,
                                   view.foldableBottomTextBackgroundView ?: NSNull.null ]) {
         if (![background isKindOfClass:UIView.class]) continue;
-        DKOverlayClearColor(background, active);
+        DKAdjustClearBackground(background, active);
     }
 }
 
 static void DKPureSyncControl(AFDRoundRectangleBoxView *box) {
     BOOL active = DKPlaybackOverlayActive() && DKPlaybackOverlayIsPureControl(box);
     if (active) [gDKPureControls addObject:box];
-    DKOverlayClearColor(box, active);
+    DKAdjustClearBackground(box, active);
     // blurView 不承载按钮内容，透明 mask 保留其原有 hidden / alpha 与布局。
     UIVisualEffectView *blur = box.blurView;
     DKAdjustFade(blur, active ? 0.0 : 1.0, blur.bounds.size);

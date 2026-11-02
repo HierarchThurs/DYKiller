@@ -2,7 +2,7 @@
 //  DKViewAdjust.h
 //  DYKiller
 //
-//  可复位的视图调整：透明度乘系数、transform 叠加、mask 淡出，以及元素栈的逐行缩放几何。
+//  可复位的视图调整：透明度乘系数、transform 叠加、mask 淡出、底色清除，以及元素栈的逐行缩放几何。
 //  用关联对象记下基础值与写入值，只还原本模块改过的对象；宿主在下一轮写入的新值成为下一轮的基础值。
 //
 
@@ -36,6 +36,12 @@ void DKAdjustFade(UIView *view, CGFloat factor, CGSize outset);
 
 /// 视图上本模块 mask 的系数；没挂或已被宿主替换时返回 1。
 CGFloat DKAdjustFadeFactor(UIView *view);
+
+/// 清除或还原底色：宿主再次落色时更新还原基线；还原时若宿主已换成其他颜色，保留宿主的值。
+void DKAdjustClearBackground(UIView *view, BOOL clear);
+
+/// 底色当前是否由 DKAdjustClearBackground 接管。
+BOOL DKAdjustBackgroundCleared(UIView *view);
 
 /// 元素栈逐行缩放：每行按 scaleForRow 贴 edge 一侧缩放，自下而上累计各行缩掉的高度，上方各行依次收拢。
 /// 最底可见行以 contentBottomForRow 返回的内容底边（行坐标）为锚，内容底边保持原位。隐藏行不参与并还原。
