@@ -239,9 +239,13 @@ void DKChatFloatingGlassRefresh(void) {
 }
 
 %group DKChatFloatingGlassHooks
-// 芯片复用与样式刷新都会重写底色和模糊，布局、样式与进入窗口回调后各同步一次。
+// 芯片复用、样式刷新与按下高亮都会重写底色和模糊，布局、样式、高亮与进入窗口回调后各同步一次。
 %hook AWEIMInputActionBarEntryItemCollectionViewCell
 - (void)layoutSubviews {
+    %orig;
+    DKChatChipSync(self);
+}
+- (void)setHighlighted:(BOOL)highlighted {
     %orig;
     DKChatChipSync(self);
 }
