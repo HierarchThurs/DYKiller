@@ -145,6 +145,8 @@ static CGAffineTransform DKRichCenterTarget(UIView *view, CGAffineTransform nati
         state = [DKRichCenterState new];
         objc_setAssociatedObject(view, &kDKRichCenterStateKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [gDKRichCenteredViews addObject:view];
+        // 原生写变换时集合视图不一定再布局，这里请求一轮，同一帧放开裁剪、拉伸贴底压暗。
+        [view.superview.superview setNeedsLayout];
     }
     if (state.imageView != fitImage) DKRichRestoreImageMode(state);
     if (fitImage) {

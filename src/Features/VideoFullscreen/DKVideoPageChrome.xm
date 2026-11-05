@@ -410,6 +410,20 @@ static void DKSyncKnowledgeGradientStretch(UIView *gradient) {
     DKRestoreTransformBaseline(gradient, &kDKKnowledgeTransformKey);
 }
 
+// 请求图文集合视图重新布局，由其布局回调同步居中、裁剪与贴底压暗。
+static void DKInvalidateRichCollections(UIView *root) {
+    static Class collectionCls;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ collectionCls = NSClassFromString(@"AWEStoryContainerCollectionView"); });
+    for (UIView *child in root.subviews) {
+        if (collectionCls && [child isKindOfClass:collectionCls]) {
+            [child setNeedsLayout];
+        } else {
+            DKInvalidateRichCollections(child);
+        }
+    }
+}
+
 // 图文的顶层容器，三种图文列表实现都挂在它下面。
 //
 // · 缩放：updateShrinkState: 是图文版的 videoDidShrink。
@@ -434,6 +448,12 @@ static void DKSyncKnowledgeGradientStretch(UIView *gradient) {
 - (void)viewDidLayoutSubviews {
     %orig;
     DKSyncRichClips(self.viewIfLoaded);
+}
+
+// 转场期间集合视图的布局会撤掉贴底压暗的拉伸，转场结束后不一定再布局，这里补一轮。
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    if (DKVideoFullscreenOn()) DKInvalidateRichCollections(self.contentListViewController.viewIfLoaded);
 }
 
 %end
@@ -674,6 +694,8 @@ static void DKSyncRichCollection(AWEStoryContainerCollectionView *collection) {
             if (objc_getAssociatedObject(ancestor, &kDKRichClipKey)) [activeClipViews addObject:ancestor];
         }
     }
+    // 集合视图布局回调里 Cell 还没排版，贴底压暗仍是上一轮按满高摆的位置，先排完再判定。
+    for (UICollectionViewCell *cell in collection.visibleCells) [cell layoutIfNeeded];
     for (UIView *gradient in DKRichBottomGradients(collection)) {
         UIView *contentView = DKCellContentView(gradient);
         UIView *parent = gradient.superview;
