@@ -28,6 +28,8 @@ static NSSet<NSString *> *DKGlassGatedKeySet(void) {
                DKKeyChatTopCenter,
                DKKeyChatTopStreakPosition,
                DKKeyChatTopOnlinePosition,
+               DKKeyNoteDetailGlass,
+               DKKeyNoteDetailGlassClear,
                DKKeyTopBarGlass,
                DKKeyTopBarGlassClear,
                DKKeyTopBarGlassHeight,

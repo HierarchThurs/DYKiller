@@ -87,6 +87,16 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
         && isfinite(rect.size.width) && isfinite(rect.size.height);
 }
 
+// 玻璃是否已在 carrier 的所有非玻璃子视图之下；同一 carrier 上多块玻璃之间不重排。
+static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
+    if (glass.superview != carrier) return NO;
+    for (UIView *child in carrier.subviews) {
+        if (child == glass) return YES;
+        if (![child isKindOfClass:DKGlassFlexView.class]) return NO;
+    }
+    return NO;
+}
+
 @implementation DKChatGlassStore {
     NSMutableArray<DKChatGlassBacking *> *_backings;
     NSMutableArray<DKChatGlassLayerBacking *> *_layerBackings;
@@ -272,7 +282,7 @@ static BOOL DKChatRectIsFinite(CGRect rect) {
     }
     [_wanted addObject:slot];
     DKGlassFlexView *glass = slot.glass;
-    if (glass.superview != carrier || carrier.subviews.firstObject != glass) [carrier insertSubview:glass atIndex:0];
+    if (!DKChatGlassSitsAtBack(glass, carrier)) [carrier insertSubview:glass atIndex:0];
     if (!CGRectEqualToRect(glass.frame, frame)) glass.frame = frame;
     if (!slot.configured || slot.shape != shape || slot.radius != radius) {
         slot.shape = shape;

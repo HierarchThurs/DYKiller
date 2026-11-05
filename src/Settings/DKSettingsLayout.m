@@ -401,6 +401,9 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                 ]),
             ]),
         ]),
+        DKSection(@"图文详情页", @[
+            DKRow(DKKeyNoteDetailGlass, @"ic_image_outlined_20"),
+        ]),
         DKSection(@"长按菜单", @[
             DKRow(DKKeyFeedMenuGlass, @"ic_squaresplit_outlined_20"),
         ]),
