@@ -111,6 +111,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
                 DKSection(@"播放页元素", @[
                     DKRow(DKKeyPlaybackFullscreenMode, @"ic_fullscreen_outlined_16"),
                     DKRow(DKKeyPlaybackDanmakuMode, @"ic_comment_outlined_20"),
+                    DKRow(DKKeyDoubleColumnRemoveCopilot, @"ic_magic_outlined_20"),
                 ]),
                 DKSection(@"作品详情页", @[
                     DKRow(DKKeyDetailReturnMode, @"ic_arrowleft_outlined_20"),
@@ -403,6 +404,9 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
         ]),
         DKSection(@"图文详情页", @[
             DKRow(DKKeyNoteDetailGlass, @"ic_image_outlined_20"),
+        ]),
+        DKSection(@"听抖音", @[
+            DKRow(DKKeyListenFeedGlass, @"ic_playbackquaver_outlined"),
         ]),
         DKSection(@"长按菜单", @[
             DKRow(DKKeyFeedMenuGlass, @"ic_squaresplit_outlined_20"),
