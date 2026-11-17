@@ -4,7 +4,7 @@
 //
 //  聊天页玻璃的槽位仓库：每个宿主对象一份，
 //  记下本模块建的玻璃、清掉的原生底色与阴影、挂上的 mask。每轮同步在 begin / end 之间声明“本轮需要什么”，
-//  end 时撤掉没再声明的部分并还原原生值。
+//  end 时撤掉没再声明的部分并还原原生值。玻璃的材质只由本仓库写入，外部 setEffect: 不生效。
 //
 
 #ifndef DKChatGlassStore_h
@@ -58,6 +58,14 @@ API_AVAILABLE(ios(26.0))
                                radius:(CGFloat)radius
                           interactive:(BOOL)interactive
                                  tint:(UIColor *)tint;
+
+/// 声明一块由约束定位的玻璃：挂在 carrier 最底层，constraints 在 glass 已挂到 carrier 后调用，只在约束尚未生效时激活，之后随宿主布局与动画同步移动。约束涉及的视图必须已在同一层级内。
+- (UIVisualEffectView *)pinGlassFor:(UIView *)source
+                                 in:(UIView *)carrier
+                              shape:(DKChatGlassShape)shape
+                             radius:(CGFloat)radius
+                        interactive:(BOOL)interactive
+                        constraints:(NSArray<NSLayoutConstraint *> *(^)(UIView *glass))constraints;
 
 /// 按玻璃当前的实际四角半径把 view 裁成玻璃的形状；view 已有宿主自己的 mask 时不覆盖。
 /// mask 挂在 view 的可见区域上：滚动视图滚动后由 followBoundsOfMaskedView: 跟上。

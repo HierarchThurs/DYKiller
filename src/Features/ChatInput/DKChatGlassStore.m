@@ -35,10 +35,22 @@ static char kDKChatGlassStoreKey;
 @implementation DKChatGlassShadowBacking
 @end
 
+// 仓库建的玻璃，材质只经 applyEffect: 写入。
+// 抖音在输入区主题重载与 didAddSubview: 时会对子树里的 effect view 调 setEffect: 重设材质，这类写入不生效。
+@interface DKChatGlassView : DKGlassFlexView
+- (void)applyEffect:(UIVisualEffect *)effect;
+@end
+@implementation DKChatGlassView
+- (void)setEffect:(UIVisualEffect *)effect {}
+- (void)applyEffect:(UIVisualEffect *)effect {
+    [super setEffect:effect];
+}
+@end
+
 // 一块玻璃：业务视图、玻璃本体与当前的形状、材质，未变化时不重写。
 @interface DKChatGlassSlot : NSObject
 @property (nonatomic, weak) UIView *source;
-@property (nonatomic, strong) DKGlassFlexView *glass;
+@property (nonatomic, strong) DKChatGlassView *glass;
 @property (nonatomic) DKChatGlassShape shape;
 @property (nonatomic) CGFloat radius;
 @property (nonatomic) BOOL interactive;
@@ -46,6 +58,7 @@ static char kDKChatGlassStoreKey;
 @property (nonatomic) BOOL clear;
 @property (nonatomic) UIUserInterfaceStyle style;
 @property (nonatomic) BOOL configured;
+@property (nonatomic, copy) NSArray<NSLayoutConstraint *> *pins;
 @end
 @implementation DKChatGlassSlot
 @end
@@ -270,20 +283,55 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
                           interactive:(BOOL)interactive
                                  tint:(UIColor *)tint {
     if (!source || !carrier || CGRectIsEmpty(frame) || !DKChatRectIsFinite(frame)) return nil;
+    DKChatGlassSlot *slot = [self slotForSource:source in:carrier];
+    if (!CGRectEqualToRect(slot.glass.frame, frame)) slot.glass.frame = frame;
+    [self configureSlot:slot shape:shape radius:radius interactive:interactive tint:tint];
+    return slot.glass;
+}
+
+- (UIVisualEffectView *)pinGlassFor:(UIView *)source
+                                 in:(UIView *)carrier
+                              shape:(DKChatGlassShape)shape
+                             radius:(CGFloat)radius
+                        interactive:(BOOL)interactive
+                        constraints:(NSArray<NSLayoutConstraint *> *(^)(UIView *glass))constraints {
+    if (!source || !carrier) return nil;
+    DKChatGlassSlot *slot = [self slotForSource:source in:carrier];
+    // 约束另一端的视图被宿主移出层级时约束随之失效，下一轮重新贴上。
+    BOOL pinned = slot.pins.count > 0;
+    for (NSLayoutConstraint *pin in slot.pins) pinned = pinned && pin.active;
+    if (!pinned) {
+        [NSLayoutConstraint deactivateConstraints:slot.pins ?: @[]];
+        slot.glass.translatesAutoresizingMaskIntoConstraints = NO;
+        slot.pins = constraints(slot.glass);
+        [NSLayoutConstraint activateConstraints:slot.pins];
+    }
+    [self configureSlot:slot shape:shape radius:radius interactive:interactive tint:nil];
+    return slot.glass;
+}
+
+- (DKChatGlassSlot *)slotForSource:(UIView *)source in:(UIView *)carrier {
     DKChatGlassSlot *slot = nil;
     for (DKChatGlassSlot *item in _slots) if (item.source == source) { slot = item; break; }
     if (!slot) {
         slot = [DKChatGlassSlot new];
         slot.source = source;
-        slot.glass = [[DKGlassFlexView alloc] initWithFrame:frame];
+        slot.glass = [[DKChatGlassView alloc] initWithFrame:CGRectZero];
         slot.glass.userInteractionEnabled = NO;
         slot.glass.flexSourceView = source;
         [_slots addObject:slot];
     }
     [_wanted addObject:slot];
-    DKGlassFlexView *glass = slot.glass;
-    if (!DKChatGlassSitsAtBack(glass, carrier)) [carrier insertSubview:glass atIndex:0];
-    if (!CGRectEqualToRect(glass.frame, frame)) glass.frame = frame;
+    if (!DKChatGlassSitsAtBack(slot.glass, carrier)) [carrier insertSubview:slot.glass atIndex:0];
+    return slot;
+}
+
+- (void)configureSlot:(DKChatGlassSlot *)slot
+                shape:(DKChatGlassShape)shape
+               radius:(CGFloat)radius
+          interactive:(BOOL)interactive
+                 tint:(UIColor *)tint {
+    DKChatGlassView *glass = slot.glass;
     if (!slot.configured || slot.shape != shape || slot.radius != radius) {
         slot.shape = shape;
         slot.radius = radius;
@@ -303,10 +351,9 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
         UIGlassEffect *effect = [UIGlassEffect effectWithStyle:_clear ? UIGlassEffectStyleClear : UIGlassEffectStyleRegular];
         effect.interactive = interactive;
         effect.tintColor = tint ?: (_clear ? DKGlassTintForStyle(_style) : nil);
-        [UIView performWithoutAnimation:^{ glass.effect = effect; }];
+        [UIView performWithoutAnimation:^{ [glass applyEffect:effect]; }];
     }
     slot.configured = YES;
-    return glass;
 }
 
 #pragma mark mask
