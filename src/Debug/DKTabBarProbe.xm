@@ -7,6 +7,7 @@
 //
 
 #import "DKContentFilter.h"
+#import "DKDoubleColumnFeed.h"
 #import "DKDoubleTapComment.h"
 #import "DKMediaSaveDiagnostics.h"
 #import "DKTabBarProbe.h"
@@ -1197,6 +1198,10 @@ NSString *DKTabBarProbeReport(void) {
 
     [out appendString:@"\n----- 顶栏液态玻璃 -----\n"];
     [out appendString:DKTopBarGlassStatus()];
+
+    [out appendString:@"\n----- 双列作品流 -----\n"];
+    [out appendString:DKDoubleColumnImmersionStatus()];
+    [out appendString:DKDoubleColumnCopilotStatus()];
 
     [out appendString:@"\n----- 未读红点 -----\n"];
     [out appendString:DKUnreadBadgeStatus()];
