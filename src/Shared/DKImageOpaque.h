@@ -7,6 +7,9 @@ extern "C" {
 #endif
 // 非透明像素的包围盒，单位为像素（CGImage 坐标，原点在左上）；没有位图或整张透明时为 CGRectNull。
 CGRect DKImageOpaquePixelRect(UIImage *image);
+
+// 图片视图实际画出内容的区域（视图坐标）：没有图片或视图尺寸为 0 时为 CGRectNull，整张透明或没有位图时为整个视图。
+CGRect DKImageOpaqueVisibleRect(UIImageView *icon);
 #ifdef __cplusplus
 }
 #endif

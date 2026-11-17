@@ -24,6 +24,9 @@ extern "C" {
 /// 两个 transform 在显示精度内是否相同。
 BOOL DKAdjustTransformEqual(CGAffineTransform lhs, CGAffineTransform rhs);
 
+/// 不含 transform 的布局 frame（父视图坐标）。
+CGRect DKAdjustLayoutFrame(UIView *view);
+
 /// 透明度乘系数（0–1），乘在宿主当前 alpha 上；系数为 1 时还原宿主值。
 void DKAdjustAlpha(UIView *view, CGFloat factor);
 

@@ -523,6 +523,14 @@
 @end
 
 @interface AWEListenFeedPlayControlView : UIView
+@property (nonatomic, strong) UIStackView *topStackView;           // 点赞、评论、收藏、分享
+@property (nonatomic, strong) UIStackView *topRightStackView;      // 倍速
+@property (nonatomic, strong) UIStackView *bottomStackView;        // 顺序、后退、播放、前进、定时
+@property (nonatomic, strong) UIButton *rewindButton;
+@property (nonatomic, strong) UIButton *playButton;
+@property (nonatomic, strong) UIButton *forwardButton;
+@property (nonatomic, strong) UIStackView *fastModeStackView;      // 长按快进提示
+@property (nonatomic, strong) UIView *progressView;
 - (void)commentButtonClicked:(id)sender;
 @end
 
@@ -707,6 +715,12 @@
 @property (nonatomic, strong) UIView *leftContentView;             // 左侧栏入口槽位
 @property (nonatomic, strong) UIView *discoverEntranceContentView; // 搜索入口槽位
 @property (nonatomic, strong) AWEFeedMultiTabSegmentedControl *segmentControlView;
+@end
+
+@interface AWEFeedContainerViewController : UIViewController       // 首页容器：顶栏与下拉刷新
+@property (nonatomic, readonly, strong) AWEFeedTopBarContainer *topBarContainer;
+@property (nonatomic, strong) UILabel *refreshLabelV2;             // 下拉刷新提示语
+@property (nonatomic, assign) BOOL isRefreshDragging;
 @end
 
 @interface AWELeftSideBarEntranceView : UIView                     // 左侧栏入口（≡）
@@ -1103,6 +1117,10 @@
 @property (nonatomic, strong) UIStackView *titleContainerStackView;
 @property (nonatomic, strong) UIStackView *mainTitleStackView;
 @property (nonatomic, strong) UIStackView *subtitleStackView;
+@end
+// 火花：intrinsicContentSize 按 isAnimationPlaying 取提示态或数字态的宽度；该状态只经 setIsAnimationPlaying: 写入。
+@interface AWEIMStreakFlameView : UIView
+@property (nonatomic) BOOL isAnimationPlaying;
 @end
 // 标题头像：p_updateDots 显示在线圆点时给头像内容 contentView 挂 notchLayer 缺口遮罩（为圆点留出外圈），隐藏圆点时摘掉。
 @interface AWEIMMessageListNaviBarTitleAvatarComponent : AWEIMComponentBase
@@ -1573,6 +1591,85 @@
 // 播放交互层元素基类（AWEBaseElement 子类），model 为当前作品；左侧昵称、文案元素都继承它。
 @interface AWEPlayInteractionBaseElement : NSObject
 @property (nonatomic, strong) AWEAwemeModel *model;
+@end
+
+#pragma mark - 首页双列作品流
+
+@interface AWEDCFeedListViewController : UIViewController         // 双列列表控制器
+@property (nonatomic, readonly, strong) UICollectionView *collectionView;
+@property (nonatomic, copy) NSString *referString;
+- (UIEdgeInsets)awelistkit_insetAtSectionIndex:(NSInteger)section;
+@end
+
+@interface AWEFeedNewDoubleColumnViewController : UIViewController // 点击首页后的推荐双列页
+- (CGRect)dcFeed:(AWEDCFeedListViewController *)list frameForCollectionView:(UICollectionView *)collectionView;
+@end
+
+@interface AWENewMVChannelViewController : UIViewController        // 「精选」频道页
+@end
+
+@interface AWEMVChannelDCDelegator : NSObject                      // 精选类列表的代理
+@property (nonatomic, weak) UIViewController *containerVC;
+- (CGRect)dcFeed:(AWEDCFeedListViewController *)list frameForCollectionView:(UICollectionView *)collectionView;
+@end
+
+@interface AWEDCFeedSectionWaterfallLayout : UICollectionViewLayout
+- (UIEdgeInsets)totalSectionsInset;
+@end
+
+@interface AWEMVSectionWaterfallLayout : UICollectionViewLayout
+- (UIEdgeInsets)totalSectionsInset;
+@end
+
+@interface AWEDCFeedCopilotPresenter : NSObject                    // AI 入口视图的状态机：0 隐藏，1–3 输入条，4 圆钮
+@property (nonatomic, assign) unsigned long long state;
+@end
+
+@interface AWEDCFeedCopilotController : NSObject                   // AI 入口控制器
+@property (nonatomic, strong) AWEDCFeedCopilotPresenter *copilotPresenter;
+- (BOOL)copilotViewInvisible;
+- (void)showCopilotView;
+- (void)setupUI;
+@end
+
+#pragma mark - 听抖音
+
+@interface AWEListenFeedSideLabelProgressViewV2 : UIView           // 听抖音进度条：滑条与两侧时间
+@property (nonatomic, strong) UISlider *progressSlider;
+@property (nonatomic, strong) UIView *progressCenterYView;
+@property (nonatomic, strong) UILabel *currentTime;
+@property (nonatomic, strong) UILabel *remainTime;
+@end
+
+@interface AWEListenFeedContentFilterContainerView : UIView        // 点标题展开的分类卡片容器
+@property (nonatomic, strong) UIScrollView *contentFilterScrollView;
+@end
+
+@interface AWEListenFeedViewController : UIViewController
+@property (nonatomic, strong) UIButton *backButton;
+@property (nonatomic, strong) UIButton *titleButton;
+@property (nonatomic, strong) UIImageView *titleArrowImageView;
+@property (nonatomic, strong) UILabel *secondPageTitleLabel;       // 从分类进入时代替标题按钮
+@property (nonatomic, strong) AWEListenFeedContentFilterContainerView *contentFilterContainerView;
+@end
+
+@interface AWEListenFeedPlayerElement : NSObject                   // 听抖音播放区元素
+@property (nonatomic, weak) UIViewController *container;
+@property (nonatomic, strong) UIImageView *coverImageView;
+@end
+
+@interface AWEListenFeedExtendCoverCollectionViewCell : UICollectionViewCell  // 合集封面流的一张封面
+@property (nonatomic, strong) UIView *containerView;
+@property (nonatomic, strong) UIImageView *coverImageView;
+@end
+
+@interface AWEListenFeedValueAdjustPopupView : UIView              // 倍速与定时弹层
+@property (nonatomic, strong) UIView *contentView;
+@end
+
+@interface AWEListenFeedFilterListViewController : UIViewController  // 分类列表页
+@property (nonatomic, strong) UIButton *backButton;
+@property (nonatomic, strong) UILabel *titleLabel;
 @end
 
 #endif /* DouyinHeaders_h */

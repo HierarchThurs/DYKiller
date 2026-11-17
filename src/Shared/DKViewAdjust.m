@@ -48,6 +48,13 @@ void DKAdjustAlpha(UIView *view, CGFloat factor) {
     objc_setAssociatedObject(view, &kDKAdjustAppliedAlphaKey, @(target), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+CGRect DKAdjustLayoutFrame(UIView *view) {
+    CALayer *layer = view.layer;
+    CGSize size = layer.bounds.size;
+    return CGRectMake(layer.position.x - layer.anchorPoint.x * size.width,
+                      layer.position.y - layer.anchorPoint.y * size.height, size.width, size.height);
+}
+
 void DKAdjustTransform(UIView *view, CGAffineTransform delta) {
     if (!view) return;
 

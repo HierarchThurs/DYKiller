@@ -42,3 +42,14 @@ CGRect DKImageOpaquePixelRect(UIImage *image) {
     objc_setAssociatedObject(image, &kDKImageOpaqueKey, [NSValue valueWithCGRect:rect], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return rect;
 }
+
+CGRect DKImageOpaqueVisibleRect(UIImageView *icon) {
+    UIImage *image = icon.image;
+    if (!image || CGRectIsEmpty(icon.bounds)) return CGRectNull;
+    CGRect pixels = DKImageOpaquePixelRect(image);
+    if (CGRectIsNull(pixels)) return icon.bounds;
+    CGFloat scaleX = CGRectGetWidth(icon.bounds) / (image.size.width * image.scale);
+    CGFloat scaleY = CGRectGetHeight(icon.bounds) / (image.size.height * image.scale);
+    return CGRectMake(CGRectGetMinX(pixels) * scaleX, CGRectGetMinY(pixels) * scaleY,
+                      CGRectGetWidth(pixels) * scaleX, CGRectGetHeight(pixels) * scaleY);
+}

@@ -226,6 +226,8 @@ static NSString *const DKKeyProgressTimeStyle = @"DYKillerProgressTimeStyle";
 // 每项单选，存整数：0 显示 / 1 隐藏（不显示、仍可点击，位置保留）/ 2 移除（不显示、不可点击，按抖音原生排布收拢）。
 static NSString *const DKKeyPlaybackFullscreenMode         = @"DYKillerPlaybackFullscreenMode";
 static NSString *const DKKeyPlaybackDanmakuMode            = @"DYKillerPlaybackDanmakuMode";
+// 开关：移除首页双列作品流右下角的 AI 按钮。
+static NSString *const DKKeyDoubleColumnRemoveCopilot      = @"DYKillerDoubleColumnRemoveCopilot";
 // 锚点标签：同一种锚点元素，按锚点业务号区分。
 // 旧 BOOL 键迁移为统一三档；目录只记录实际遇到的类型，独立档位沿用既有键或动态前缀。
 static NSString *const DKKeyPlaybackRemoveAllAnchors       = @"DYKillerPlaybackRemoveAllAnchors";
@@ -365,6 +367,9 @@ static NSString *const DKKeyChatInputGlassClear         = @"DYKillerChatInputGla
 // 图文详情页液态玻璃的材质单选（DKMakeGlassChoice）：总开关 + 清透档两个 BOOL，清透档关即系统 Regular。
 static NSString *const DKKeyNoteDetailGlass      = @"DYKillerNoteDetailGlass";
 static NSString *const DKKeyNoteDetailGlassClear = @"DYKillerNoteDetailGlassClear";
+// 听抖音页液态玻璃
+static NSString *const DKKeyListenFeedGlass      = @"DYKillerListenFeedGlass";
+static NSString *const DKKeyListenFeedGlassClear = @"DYKillerListenFeedGlassClear";
 static NSString *const DKKeyChatRemoveBack              = @"DYKillerChatRemoveBack";
 static NSString *const DKKeyChatRemoveUnread            = @"DYKillerChatRemoveUnread";
 static NSString *const DKKeyChatRemoveOnline            = @"DYKillerChatRemoveOnline";
