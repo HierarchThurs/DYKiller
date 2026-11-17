@@ -97,6 +97,9 @@ UIVisualEffectView *DKTopBarGlassMakeView(UIView *touchSource) {
     CGFloat _anchorX;
     NSInteger _hoverIndex;
     DKTopBarGlassMaterial _material;
+    CGRect _capsuleBaseFrame;
+    CGFloat _refreshTipProgress;
+    CGFloat _refreshTipWidth;
 }
 
 + (BOOL)dragging {
@@ -131,6 +134,10 @@ UIVisualEffectView *DKTopBarGlassMakeView(UIView *touchSource) {
     return _pill;
 }
 
+- (CGFloat)refreshTipProgress {
+    return _refreshTipProgress;
+}
+
 - (void)invalidate {
     AWEFeedMultiTabSegmentedControl *control = _control;
     [_pressGesture.view removeGestureRecognizer:_pressGesture];
@@ -139,6 +146,7 @@ UIVisualEffectView *DKTopBarGlassMakeView(UIView *touchSource) {
     [_pill removeFromSuperview];
     [_arrowCircle removeFromSuperview];
     [_arrowIcon removeFromSuperview];
+    control.multiTabSegmentedControlScollWrapperView.superview.alpha = 1.0;
     AWEMultiTabNavigationArrowView *arrow = control.rightNavigationArrowView;
     if (arrow) objc_setAssociatedObject(arrow, &kDKArrowCircleKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     DKAdjustFade(arrow.arrowImageView, 1.0, CGSizeZero);
@@ -154,7 +162,8 @@ UIVisualEffectView *DKTopBarGlassMakeView(UIView *touchSource) {
 
 - (void)layoutCapsuleFrame:(CGRect)capsuleFrame pillHeight:(CGFloat)pillHeight {
     AWEFeedMultiTabSegmentedControl *control = _control;
-    if (!CGRectEqualToRect(_capsule.frame, capsuleFrame)) _capsule.frame = capsuleFrame;
+    _capsuleBaseFrame = capsuleFrame;
+    [self placeCapsule];
     _pillHeight = pillHeight;
     // 原生选中线（含活动样式图）由选中块取代，只取位置。
     UIView *line = control.selectedLineContainerView;
@@ -162,6 +171,29 @@ UIVisualEffectView *DKTopBarGlassMakeView(UIView *touchSource) {
     if (_mode == DKTopChannelTouchIdle) [self updateAnchorFromLine];
     [self placePillAnimated:NO];
     [self layoutArrow];
+}
+
+// 下拉提示期间胶囊以频道内容的中心向两端加宽。
+- (void)placeCapsule {
+    CGFloat baseWidth = CGRectGetWidth(_capsuleBaseFrame);
+    CGFloat width = baseWidth + fmax(0.0, _refreshTipWidth - baseWidth) * _refreshTipProgress;
+    CGRect frame = _capsuleBaseFrame;
+    frame.origin.x = CGRectGetMidX(_capsuleBaseFrame) - width / 2.0;
+    frame.size.width = width;
+    if (!CGRectEqualToRect(_capsule.frame, frame)) _capsule.frame = frame;
+}
+
+- (void)setRefreshTipProgress:(CGFloat)progress tipWidth:(CGFloat)tipWidth {
+    if (progress == _refreshTipProgress && (progress == 0.0 || tipWidth == _refreshTipWidth)) return;
+    _refreshTipProgress = progress;
+    if (progress > 0.0) _refreshTipWidth = tipWidth;
+    [self placeCapsule];
+    // 胶囊留在频道条内，淡出只作用到胶囊以外的内容。
+    CGFloat contentAlpha = 1.0 - progress;
+    _control.multiTabSegmentedControlScollWrapperView.superview.alpha = contentAlpha;
+    _pill.alpha = contentAlpha;
+    _arrowCircle.alpha = contentAlpha;
+    _arrowIcon.alpha = contentAlpha;
 }
 
 // 「返回推荐」箭头：原生图换成与胶囊右端同心的玻璃圆钮，显隐与点击沿用原生。

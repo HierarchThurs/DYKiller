@@ -61,6 +61,9 @@ API_AVAILABLE(ios(26.0))
 /// 频道条开始被拖动滚动：撤销按压态，选中块回到选中频道。
 - (void)channelsWillBeginDragging;
 
+/// 下拉刷新提示：progress 为 0 时是频道内容，为 1 时频道内容淡出、胶囊加宽到 tipWidth。
+- (void)setRefreshTipProgress:(CGFloat)progress tipWidth:(CGFloat)tipWidth;
+
 /// 还原：移除玻璃与手势，恢复原生选中线。
 - (void)invalidate;
 
@@ -68,6 +71,8 @@ API_AVAILABLE(ios(26.0))
 @property (class, nonatomic, readonly) BOOL dragging;
 
 @property (nonatomic, readonly) UIView *pillView;
+
+@property (nonatomic, readonly) CGFloat refreshTipProgress;
 
 @end
 

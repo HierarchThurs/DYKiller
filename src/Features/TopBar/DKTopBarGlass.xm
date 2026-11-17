@@ -8,6 +8,8 @@
 //   - 玻璃都是对应原生视图的子视图，hidden / alpha / 隐藏移除的 mask 沿视图树继承。
 //   - 亮度跟 isLightTheme：频道文字与图标由抖音按页面底色决定，玻璃取相同明暗保证可读。
 //   - 频道胶囊与手势见 DKTopChannelCapsule。
+//   - 下拉刷新：原生把整条频道淡出并下移，再淡入提示语。胶囊在频道条内，开玻璃时频道条保持不动，
+//     由胶囊淡出频道内容并加宽到放得下提示语；松手时原生动画块里的 showFeedTopBar 带着胶囊一起收回。
 //
 
 #import "DKTopBarGlass.h"
@@ -29,10 +31,12 @@ static char kDKTopBarGlassConfigOriginalKey;
 static char kDKTopBarGlassCopyKey;
 
 static const CGFloat kDKTopBarGlassCircleHitOutset = 4.0;
+// 下拉提示语与加宽后胶囊两端的距离。
+static const CGFloat kDKTopBarGlassRefreshTipPadding = 16.0;
 
 static NSHashTable<AWEFeedTopBarContainer *> *gDKTopBarGlassContainers;
 
-static BOOL DKTopBarGlassEnabled(void) {
+BOOL DKTopBarGlassEnabled(void) {
     return DKGlassOSAvailable() && DKPrefBool(DKKeyTopBarGlass);
 }
 
@@ -121,6 +125,15 @@ static DKTopChannelCapsule *DKTopBarGlassCapsule(UIView *control) API_AVAILABLE(
     return objc_getAssociatedObject(control, &kDKTopBarGlassCapsuleKey);
 }
 
+static DKTopBarGlassMetrics DKTopBarGlassCurrentMetrics(AWEFeedTopBarContainer *container) {
+    return DKTopBarGlassComputeMetrics((DKTopBarGlassInput){
+        .containerWidth = CGRectGetWidth(container.bounds),
+        .contentWidth = container.segmentControlView.multiTabSegmentedControlScollWrapperView.contentSize.width,
+        .heightScale = DKTopBarGlassScale(DKKeyTopBarGlassHeight),
+        .lengthScale = DKTopBarGlassScale(DKKeyTopBarGlassLength),
+    });
+}
+
 static void DKTopBarGlassTeardown(AWEFeedTopBarContainer *container) API_AVAILABLE(ios(26.0)) {
     // 写回配置可能同步触发布局，先清状态，重入时直接返回。
     objc_setAssociatedObject(container, &kDKTopBarGlassStateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -164,12 +177,7 @@ static void DKTopBarGlassSync(AWEFeedTopBarContainer *container) API_AVAILABLE(i
 
     AWEHPTopBarCTAItemView *left = DKTopBarGlassSideBarItem(container);
     AWEHPTopBarCTAItemView *right = DKTopBarGlassSearchItem(container);
-    DKTopBarGlassMetrics metrics = DKTopBarGlassComputeMetrics((DKTopBarGlassInput){
-        .containerWidth = CGRectGetWidth(container.bounds),
-        .contentWidth = scrollView.contentSize.width,
-        .heightScale = DKTopBarGlassScale(DKKeyTopBarGlassHeight),
-        .lengthScale = DKTopBarGlassScale(DKKeyTopBarGlassLength),
-    });
+    DKTopBarGlassMetrics metrics = DKTopBarGlassCurrentMetrics(container);
     DKTopBarGlassMaterial material = { DKPrefBool(DKKeyTopBarGlassClear), control.isLightTheme };
 
     // 入口图标靠内边距定位到圆钮中心，其余宽度补给槽位，两侧槽位等宽保持频道条居中。
@@ -195,6 +203,13 @@ static void DKTopBarGlassSync(AWEFeedTopBarContainer *container) API_AVAILABLE(i
     [capsule layoutCapsuleFrame:capsuleFrame pillHeight:metrics.height - kDKTopBarGlassCapsuleInset * 2.0];
 
     objc_setAssociatedObject(container, &kDKTopBarGlassStateKey, @NO, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void DKTopBarGlassSetRefreshTip(AWEFeedContainerViewController *controller, CGFloat progress) API_AVAILABLE(ios(26.0)) {
+    AWEFeedTopBarContainer *container = controller.topBarContainer;
+    CGFloat tipWidth = controller.refreshLabelV2.intrinsicContentSize.width + kDKTopBarGlassRefreshTipPadding * 2.0;
+    [DKTopBarGlassCapsule(container.segmentControlView) setRefreshTipProgress:progress
+        tipWidth:fmin(tipWidth, DKTopBarGlassCurrentMetrics(container).maxCapsuleWidth)];
 }
 
 void DKTopBarGlassRefresh(void) {
@@ -250,6 +265,7 @@ NSString *DKTopBarGlassStatus(void) {
             UIView *left = objc_getAssociatedObject(DKTopBarGlassSideBarItem(container), &kDKTopBarGlassCircleKey);
             UIView *right = objc_getAssociatedObject(DKTopBarGlassSearchItem(container), &kDKTopBarGlassCircleKey);
             UIView *pill = DKTopBarGlassCapsule(control).pillView;
+            [out appendFormat:@"  下拉提示进度=%.2f\n", DKTopBarGlassCapsule(control).refreshTipProgress];
             [out appendFormat:@"  容器=%@ 频道条=%@ 内容宽=%.1f 偏移=%.1f 选中=%lld 浅色页=%d\n",
                 NSStringFromCGRect(container.frame), NSStringFromCGRect(control.frame), scrollView.contentSize.width,
                 scrollView.contentOffset.x, control.selectedIndex, control.isLightTheme];
@@ -342,6 +358,30 @@ NSString *DKTopBarGlassStatus(void) {
         if (DKTopChannelCapsule.dragging) return;
     }
     %orig;
+}
+
+- (void)hideFeedTopBarWithTransform:(CGAffineTransform)transform alpha:(double)alpha {
+    if (@available(iOS 26.0, *)) {
+        if (self.isRefreshDragging && DKTopBarGlassCapsule(self.topBarContainer.segmentControlView)) {
+            %orig(CGAffineTransformIdentity, 1.0);
+            DKTopBarGlassSetRefreshTip(self, 1.0 - alpha);
+            return;
+        }
+    }
+    %orig;
+}
+
+// 下拉距离为负（上滑回去）时原生直接写回频道条，不经过 hideFeedTopBar。
+- (void)dragWithProgress:(double)progress {
+    %orig;
+    if (@available(iOS 26.0, *)) {
+        if (progress < 0.0) DKTopBarGlassSetRefreshTip(self, 0.0);
+    }
+}
+
+- (void)showFeedTopBar {
+    %orig;
+    if (@available(iOS 26.0, *)) DKTopBarGlassSetRefreshTip(self, 0.0);
 }
 
 %end

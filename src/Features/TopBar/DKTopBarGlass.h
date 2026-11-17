@@ -14,6 +14,9 @@
 extern "C" {
 #endif
 
+/// 顶栏玻璃是否生效：系统可用且开关打开。
+BOOL DKTopBarGlassEnabled(void);
+
 /// 设置改变后立即刷新已见过的顶栏。
 void DKTopBarGlassRefresh(void);
 

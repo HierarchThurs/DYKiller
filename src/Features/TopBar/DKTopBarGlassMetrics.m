@@ -28,6 +28,7 @@ DKTopBarGlassMetrics DKTopBarGlassComputeMetrics(DKTopBarGlassInput input) {
     metrics.height = height;
     metrics.capsuleX = capsuleX;
     metrics.capsuleWidth = capsuleWidth;
+    metrics.maxCapsuleWidth = available;
     metrics.slotWidth = capsuleX + inset;
     metrics.leftCenterX = kDKTopBarGlassMargin + height / 2.0;
     metrics.rightCenterX = metrics.slotWidth - kDKTopBarGlassMargin - height / 2.0;

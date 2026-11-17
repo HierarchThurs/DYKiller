@@ -26,6 +26,7 @@ typedef struct {
     CGFloat height;          // 圆钮直径与胶囊高度
     CGFloat capsuleX;        // 胶囊左边（容器坐标）
     CGFloat capsuleWidth;
+    CGFloat maxCapsuleWidth; // 胶囊最长：两端与圆钮保持距离
     CGFloat slotWidth;       // 两侧槽位宽度：频道条从左槽位右缘排到右槽位左缘
     CGFloat leftCenterX;     // 左侧圆钮中心（左侧槽位坐标）
     CGFloat rightCenterX;    // 右侧圆钮中心（右侧槽位坐标）
