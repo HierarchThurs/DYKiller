@@ -16,6 +16,7 @@
 #import <objc/runtime.h>
 
 static NSHashTable *gDKChatNaviComponents;
+static Class gDKChatTitleViewClass;
 static char kDKChatMenuViewKey;
 static const CGFloat kDKChatTopGap = 8.0;
 static char kDKChatTopLayoutKey;
@@ -101,11 +102,26 @@ static UIView *DKChatTopMenuView(UIView *view) {
     return view;
 }
 
-// 原生左右容器都是横向栈，只选本行的语义控件。
+// 自上而下排完子树里待定的布局。layoutIfNeeded 只在接收者本身待排时才连带排后代，单独待排的后代要逐个排。
+static void DKChatTopLayoutPending(UIView *view) {
+    [view layoutIfNeeded];
+    for (UIView *child in view.subviews) DKChatTopLayoutPending(child);
+}
+
+// 原生把一侧的控件排进一个横向 UIStackView：该栈在左右容器之内，或容器本身即该栈。
+// 标题视图是 UIStackView 子类，按类精确匹配以免误当成外层栈。
+static NSArray<UIView *> *DKChatTopRowViews(UIView *container) {
+    for (UIView *child in container.subviews) {
+        if ([child isMemberOfClass:UIStackView.class]) return child.subviews;
+    }
+    return container.subviews;
+}
+
+// 只选本行的语义控件。
 static NSArray<UIView *> *DKChatTopItems(AWENavigationBar *bar) {
     NSMutableArray *items = [NSMutableArray array];
     for (UIView *container in @[ bar.leftBtnsContainerView ?: bar, bar.rightBtnsContainerView ?: bar ]) {
-        for (UIView *view in container.subviews) {
+        for (UIView *view in DKChatTopRowViews(container)) {
             if (!DKChatTopVisible(view)) continue;
             if (DKChatInputIsKind(view, @"AWEIMNavigationUnreadView")
                 || DKChatInputIsKind(view, @"AWEIMMessageListNaviBarTitleView")
@@ -119,18 +135,11 @@ static NSArray<UIView *> *DKChatTopItems(AWENavigationBar *bar) {
 }
 
 // 返回按钮实际画出的箭头（carrier 坐标）：原生给图片加了水平偏移，图标里的箭头也不在画布中间。
-// 先让按钮排版，首轮同步时 imageView 才有位置；没有位图时退回按钮或图片框。
+// 没有位图时退回按钮或图片框。
 static CGRect DKChatTopArrowRect(UIButton *button, UIView *carrier) {
-    [button layoutIfNeeded];
     UIImageView *icon = button.imageView;
-    UIImage *image = icon.image;
-    if (!image || CGRectIsEmpty(icon.bounds)) return [button convertRect:button.bounds toView:carrier];
-    CGRect pixels = DKImageOpaquePixelRect(image);
-    if (CGRectIsNull(pixels)) return [icon convertRect:icon.bounds toView:carrier];
-    CGFloat scaleX = CGRectGetWidth(icon.bounds) / (image.size.width * image.scale);
-    CGFloat scaleY = CGRectGetHeight(icon.bounds) / (image.size.height * image.scale);
-    CGRect visible = CGRectMake(CGRectGetMinX(pixels) * scaleX, CGRectGetMinY(pixels) * scaleY,
-                                CGRectGetWidth(pixels) * scaleX, CGRectGetHeight(pixels) * scaleY);
+    CGRect visible = DKImageOpaqueVisibleRect(icon);
+    if (CGRectIsNull(visible)) return [button convertRect:button.bounds toView:carrier];
     return [icon convertRect:visible toView:carrier];
 }
 
@@ -166,11 +175,9 @@ static CGFloat DKChatTopButtonWidth(UIView *source, CGRect content, CGFloat heig
 }
 
 // 栈里可见排列项在 carrier 中的并集；没有可见项时为 CGRectNull。
-// 原生先排标题视图、后排内层栈，文字变长而标题尺寸不变时排列项还是旧宽度，先让栈排版再读。
 static CGRect DKChatTopArrangedRect(UIStackView *stack, UIView *excluded, UIView *carrier, NSMutableArray *views) {
     CGRect rect = CGRectNull;
     if (!DKChatTopVisible(stack)) return rect;
-    [stack layoutIfNeeded];
     for (UIView *view in stack.arrangedSubviews) {
         if (view == excluded || !DKChatTopVisible(view)) continue;
         [views addObject:view];
@@ -435,10 +442,13 @@ void DKChatTopBarSync(UIView *view) {
         }
         __block CGFloat bottom = 0.0;
         UIView *previousDot = layout.onlineDot;
+        UIView *carrier = bar.contentView;
         [store beginWithClear:DKPrefBool(DKKeyChatInputGlassClear) style:DKChatInputStyle(input)];
+        // 同步可能发生在标题视图的布局回调里，内层栈此时尚未排版；先排完导航内待定的布局再读几何。
+        // 不放进 performWithoutAnimation：宿主在动画块里排版时，这些变化随宿主动画。
+        DKChatTopLayoutPending(carrier);
         [UIView performWithoutAnimation:^{
             [layout reset];
-            UIView *carrier = bar.contentView;
             [layout allowOverflow:bar];
             [layout allowOverflow:carrier];
             [store clearBackingOfView:bar];
@@ -648,6 +658,21 @@ static void DKChatTopPageSync(UIViewController *host) {
 %hook AWEIMMessageListNaviBarTitleView
 - (void)layoutSubviews { %orig; DKChatTopSyncAncestorBar(self); }
 %end
+// 标题视图下的头像栈与信息栈：昵称、火花、在线状态的尺寸与显隐变化都会让这两层栈重排，标题视图自身不一定重排。
+%hook UIStackView
+- (void)layoutSubviews {
+    %orig;
+    if ([self.superview isKindOfClass:gDKChatTitleViewClass]) DKChatTopSyncAncestorBar(self);
+}
+%end
+// 火花提示结束时原生只改状态、不重算尺寸，宽度停在提示态；状态变化后重算，标题栈随之重排。
+%hook AWEIMStreakFlameView
+- (void)setIsAnimationPlaying:(BOOL)playing {
+    BOOL changed = self.isAnimationPlaying != playing;
+    %orig;
+    if (changed) [self invalidateIntrinsicContentSize];
+}
+%end
 %hook DKChatGroupEntryBar
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)path {
     %orig;
@@ -685,6 +710,7 @@ static void DKChatTopPageSync(UIViewController *host) {
 
 %ctor {
     gDKChatNaviComponents = [NSHashTable weakObjectsHashTable];
+    gDKChatTitleViewClass = NSClassFromString(@"AWEIMMessageListNaviBarTitleView");
     DKSettingsRegister(DKKeyChatTopBlur, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeSwitch(DKKeyChatTopBlur, @"顶部渐变模糊",
             @"消息滑到聊天页顶部时逐渐模糊：从顶栏胶囊底边开始向上加深，居中显示头像时从名称胶囊底边开始；群功能栏不在模糊范围内。");
