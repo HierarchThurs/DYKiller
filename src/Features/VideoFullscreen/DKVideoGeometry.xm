@@ -17,6 +17,7 @@
 
 #import "DouyinHeaders.h"
 #import "DKVideoFullscreen.h"
+#import "DKDoubleColumnFeed.h"
 #import "DKPlaybackOverlay.h"
 #import "DKTabBarBackdrop.h"
 #import "DKTabBarPageImmersion.h"
@@ -190,6 +191,7 @@ static CGRect DKAdjustFrame(UIView *view, CGRect frame) {
         return DKSettingsOnChange(item, ^{
             DKTabBarBackdropSetNeedsUpdate();
             DKTabBarPageImmersionSetNeedsUpdate();
+            DKDoubleColumnImmersionSetNeedsUpdate();
             DKPlaybackOverlayRefresh();
             DKProgressUnderlineRefresh();
             if (DKVideoFullscreenOn()) return;

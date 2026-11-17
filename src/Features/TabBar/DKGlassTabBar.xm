@@ -16,6 +16,7 @@
 
 #import "DKGlassTabBar.h"
 #import "DKGlassPadElements.h"
+#import "DKDoubleColumnFeed.h"
 #import "DKPlaybackOverlay.h"
 #import "DKAudioVisualizer.h"
 #import "DKPlusIcon.h"
@@ -1467,6 +1468,7 @@ UIView *DKGlassTabBarCollapsedHitView(void) {
             // 玻璃接管与否决定抖音底栏背景归谁管，背景让位与底栏页面沉浸跟着重判。
             DKTabBarBackdropSetNeedsUpdate();
             DKTabBarPageImmersionSetNeedsUpdate();
+            DKDoubleColumnImmersionSetNeedsUpdate();
             DKPlaybackOverlayRefresh();
             AWENormalModeTabBar *bar = gDouyinBar;
             if (@available(iOS 26.0, *)) {

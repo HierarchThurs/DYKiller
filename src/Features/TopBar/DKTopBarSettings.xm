@@ -4,6 +4,7 @@
 //
 
 #import "DouyinHeaders.h"
+#import "DKDoubleColumnFeed.h"
 #import "DKKeys.h"
 #import "DKSettings.h"
 #import "DKTopBarAlpha.h"
@@ -20,6 +21,7 @@ static AWESettingItemModel *DKTopBarGlassSizeItem(NSString *key, NSString *title
     DKSettingsRegister(DKKeyTopBarGlass, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeGlassChoice(DKKeyTopBarGlass, DKKeyTopBarGlassClear, @"顶栏液态玻璃", ^{
             DKTopBarGlassRefresh();
+            DKDoubleColumnImmersionSetNeedsUpdate();
         });
         return DKSettingsWithInfo(item,
             @"首页顶栏的左侧栏与搜索入口改为圆形按钮，频道放进一条长胶囊：左右滑动浏览频道，点按切换；"

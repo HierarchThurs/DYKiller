@@ -31,7 +31,7 @@ static char kDKMallBottomConstantKey;
 static char kDKProfileStickBottomInsetKey;
 static char kDKProfileImmersionStateKey;
 
-static BOOL DKBottomImmersionActive(void) {
+BOOL DKTabBarPageImmersionActive(void) {
     return DKGlassTabBarActive() || DKVideoFullscreenOn();
 }
 
@@ -77,7 +77,7 @@ static void DKMallSyncBottomImmersion(AWEECMallBaseViewController *vc) {
     if (!savedConstant) return;
 
     // 约束常量改动后由 Auto Layout 排入下一轮布局，不在布局回调里强制重排。
-    CGFloat targetConstant = DKBottomImmersionActive() ? 0.0 : savedConstant.doubleValue;
+    CGFloat targetConstant = DKTabBarPageImmersionActive() ? 0.0 : savedConstant.doubleValue;
     if (fabs(bottomConstraint.constant - targetConstant) > 0.01) {
         bottomConstraint.constant = targetConstant;
     }
@@ -106,7 +106,7 @@ static void DKProfileSyncStickInset(AWEProfileBaseContainerViewController *vc, U
     }
     if (!savedBottom) return;
 
-    CGFloat targetBottom = DKBottomImmersionActive() ? 0.0 : savedBottom.doubleValue;
+    CGFloat targetBottom = DKTabBarPageImmersionActive() ? 0.0 : savedBottom.doubleValue;
     if (fabs(insets.bottom - targetBottom) > 0.01) {
         insets.bottom = targetBottom;
         collectionView.contentInset = insets;
@@ -124,7 +124,7 @@ static void DKProfileSyncContainer(AWEProfileBaseContainerViewController *vc) {
 
     DKProfileSyncStickInset(vc, stickCV);
 
-    BOOL active = DKBottomImmersionActive();
+    BOOL active = DKTabBarPageImmersionActive();
     NSNumber *lastState = objc_getAssociatedObject(vc, &kDKProfileImmersionStateKey);
     AWETabContainerSectionController *tabSection =
         [vc respondsToSelector:@selector(tabContainerSectionController)] ? vc.tabContainerSectionController : nil;
@@ -191,7 +191,7 @@ NSString *DKTabBarPageImmersionStatus(void) {
     NSMutableString *out = [NSMutableString string];
     [out appendFormat:@"玻璃底栏=%@ 视频全屏=%@ → 底部页面沉浸=%@\n",
         DKGlassTabBarActive() ? @"开" : @"关", DKVideoFullscreenOn() ? @"开" : @"关",
-        DKBottomImmersionActive() ? @"开" : @"关"];
+        DKTabBarPageImmersionActive() ? @"开" : @"关"];
     for (AWEECMallBaseViewController *mallVC in [gMallControllers allObjects]) {
         UIView *hostView = mallVC.isViewLoaded ? mallVC.view : nil;
         UIView *mallView = (mallVC.mallMainVC && mallVC.mallMainVC.isViewLoaded) ? mallVC.mallMainVC.view : nil;
@@ -257,7 +257,7 @@ NSString *DKTabBarPageImmersionStatus(void) {
 
 - (double)heightForSectionController:(id)sectionController {
     DKProfileTrackContainer(self);
-    if (!DKBottomImmersionActive() || !self.isInUserHomePage || self.isInLandingPage) {
+    if (!DKTabBarPageImmersionActive() || !self.isInUserHomePage || self.isInLandingPage) {
         return %orig;
     }
     self.isInUserHomePage = NO;

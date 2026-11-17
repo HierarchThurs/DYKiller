@@ -14,6 +14,9 @@
 extern "C" {
 #endif
 
+/// 页面内容是否延伸到底栏下方：悬浮玻璃底栏或视频全屏任一开启。
+BOOL DKTabBarPageImmersionActive(void);
+
 /// 视频全屏或玻璃底栏开关变了，在下一轮主线程把见过的页面按当前状态重判；同一轮多次调用只跑一次。
 void DKTabBarPageImmersionSetNeedsUpdate(void);
 
