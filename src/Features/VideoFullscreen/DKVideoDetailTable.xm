@@ -21,9 +21,35 @@ static DKDetailHeightStats gDKDetailFixedStats = {};
 static DKDetailHeightStats gDKDetailIndexStats = {};
 static DKDetailHeightStats gDKDetailRowStats = {};
 
+@interface DKDetailTableReference : NSObject
+@property (nonatomic, weak) UITableView *table;
+@end
+
+@implementation DKDetailTableReference
+@end
+
+static Class gDKLiveCardDataLayerClass;
+static char kDKLiveCardTableKey;
+
+static void DKBindLiveCardTable(AWEAwemeDetailTableViewController *controller, UITableView *table) {
+    if (!gDKLiveCardDataLayerClass || !table || !NSThread.isMainThread
+        || ![controller respondsToSelector:@selector(liveCardLayoutController)]) return;
+    AWELivePostWorkLiveCardLayoutController *layout = [controller liveCardLayoutController];
+    if (![layout respondsToSelector:@selector(dataLayer)]) return;
+    id dataLayer = [layout dataLayer];
+    if (![dataLayer isKindOfClass:gDKLiveCardDataLayerClass]) return;
+    DKDetailTableReference *reference = objc_getAssociatedObject(dataLayer, &kDKLiveCardTableKey);
+    if (!reference) {
+        reference = [DKDetailTableReference new];
+        objc_setAssociatedObject(dataLayer, &kDKLiveCardTableKey, reference, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    reference.table = table;
+}
+
 static void DKPrepareDetailTable(AWEAwemeDetailTableViewController *controller,
                                  UITableView *table) {
     if (!DKVideoFullscreenOn()) return;
+    DKBindLiveCardTable(controller, table);
     gDKDetailPrepareRuns++;
     if (DKVideoFeedTablePrepareForController(controller, table)) {
         gDKDetailPrepareChanges++;
@@ -31,10 +57,7 @@ static void DKPrepareDetailTable(AWEAwemeDetailTableViewController *controller,
 }
 
 // 仅统一已接管表中的整页行高；原生特殊行、自动尺寸和未就绪尺寸继续使用原返回值。
-static double DKDetailRowHeight(UITableView *table, double nativeHeight,
-                                DKDetailHeightStats *stats) {
-    if (!DKVideoFullscreenOn() || !NSThread.isMainThread) return nativeHeight;
-    stats->runs++;
+static double DKDetailFullPageHeight(UITableView *table, double nativeHeight, BOOL alignTarget) {
     NSNumber *original = DKVideoFeedTableOriginalHeight(table);
     CGFloat target = CGRectGetHeight(table.bounds);
     if (!original || !isfinite(nativeHeight) || !isfinite(target)
@@ -42,11 +65,19 @@ static double DKDetailRowHeight(UITableView *table, double nativeHeight,
         return nativeHeight;
     }
     if (fabs(nativeHeight - original.doubleValue) > kDKDetailHeightTolerance
-        && fabs(nativeHeight - target) > kDKDetailHeightTolerance) {
+        && (!alignTarget || fabs(nativeHeight - target) > kDKDetailHeightTolerance)) {
         return nativeHeight;
     }
-    if (fabs(nativeHeight - target) > kDKDetailHeightTolerance) stats->changes++;
     return target;
+}
+
+static double DKDetailRowHeight(UITableView *table, double nativeHeight,
+                                DKDetailHeightStats *stats) {
+    if (!DKVideoFullscreenOn() || !NSThread.isMainThread) return nativeHeight;
+    stats->runs++;
+    double height = DKDetailFullPageHeight(table, nativeHeight, YES);
+    if (fabs(nativeHeight - height) > kDKDetailHeightTolerance) stats->changes++;
+    return height;
 }
 
 NSString *DKVideoDetailTableStats(void) {
@@ -113,7 +144,28 @@ NSString *DKVideoDetailTableStats(void) {
 
 %end
 
+%group DKLiveCardNormalHeightHook
+
+%hook AWELivePostWorkLiveCardLayoutDataLayer
+
+- (double)normalHeight {
+    double height = %orig;
+    if (!DKVideoFullscreenOn() || !NSThread.isMainThread) return height;
+    DKDetailTableReference *reference = objc_getAssociatedObject(self, &kDKLiveCardTableKey);
+    return DKDetailFullPageHeight(reference.table, height, NO);
+}
+
+%end
+
+%end
+
 %ctor {
+    Class dataLayerClass = NSClassFromString(@"AWELivePostWorkLiveCardLayoutDataLayer");
+    if (class_getInstanceMethod(dataLayerClass, @selector(normalHeight))) {
+        gDKLiveCardDataLayerClass = dataLayerClass;
+        %init(DKLiveCardNormalHeightHook);
+    }
+
     Class controllerClass = NSClassFromString(@"AWEAwemeDetailTableViewController");
     SEL selectors[] = {
         @selector(setupDetailTableView), @selector(viewWillLayoutSubviews),
