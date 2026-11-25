@@ -27,7 +27,7 @@ static BOOL DKCollapseSupported(void) {
 DKTabBarCollapseSide DKTabBarCollapseCurrentSide(void) {
     if (!DKCollapseSupported()) return DKTabBarCollapseSideOff;
     NSInteger value = DKPrefInteger(DKKeyGlassTabBarCollapse);
-    if (value == DKTabBarCollapseSideLeft || value == DKTabBarCollapseSideRight) {
+    if (value >= DKTabBarCollapseSideLeft && value <= DKTabBarCollapseSideCenter) {
         return (DKTabBarCollapseSide)value;
     }
     return DKTabBarCollapseSideOff;
@@ -156,10 +156,11 @@ void DKTabBarCollapseDetach(void) {
 %ctor {
     DKSettingsRegister(DKKeyGlassTabBarCollapse, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeChoice(DKKeyGlassTabBarCollapse, @"动态收缩底栏",
-                                                 @[ @"关闭", @"左侧", @"右侧" ]);
+                                                 @[ @"关闭", @"左侧", @"右侧", @"中间" ]);
         DKSettingsOnChange(item, ^{ DKGlassTabBarRefresh(); });
         return DKSettingsWithInfo(item,
-            @"上滑时底栏收缩为一颗系统圆键，图标为当前页面；略微下滑或点圆键展开。"
+            @"上滑时底栏收缩为一颗系统圆键，可选左侧、右侧或屏幕水平中心。"
+            @"圆键显示当前页面的图标，略微下滑或点圆键展开。"
             @"收缩后圆键以外的位置不拦截点击，拍摄键一起隐藏。需开启「悬浮玻璃底栏」，仅 iPhone 可用。");
     });
 

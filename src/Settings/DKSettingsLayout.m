@@ -376,6 +376,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyGlassTabBarCapsuleLength, @"ic_zoomoutrectangle_outlined"),
             DKRow(DKKeyGlassTabBarPlusSize, @"ic_camera_outlined"),
             DKRow(DKKeyGlassTabBarCollapse, @"ic_squaresplit_outlined_20"),
+            DKRow(DKKeyGlassTabBarCollapseHideDot, @"ic_bellslash_outlined"),
             DKRow(DKKeyGlassTabBarPadPosition, @"ic_squaresplit_outlined_20"),
         ]),
         DKSection(@"音频可视化", @[
@@ -425,6 +426,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
             DKRow(DKKeyProgressAlwaysVisible, @"ic_playertime_outlined_20"),
             DKRow(DKKeyProgressPlayedOnly, @"ic_playerarrow_outlined"),
             DKRow(DKKeyProgressTimeStyle, @"ic_clock_outlined_20"),
+            DKRow(DKKeyBlockFeedNowPlaying, @"ic_playbackquaver_outlined"),
             DKPage(@"发布时间与地区", @"ic_clock_outlined_20", @[
                 DKSection(@"显示内容", @[
                     DKRow(DKKeyPublishTimeEnabled, @"ic_clock_outlined_20"),
@@ -527,6 +529,7 @@ static NSArray<DKSettingsSection *> *DKBuildMain(void) {
     DKSettingsPage *tools = DKPage(@"插件工具", @"ic_gearsimplify_outlined_20", @[
         DKSection(@"快捷入口", @[
             DKRow(DKKeyProfileSettingsEntry, @"ic_gearsimplify_outlined_20"),
+            DKRow(DKKeyProfileSettingsEntryPosition, @"ic_location_outlined_20"),
             DKRow(DKKeyProfileSettingsEntryName, @"ic_text_outlined_20"),
         ]),
         DKSection(@"调试", @[
@@ -650,6 +653,7 @@ NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {
             DKKeyGlassTabBarCapsuleLength: @[ DKKeyGlassTabBar ],
             DKKeyGlassTabBarPlusSize:    @[ DKKeyGlassTabBar ],
             DKKeyGlassTabBarCollapse:    @[ DKKeyGlassTabBar ],
+            DKKeyGlassTabBarCollapseHideDot: @[ DKKeyGlassTabBarCollapse ],
             DKKeyAudioVizStyle:          @[ DKKeyAudioVizPosition ],
             DKKeyInnerNotiCorner:        @[ DKKeyInnerNotiGlass ],
             DKKeyChatTopCustomPage:      @[ DKKeyChatInputGlass ],
@@ -658,6 +662,7 @@ NSArray<NSString *> *DKSettingsLayoutRequires(NSString *key) {
             DKKeyChatTopStreakPosition:  @[ DKKeyChatTopCenter ],
             DKKeyChatTopOnlinePosition:  @[ DKKeyChatTopCenter ],
             DKKeyMinimumLikes:           @[ DKKeyFilterLowLikes ],
+            DKKeyProfileSettingsEntryPosition: @[ DKKeyProfileSettingsEntry ],
             DKKeyProfileSettingsEntryName: @[ DKKeyProfileSettingsEntry ],
             DKKeyDanmakuColorMode: @[ DKKeyDanmakuColorEnabled ],
             DKKeyDanmakuFixedColor: @[ DKKeyDanmakuColorEnabled ],
@@ -755,7 +760,6 @@ NSArray<DKSettingsBlocker *> *DKSettingsLayoutBlockers(NSString *key) {
             DKKeyTabTitleMall: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_mall"]),
             DKKeyTabTitleNotification: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_notification"]),
             DKKeyTabTitleProfile: DKTitleBlockers([DKKeyBottomBarHidePrefix stringByAppendingString:@"homepage_profile"]),
-            DKKeyProfileSettingsEntry: @[ DKBlockOn(DKKeyProfileRemoveServiceArea, @"主页功能区已在「个人主页精简」中移除") ],
             DKKeyChatTopOnlinePosition: @[ DKBlockOn(DKKeyChatRemoveOnline, @"在线状态已在「消息页精简」中移除") ],
             DKKeyChatGroupZoneNoAutoExpand: @[ DKBlockOn(DKKeyChatRemoveMenu, @"群功能栏已在「移除菜单按钮」中移除") ],
             DKKeyDanmakuFixedColor: @[ DKBlockNotEqual(DKKeyDanmakuColorMode, 0, @"当前颜色模式不是「固定颜色」") ],

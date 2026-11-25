@@ -14,6 +14,7 @@ typedef NS_ENUM(NSInteger, DKTabBarCollapseSide) {
     DKTabBarCollapseSideOff = 0,
     DKTabBarCollapseSideLeft = 1,
     DKTabBarCollapseSideRight = 2,
+    DKTabBarCollapseSideCenter = 3,
 };
 
 #ifdef __cplusplus

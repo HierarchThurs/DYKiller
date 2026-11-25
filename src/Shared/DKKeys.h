@@ -17,6 +17,7 @@
 
 // 首页、朋友页、好友聊天页、搜索页、其他用户作品页统一由这一个开关控制。
 static NSString *const DKKeyVideoFullscreen = @"DYKillerVideoFullscreen";
+static NSString *const DKKeyBlockFeedNowPlaying = @"DYKillerBlockFeedNowPlaying";
 
 #pragma mark - 功能组：评论区
 
@@ -80,6 +81,7 @@ static NSString *const DKKeyGlassTabBarClear = @"DYKillerGlassTabBarClear";
 static NSString *const DKKeyGlassTabBarPadPosition = @"DYKillerGlassTabBarPadPosition";
 // 底栏动态收缩（单选）：0 关闭 / 1 左侧 / 2 右侧；仅 iPhone 生效（见 DKTabBarCollapse.xm）
 static NSString *const DKKeyGlassTabBarCollapse = @"DYKillerGlassTabBarCollapse";
+static NSString *const DKKeyGlassTabBarCollapseHideDot = @"DYKillerGlassTabBarCollapseHideDot";
 // 悬浮玻璃底栏尺寸（百分比，100 为抖音默认效果）：胶囊等比缩放、胶囊长度、拍摄圆键直径，三者都以底边为锚。
 // 常规范围见 DKAdjustRange.m，开启「扩展所有缩放与位移」后放宽。
 static NSString *const DKKeyGlassTabBarCapsuleHeight = @"DYKillerGlassTabBarCapsuleHeight";
@@ -479,8 +481,10 @@ static NSString *const DKKeyAdjustRangeExtended = @"DYKillerAdjustRangeExtended"
 
 #pragma mark - 功能组：快捷入口
 
-// 个人主页功能区末尾的 DYKiller 设置入口（开关，只作用于自己的主页）。
+// 个人主页 DYKiller 设置入口总开关（只作用于自己的主页）。
 static NSString *const DKKeyProfileSettingsEntry     = @"DYKillerProfileSettingsEntry";
+// 入口位置（单选，整数）：0「功能区」/ 1「顶部」/ 2「顶部+功能区」。
+static NSString *const DKKeyProfileSettingsEntryPosition = @"DYKillerProfileSettingsEntryPosition";
 // 入口文字（单选，整数）：0「DYKiller」/ 1「插件设置」。
 static NSString *const DKKeyProfileSettingsEntryName = @"DYKillerProfileSettingsEntryName";
 

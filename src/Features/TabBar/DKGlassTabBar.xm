@@ -68,8 +68,8 @@ static const CGFloat kDKItemIconSide = 26.0;
 static const CGFloat kDKItemIconTextSide = 24.0;
 // 收缩后未读红点的直径（100% 时），随宿主视图一起缩放。
 static const CGFloat kDKCollapseDotSide = 10.0;
-// 红点圆心距圆键上边与右边的距离，与系统角标同心。
-static const CGPoint kDKCollapseDotCenterInset = {14.0, 11.0};
+// 按系统数字角标与图标的相对位置换算成 10pt 红点，偏移以图标边长为单位。
+static const CGPoint kDKCollapseDotIconOffsetRatio = {12.0 / 26.0, -11.0 / 26.0};
 static const CGFloat kDKItemIconTextGap = 2.0;
 static const CGFloat kDKItemCaptionFontSize = 10.0;
 // 标题图的最大宽度：相邻项间距只有 70pt，过宽会压到邻项，超出时缩字。
@@ -732,7 +732,7 @@ static NSString *DKGlassBadgeValue(id button) {
 }
 
 // badgeValue 交给系统渲染即得 iOS 26 悬浮胶囊里的原生红点，badgeColor 留 nil 用系统默认色。
-// 圆键上的系统角标始终隐藏（见 DKGlassPlaceCollapsePlatter），未读只显示红点。
+// 圆键上的系统角标始终隐藏（见 DKGlassPlaceCollapsePlatter），未读红点按设置显示。
 static void DKGlassSyncBadges(void) {
     NSUInteger count = MIN(gItemButtons.count, gBar.items.count);
     BOOL unread = NO;
@@ -743,7 +743,8 @@ static void DKGlassSyncBadges(void) {
         NSString *current = item.badgeValue;
         if (current != value && ![current isEqualToString:value]) item.badgeValue = value;
     }
-    gCollapseDot.hidden = !unread;
+    gCollapseDot.backgroundColor = [UIColor.systemRedColor resolvedColorWithTraitCollection:gBar.traitCollection];
+    gCollapseDot.hidden = !unread || DKPrefBool(DKKeyGlassTabBarCollapseHideDot);
 }
 
 #pragma mark - 内容镜像
@@ -1057,30 +1058,61 @@ NSString *DKGlassGeometryStatus(void) {
 // 圆键内容与角标是底板的嵌套类，按类名后缀区分。系统角标隐藏，未读由内容层里的红点表示：
 // 它随底板进入形变，直径由宿主变换带上底栏缩放。
 static void DKGlassPrepareCollapseContent(UIView *collapse) {
+    UIView *content = nil;
     for (UIView *subview in collapse.subviews) {
         NSString *name = NSStringFromClass(subview.class);
         if ([name hasSuffix:@"BadgeContainerView"]) {
             if (!subview.isHidden) subview.hidden = YES;
-        } else if ([name hasSuffix:@"ContentView"] && gCollapseDot.superview != subview) {
-            [subview addSubview:gCollapseDot];
+        } else if ([name hasSuffix:@"ContentView"]) {
+            content = subview;
         }
     }
-    CGRect dotFrame = CGRectMake(CGRectGetWidth(gCollapseFrame) - kDKCollapseDotCenterInset.x - kDKCollapseDotSide / 2.0,
-                                 kDKCollapseDotCenterInset.y - kDKCollapseDotSide / 2.0,
+    if (!content) return;
+    if (gCollapseDot.superview != content) [content addSubview:gCollapseDot];
+
+    CGRect iconFrame = CGRectZero;
+    for (UIView *button in content.subviews) {
+        if (![NSStringFromClass(button.class) isEqualToString:kDKTabButtonClass]) continue;
+        for (UIView *icon in button.subviews) {
+            if (![icon isKindOfClass:UIImageView.class] || CGRectIsEmpty(icon.bounds)) continue;
+            iconFrame = [icon convertRect:icon.bounds toView:content];
+            break;
+        }
+        if (!CGRectIsEmpty(iconFrame)) break;
+    }
+    if (CGRectIsEmpty(iconFrame)) {
+        CGRect circle = [collapse convertRect:collapse.bounds toView:content];
+        iconFrame = CGRectMake(CGRectGetMidX(circle) - kDKItemIconSide / 2.0,
+                               CGRectGetMidY(circle) - kDKItemIconSide / 2.0,
+                               kDKItemIconSide, kDKItemIconSide);
+    }
+    CGFloat iconSide = CGRectGetWidth(iconFrame);
+    CGRect dotFrame = CGRectMake(CGRectGetMidX(iconFrame) + kDKCollapseDotIconOffsetRatio.x * iconSide - kDKCollapseDotSide / 2.0,
+                                 CGRectGetMidY(iconFrame) + kDKCollapseDotIconOffsetRatio.y * iconSide - kDKCollapseDotSide / 2.0,
                                  kDKCollapseDotSide, kDKCollapseDotSide);
     if (!CGRectEqualToRect(gCollapseDot.frame, dotFrame)) gCollapseDot.frame = dotFrame;
 }
 
-// 圆键贴抖音底栏左端或右端，直径等于胶囊高度。写的是它在 UITabBar 内的真实位置，可以落在
-// UITabBar 之外：系统形变直接以它为终点，收缩与展开都不需要移动宿主视图。
+// 圆键直径等于胶囊高度。按档位确定圆键左缘在抖音底栏内的 x，再换算到 UITabBar 坐标，作为系统形变终点。
 // capsuleLeft 是胶囊左缘在抖音底栏内的 x，capsuleX 是胶囊左缘在 UITabBar 内的 x。
 static void DKGlassPlaceCollapsePlatter(UIView *collapse, CGFloat barWidth, CGFloat capsuleLeft,
                                         CGFloat capsuleX, CGFloat scale) {
     if (!collapse) return;
     CGFloat side = gMetrics.height;
-    CGFloat target = gHostSide == DKTabBarCollapseSideRight ? barWidth - gMetrics.inset - side * scale
-                                                            : gMetrics.inset;
-    gCollapseFrame = CGRectMake(capsuleX + (target - capsuleLeft) / scale, gMetrics.top, side, side);
+    CGFloat diameter = side * scale;
+    CGFloat targetX = gMetrics.inset;
+    switch (gHostSide) {
+        case DKTabBarCollapseSideRight:
+            targetX = barWidth - gMetrics.inset - diameter;
+            break;
+        case DKTabBarCollapseSideCenter:
+            targetX = (barWidth - diameter) / 2.0;
+            break;
+        case DKTabBarCollapseSideOff:
+        case DKTabBarCollapseSideLeft:
+            break;
+    }
+    gCollapseFrame = CGRectMake(capsuleX + (targetX - capsuleLeft) / scale, gMetrics.top, side, side);
     gCollapsePlatter = collapse;
     if (!CGRectEqualToRect(collapse.frame, gCollapseFrame)) collapse.frame = gCollapseFrame;
     DKGlassPrepareCollapseContent(collapse);
@@ -1274,7 +1306,6 @@ static void DKGlassMakeBar(DKTabBarCollapseSide side, CGRect frame) API_AVAILABL
     gBarHost.view.frame = frame;
     gBar = gBarHost.tabBar;
     gCollapseDot = [[UIView alloc] init];
-    gCollapseDot.backgroundColor = UIColor.systemRedColor;
     gCollapseDot.layer.cornerRadius = kDKCollapseDotSide / 2.0;
     gCollapseDot.userInteractionEnabled = NO;
     gCollapseDot.hidden = YES;
@@ -1482,6 +1513,12 @@ UIView *DKGlassTabBarCollapsedHitView(void) {
         return DKSettingsWithInfo(item,
             @"悬浮底栏、清屏按钮与长按倍速提示共用此材质；清屏按钮按原生分组悬浮，长视频的后退、暂停与前进共用胶囊。"
             @"模糊玻璃使用系统 Regular；清透玻璃显示更多背后视频细节。");
+    });
+
+    DKSettingsRegister(DKKeyGlassTabBarCollapseHideDot, ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeSwitch(DKKeyGlassTabBarCollapseHideDot, @"收缩后不显示未读红点",
+            @"开启后，底栏收缩成圆形按钮时不显示未读红点。底栏展开后，角标照常显示。");
+        return DKSettingsOnChange(item, ^{ DKGlassSyncBadges(); });
     });
 
     if (DKGlassOSAvailable()) {
