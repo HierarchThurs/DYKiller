@@ -85,10 +85,19 @@
 - (void)setBottomBarHidden:(BOOL)hidden;
 - (NSString *)realReferString;
 - (void)setupDetailTableView;
+- (id)liveCardLayoutController;
 - (double)fixedCellHeight;
 - (double)cellHeightAtIndex:(long long)index;
 - (double)contentOffsetYForCellAtIndex:(long long)index;
 - (void)adjustTableViewHeightForTargetIndex:(long long)index;
+@end
+
+@interface AWELivePostWorkLiveCardLayoutController : NSObject
+- (id)dataLayer;
+@end
+
+@interface AWELivePostWorkLiveCardLayoutDataLayer : NSObject
+- (double)normalHeight;
 @end
 
 @interface AWEAwemeIMDetailTableViewController : AWEAwemeDetailTableViewController   // 私信「分享视频」详情页专属表控制器（作用域判定用）
@@ -503,6 +512,21 @@
 @end
 
 #pragma mark - 播放体验功能组用到的类
+
+@interface AWEFeedBackgroundPlayManager : NSObject
+- (void)updateNowPlayingInfoPlayback;
+- (void)refreshNowPlayingInfo;
+- (void)refreshNowPlayingInfoIsForce:(BOOL)force;
+- (void)setNowPlayingInfo:(id)info;
+- (void)clearNowPlayingInfo;
+@end
+
+@interface AWEAwemeBackgroundPlayModule : NSObject
+- (void)refreshNowPlayingInfoIfNeeded;
+- (void)updateNowPlayingInfoAfterSetModel;
+- (void)updateNowPlayingInfoPlayback;
+- (BOOL)updateNowPlayingInfoWhenResiginActive;
+@end
 
 // 关联视频与同体系中长视频详情的原生双击入口。
 @interface AWERelatedVideoVideoPlayerViewController : UIViewController
