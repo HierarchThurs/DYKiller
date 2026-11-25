@@ -59,6 +59,7 @@ static char kDKChatGlassStoreKey;
 @property (nonatomic) UIUserInterfaceStyle style;
 @property (nonatomic) BOOL configured;
 @property (nonatomic, copy) NSArray<NSLayoutConstraint *> *pins;
+@property (nonatomic, strong) NSObject *retirement;
 @end
 @implementation DKChatGlassSlot
 @end
@@ -118,6 +119,7 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
     NSMutableArray<DKChatGlassMask *> *_masks;
     NSMutableSet *_wanted;
     BOOL _clear;
+    BOOL _animateSlotChanges;
     UIUserInterfaceStyle _style;
 }
 
@@ -134,6 +136,7 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
 + (void)removeStoreForOwner:(id)owner {
     DKChatGlassStore *store = [self storeForOwner:owner create:NO];
     if (!store || store.syncing) return;
+    for (DKChatGlassSlot *slot in store->_slots) slot.retirement = nil;
     [store beginWithClear:NO style:UIUserInterfaceStyleUnspecified];
     [store end];
     objc_setAssociatedObject(owner, &kDKChatGlassStoreKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -152,12 +155,17 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
 }
 
 - (void)beginWithClear:(BOOL)clear style:(UIUserInterfaceStyle)style {
+    [self beginWithClear:clear style:style animateSlotChanges:NO];
+}
+
+- (void)beginWithClear:(BOOL)clear style:(UIUserInterfaceStyle)style animateSlotChanges:(BOOL)animate {
     _syncing = YES;
     _clear = clear;
     _style = style;
+    _animateSlotChanges = animate;
     [_wanted removeAllObjects];
     [CATransaction begin];
-    [CATransaction setDisableActions:YES];
+    if (!animate) [CATransaction setDisableActions:YES];
 }
 
 - (void)end {
@@ -174,9 +182,13 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
         [_shadowBackings removeObject:backing];
     }
     for (DKChatGlassSlot *slot in _slots.copy) {
-        if ([_wanted containsObject:slot]) continue;
-        [slot.glass removeFromSuperview];
-        [_slots removeObject:slot];
+        if ([_wanted containsObject:slot] || slot.retirement) continue;
+        if (_animateSlotChanges) {
+            [self retireSlot:slot toFrame:slot.glass.frame];
+        } else {
+            [slot.glass removeFromSuperview];
+            [_slots removeObject:slot];
+        }
     }
     for (DKChatGlassMask *mask in _masks.copy) {
         if ([_wanted containsObject:mask]) continue;
@@ -275,6 +287,57 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
 
 #pragma mark 玻璃
 
+- (void)retireSlot:(DKChatGlassSlot *)slot toFrame:(CGRect)frame {
+    NSObject *retirement = [NSObject new];
+    slot.retirement = retirement;
+    slot.configured = NO;
+    __weak DKChatGlassStore *store = self;
+    [CATransaction begin];
+    [CATransaction setCompletionBlock:^{
+        // 动画完成前被重新声明的槽位继续使用同一块玻璃。
+        if (slot.retirement != retirement) return;
+        [slot.glass removeFromSuperview];
+        [store removeSlot:slot];
+    }];
+    if (!CGRectEqualToRect(slot.glass.frame, frame)) slot.glass.frame = frame;
+    [slot.glass applyEffect:nil];
+    [CATransaction commit];
+}
+
+- (void)removeSlot:(DKChatGlassSlot *)slot {
+    [_slots removeObject:slot];
+}
+
+- (DKChatGlassSlot *)existingSlotForSource:(UIView *)source {
+    if (!source) return nil;
+    for (DKChatGlassSlot *slot in _slots) if (slot.source == source) return slot;
+    return nil;
+}
+
+- (BOOL)moveSlotFromSource:(UIView *)source toSource:(UIView *)destination {
+    DKChatGlassSlot *slot = [self existingSlotForSource:source];
+    if (!destination || !slot || slot.retirement) return NO;
+    if (source == destination) return YES;
+    DKChatGlassSlot *previous = [self existingSlotForSource:destination];
+    if (previous && !previous.retirement) return NO;
+    previous.source = nil;
+    previous.glass.flexSourceView = nil;
+    slot.source = destination;
+    slot.glass.flexSourceView = destination;
+    return YES;
+}
+
+- (void)prepareGlassFor:(UIView *)source in:(UIView *)carrier fromFrame:(CGRect)frame {
+    if (!_animateSlotChanges || !source || !carrier || CGRectIsEmpty(frame) || !DKChatRectIsFinite(frame)) return;
+    if (![self existingSlotForSource:source]) [self slotForSource:source in:carrier initialFrame:frame];
+}
+
+- (void)retireGlassFor:(UIView *)source toFrame:(CGRect)frame {
+    if (!_animateSlotChanges || CGRectIsEmpty(frame) || !DKChatRectIsFinite(frame)) return;
+    DKChatGlassSlot *slot = [self existingSlotForSource:source];
+    if (slot && !slot.retirement) [self retireSlot:slot toFrame:frame];
+}
+
 - (UIVisualEffectView *)placeGlassFor:(UIView *)source
                                    in:(UIView *)carrier
                                 frame:(CGRect)frame
@@ -283,7 +346,7 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
                           interactive:(BOOL)interactive
                                  tint:(UIColor *)tint {
     if (!source || !carrier || CGRectIsEmpty(frame) || !DKChatRectIsFinite(frame)) return nil;
-    DKChatGlassSlot *slot = [self slotForSource:source in:carrier];
+    DKChatGlassSlot *slot = [self slotForSource:source in:carrier initialFrame:_animateSlotChanges ? frame : CGRectZero];
     if (!CGRectEqualToRect(slot.glass.frame, frame)) slot.glass.frame = frame;
     [self configureSlot:slot shape:shape radius:radius interactive:interactive tint:tint];
     return slot.glass;
@@ -296,7 +359,7 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
                         interactive:(BOOL)interactive
                         constraints:(NSArray<NSLayoutConstraint *> *(^)(UIView *glass))constraints {
     if (!source || !carrier) return nil;
-    DKChatGlassSlot *slot = [self slotForSource:source in:carrier];
+    DKChatGlassSlot *slot = [self slotForSource:source in:carrier initialFrame:CGRectZero];
     // 约束另一端的视图被宿主移出层级时约束随之失效，下一轮重新贴上。
     BOOL pinned = slot.pins.count > 0;
     for (NSLayoutConstraint *pin in slot.pins) pinned = pinned && pin.active;
@@ -310,9 +373,9 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
     return slot.glass;
 }
 
-- (DKChatGlassSlot *)slotForSource:(UIView *)source in:(UIView *)carrier {
-    DKChatGlassSlot *slot = nil;
-    for (DKChatGlassSlot *item in _slots) if (item.source == source) { slot = item; break; }
+- (DKChatGlassSlot *)slotForSource:(UIView *)source in:(UIView *)carrier initialFrame:(CGRect)frame {
+    DKChatGlassSlot *slot = [self existingSlotForSource:source];
+    BOOL created = !slot;
     if (!slot) {
         slot = [DKChatGlassSlot new];
         slot.source = source;
@@ -321,8 +384,16 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
         slot.glass.flexSourceView = source;
         [_slots addObject:slot];
     }
+    slot.retirement = nil;
     [_wanted addObject:slot];
-    if (!DKChatGlassSitsAtBack(slot.glass, carrier)) [carrier insertSubview:slot.glass atIndex:0];
+    if (created && _animateSlotChanges) {
+        [UIView performWithoutAnimation:^{
+            slot.glass.frame = frame;
+            [carrier insertSubview:slot.glass atIndex:0];
+        }];
+    } else if (!DKChatGlassSitsAtBack(slot.glass, carrier)) {
+        [carrier insertSubview:slot.glass atIndex:0];
+    }
     return slot;
 }
 
@@ -351,7 +422,11 @@ static BOOL DKChatGlassSitsAtBack(UIView *glass, UIView *carrier) {
         UIGlassEffect *effect = [UIGlassEffect effectWithStyle:_clear ? UIGlassEffectStyleClear : UIGlassEffectStyleRegular];
         effect.interactive = interactive;
         effect.tintColor = tint ?: (_clear ? DKGlassTintForStyle(_style) : nil);
-        [UIView performWithoutAnimation:^{ [glass applyEffect:effect]; }];
+        if (_animateSlotChanges && !slot.configured) {
+            [glass applyEffect:effect];
+        } else {
+            [UIView performWithoutAnimation:^{ [glass applyEffect:effect]; }];
+        }
     }
     slot.configured = YES;
 }

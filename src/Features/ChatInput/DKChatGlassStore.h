@@ -33,6 +33,9 @@ API_AVAILABLE(ios(26.0))
 /// 开始一轮声明，材质两档与深浅色对本轮所有玻璃生效。
 - (void)beginWithClear:(BOOL)clear style:(UIUserInterfaceStyle)style;
 
+/// 在调用方的 UIView 动画内同步几何，并为新增和退场的槽位切换材质。
+- (void)beginWithClear:(BOOL)clear style:(UIUserInterfaceStyle)style animateSlotChanges:(BOOL)animate;
+
 /// 结束本轮：撤掉没再声明的玻璃与 mask，还原没再声明的底色。
 - (void)end;
 
@@ -58,6 +61,15 @@ API_AVAILABLE(ios(26.0))
                                radius:(CGFloat)radius
                           interactive:(BOOL)interactive
                                  tint:(UIColor *)tint;
+
+/// 将已有槽位交给新来源，保留玻璃对象与当前几何。
+- (BOOL)moveSlotFromSource:(UIView *)source toSource:(UIView *)destination;
+
+/// 在动画轮次为新槽位设定入场起点，随后用 placeGlassFor: 声明终点。
+- (void)prepareGlassFor:(UIView *)source in:(UIView *)carrier fromFrame:(CGRect)frame;
+
+/// 在动画轮次将玻璃移向指定矩形，同时撤去材质，动画结束后移除。
+- (void)retireGlassFor:(UIView *)source toFrame:(CGRect)frame;
 
 /// 声明一块由约束定位的玻璃：挂在 carrier 最底层，constraints 在 glass 已挂到 carrier 后调用，只在约束尚未生效时激活，之后随宿主布局与动画同步移动。约束涉及的视图必须已在同一层级内。
 - (UIVisualEffectView *)pinGlassFor:(UIView *)source
