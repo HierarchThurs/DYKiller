@@ -7,8 +7,7 @@
 //     分区最后一项补满本行剩余宽度，流式布局不会把不满的一行拉开或居中。
 //   - 每格仍是原生行 cell：配置时记下序号、项数与列数，布局后把行内卡片层（contentShapeLayer）
 //     改成该格在分区卡片里的那一块（外角圆角），隐藏行间分割线。
-//   - 每行 2 个：原生「图标在左、文字在右」排布不动；每行 3–4 个：图标与文字用 transform 移到格子中央，
-//     图标在上、文字在下（行内容由 Auto Layout 管，只叠加 transform）。
+//   - 二列沿用横排，补宽格的内容整体居中；三、四列将图标与文字上下排列，文字宽度由原生边距约束控制。
 //   - 「分享面板液态玻璃」开启时卡片层左右各让 3pt，玻璃按卡片层几何挂成一格一枚；
 //     本文件的布局钩子先于分享面板玻璃安装（源文件按路径排序，LongPressMenu 在 Share 之前），
 //     玻璃读到的是改过的卡片层。
@@ -29,12 +28,31 @@ static const CGFloat kDKCommentCardRadius = 8.0;
 static const CGFloat kDKCommentTileHeight = 73.0;
 static const CGFloat kDKCommentTileTop = 12.0;
 static const CGFloat kDKCommentTileGap = 6.0;
-static const CGFloat kDKCommentTileFont = 13.0;
+static const CGFloat kDKCommentLabelInset = 4.0;
+static const CGFloat kDKCommentLabelMinScale = 0.75;
 static const CGFloat kDKCommentGlassGap = 3.0;
 
 static char kDKGridInfoKey;        // NSArray @[序号, 项数, 列数]
 static char kDKGridAdjustedKey;    // 本 cell 上改过的视图与层
-static char kDKGridFontKey;        // 文字原字体
+static char kDKGridLabelKey;       // 文字原排版
+
+@interface DKCommentGridLabelState : NSObject
+@property (nonatomic, weak) UILabel *label;
+@property (nonatomic, weak) NSLayoutConstraint *leading;
+@property (nonatomic, weak) NSLayoutConstraint *trailing;
+@property (nonatomic) CGFloat nativeLeading;
+@property (nonatomic) CGFloat nativeTrailing;
+@property (nonatomic) CGFloat appliedLeading;
+@property (nonatomic) CGFloat appliedTrailing;
+@property (nonatomic) NSInteger lines;
+@property (nonatomic) NSTextAlignment alignment;
+@property (nonatomic) NSLineBreakMode lineBreakMode;
+@property (nonatomic) BOOL adjustsFontSize;
+@property (nonatomic) CGFloat minimumScale;
+@end
+
+@implementation DKCommentGridLabelState
+@end
 
 @interface DKCommentGridSection : NSObject
 - (NSInteger)numberOfItems;
@@ -92,23 +110,92 @@ static NSMutableDictionary *DKGridAdjusted(UIView *cell, BOOL create) {
     NSMutableDictionary *adjusted = objc_getAssociatedObject(cell, &kDKGridAdjustedKey);
     if (!adjusted && create) {
         adjusted = [NSMutableDictionary dictionary];
-        adjusted[@"views"] = [NSHashTable weakObjectsHashTable];
+        adjusted[@"views"] = [NSMapTable weakToStrongObjectsMapTable];
         adjusted[@"layers"] = [NSHashTable weakObjectsHashTable];
         objc_setAssociatedObject(cell, &kDKGridAdjustedKey, adjusted, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return adjusted;
 }
 
+static void DKGridRestoreLabel(UIView *cell, DKCommentGridLabelState *state) {
+    if (!state) return;
+    NSLayoutConstraint *leading = state.leading;
+    NSLayoutConstraint *trailing = state.trailing;
+    if (leading.constant == state.appliedLeading) leading.constant = state.nativeLeading;
+    if (trailing.constant == state.appliedTrailing) trailing.constant = state.nativeTrailing;
+
+    UILabel *label = state.label;
+    label.numberOfLines = state.lines;
+    label.textAlignment = state.alignment;
+    label.lineBreakMode = state.lineBreakMode;
+    label.adjustsFontSizeToFitWidth = state.adjustsFontSize;
+    label.minimumScaleFactor = state.minimumScale;
+    objc_setAssociatedObject(cell, &kDKGridLabelKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 static void DKGridRestoreCell(UIView *cell) {
     NSMutableDictionary *adjusted = DKGridAdjusted(cell, NO);
     if (!adjusted) return;
-    for (UIView *view in [adjusted[@"views"] allObjects]) view.transform = CGAffineTransformIdentity;
+    NSMapTable<UIView *, NSValue *> *views = adjusted[@"views"];
+    for (UIView *view in views) view.transform = [views objectForKey:view].CGAffineTransformValue;
     for (CALayer *layer in [adjusted[@"layers"] allObjects]) layer.hidden = NO;
-    UILabel *label = DKCellIvar(cell, "$__lazy_storage_$_contentLabel");
-    UIFont *font = objc_getAssociatedObject(cell, &kDKGridFontKey);
-    if ([label isKindOfClass:UILabel.class] && font) label.font = font;
-    objc_setAssociatedObject(cell, &kDKGridFontKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    DKGridRestoreLabel(cell, objc_getAssociatedObject(cell, &kDKGridLabelKey));
     objc_setAssociatedObject(cell, &kDKGridAdjustedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static BOOL DKGridPrepareLabel(UIView *cell, UILabel *label, CGRect card) {
+    UIView *parent = label.superview;
+    DKCommentGridLabelState *state = objc_getAssociatedObject(cell, &kDKGridLabelKey);
+    NSLayoutConstraint *leading = state.leading;
+    NSLayoutConstraint *trailing = state.trailing;
+    if (state.label != label || !leading.active || !trailing.active
+        || leading.secondItem != parent || trailing.secondItem != parent) {
+        DKGridRestoreLabel(cell, state);
+        leading = nil;
+        trailing = nil;
+        for (NSLayoutConstraint *constraint in parent.constraints) {
+            if (constraint.firstItem != label || constraint.secondItem != parent || constraint.multiplier != 1) continue;
+            NSLayoutAttribute edge = constraint.firstAttribute;
+            NSLayoutAttribute anchor = constraint.secondAttribute;
+            if ((edge == NSLayoutAttributeLeft || edge == NSLayoutAttributeLeading)
+                && (anchor == NSLayoutAttributeLeft || anchor == NSLayoutAttributeLeading)
+                && constraint.relation == NSLayoutRelationEqual) leading = constraint;
+            if ((edge == NSLayoutAttributeTrailing || edge == NSLayoutAttributeRight)
+                && (anchor == NSLayoutAttributeTrailing || anchor == NSLayoutAttributeRight)
+                && constraint.relation == NSLayoutRelationLessThanOrEqual) trailing = constraint;
+        }
+        if (!leading || !trailing) return NO;
+
+        state = [DKCommentGridLabelState new];
+        state.label = label;
+        state.leading = leading;
+        state.trailing = trailing;
+        state.nativeLeading = leading.constant;
+        state.nativeTrailing = trailing.constant;
+        state.appliedLeading = leading.constant;
+        state.appliedTrailing = trailing.constant;
+        state.lines = label.numberOfLines;
+        state.alignment = label.textAlignment;
+        state.lineBreakMode = label.lineBreakMode;
+        state.adjustsFontSize = label.adjustsFontSizeToFitWidth;
+        state.minimumScale = label.minimumScaleFactor;
+        objc_setAssociatedObject(cell, &kDKGridLabelKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    // 宿主再次写入边距时，以该值作为下一次归还的基线。
+    if (leading.constant != state.appliedLeading) state.nativeLeading = leading.constant;
+    if (trailing.constant != state.appliedTrailing) state.nativeTrailing = trailing.constant;
+    CGRect localCard = [parent convertRect:card fromView:cell];
+    state.appliedLeading = CGRectGetMinX(localCard) - CGRectGetMinX(parent.bounds) + kDKCommentLabelInset;
+    state.appliedTrailing = CGRectGetMaxX(localCard) - CGRectGetMaxX(parent.bounds) - kDKCommentLabelInset;
+    if (leading.constant != state.appliedLeading) leading.constant = state.appliedLeading;
+    if (trailing.constant != state.appliedTrailing) trailing.constant = state.appliedTrailing;
+    if (label.numberOfLines != 1) label.numberOfLines = 1;
+    if (label.textAlignment != NSTextAlignmentCenter) label.textAlignment = NSTextAlignmentCenter;
+    if (label.lineBreakMode != NSLineBreakByTruncatingTail) label.lineBreakMode = NSLineBreakByTruncatingTail;
+    if (!label.adjustsFontSizeToFitWidth) label.adjustsFontSizeToFitWidth = YES;
+    if (label.minimumScaleFactor != kDKCommentLabelMinScale) label.minimumScaleFactor = kDKCommentLabelMinScale;
+    [parent layoutIfNeeded];
+    return YES;
 }
 
 static BOOL DKCommentGlassActive(void) {
@@ -154,16 +241,22 @@ static CGRect DKGridPlainFrame(UIView *view, UIView *cell) {
     return [view.superview convertRect:frame toView:cell];
 }
 
-static void DKGridMove(UIView *view, CGPoint target, UIView *cell, CGFloat scale, NSMutableDictionary *adjusted) {
+static void DKGridMove(UIView *view, CGPoint target, UIView *cell, NSMutableDictionary *adjusted) {
     if (!view.superview) return;
-    CGPoint center = [view.superview convertPoint:view.center toView:cell];
-    CGAffineTransform transform = CGAffineTransformMakeTranslation(target.x - center.x, target.y - center.y);
-    if (scale < 1.0) transform = CGAffineTransformScale(transform, scale, scale);
+    NSMapTable<UIView *, NSValue *> *views = adjusted[@"views"];
+    NSValue *base = [views objectForKey:view];
+    if (!base) {
+        base = [NSValue valueWithCGAffineTransform:view.transform];
+        [views setObject:base forKey:view];
+    }
+    CGPoint localTarget = [view.superview convertPoint:target fromView:cell];
+    CGAffineTransform transform = base.CGAffineTransformValue;
+    transform.tx = localTarget.x - view.center.x;
+    transform.ty = localTarget.y - view.center.y;
     if (!CGAffineTransformEqualToTransform(view.transform, transform)) view.transform = transform;
-    [adjusted[@"views"] addObject:view];
 }
 
-// 每行 3–4 个：图标（连同套在它外面的彩环）移到格子上部中央，文字缩小后放在图标下方，红点贴图标右上。
+// 三、四列：图标和彩环移到卡片上部中央，单行文字按可用宽度放在下方，红点贴图标右上。
 static void DKGridStackContent(UIView *cell, CGRect tile, NSMutableDictionary *adjusted) {
     UIView *main = DKCellIvar(cell, "$__lazy_storage_$_mainView");
     UIView *icon = DKCellIvar(cell, "$__lazy_storage_$_iconImage");
@@ -171,12 +264,10 @@ static void DKGridStackContent(UIView *cell, CGRect tile, NSMutableDictionary *a
     UIView *dot = DKCellIvar(cell, "$__lazy_storage_$_redDot");
     if (![main isKindOfClass:UIView.class] || ![icon isKindOfClass:UIView.class] || ![label isKindOfClass:UILabel.class]) return;
 
-    if (!objc_getAssociatedObject(cell, &kDKGridFontKey) && label.font) {
-        objc_setAssociatedObject(cell, &kDKGridFontKey, label.font, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!DKGridPrepareLabel(cell, label, tile)) {
+        DKGridRestoreCell(cell);
+        return;
     }
-    UIFont *original = objc_getAssociatedObject(cell, &kDKGridFontKey);
-    UIFont *small = [original fontWithSize:MIN(original.pointSize, kDKCommentTileFont)];
-    if (small && ![label.font isEqual:small]) label.font = small;
 
     CGSize iconSize = icon.bounds.size;
     CGPoint iconTarget = CGPointMake(CGRectGetMidX(tile), CGRectGetMinY(tile) + kDKCommentTileTop + iconSize.height / 2.0);
@@ -188,50 +279,67 @@ static void DKGridStackContent(UIView *cell, CGRect tile, NSMutableDictionary *a
         CGRect frame = DKGridPlainFrame(view, cell);
         if (view != icon && !CGRectIntersectsRect(CGRectInset(frame, -2.0, -2.0), iconFrame)) continue;
         CGPoint center = [view.superview convertPoint:view.center toView:cell];
-        DKGridMove(view, CGPointMake(center.x + delta.x, center.y + delta.y), cell, 1.0, adjusted);
+        DKGridMove(view, CGPointMake(center.x + delta.x, center.y + delta.y), cell, adjusted);
     }
 
     CGSize labelSize = label.bounds.size;
-    CGFloat room = CGRectGetWidth(tile) - 8.0;
-    CGFloat scale = labelSize.width > room && labelSize.width > 0 ? room / labelSize.width : 1.0;
     CGPoint labelTarget = CGPointMake(CGRectGetMidX(tile),
                                       iconTarget.y + iconSize.height / 2.0 + kDKCommentTileGap + labelSize.height / 2.0);
-    DKGridMove(label, labelTarget, cell, scale, adjusted);
+    DKGridMove(label, labelTarget, cell, adjusted);
     if ([dot isKindOfClass:UIView.class]) {
         CGPoint dotTarget = CGPointMake(iconTarget.x + iconSize.width / 2.0 + CGRectGetWidth(dot.bounds) / 2.0,
                                         iconTarget.y - iconSize.height / 2.0);
-        DKGridMove(dot, dotTarget, cell, 1.0, adjusted);
+        DKGridMove(dot, dotTarget, cell, adjusted);
     }
 }
 
 static void DKGridLayoutCell(UIView *cell) {
     DKGridSlot slot;
-    if (!DKGridSlotFrom(objc_getAssociatedObject(cell, &kDKGridInfoKey), &slot)) {
-        DKGridRestoreCell(cell);
-        return;
-    }
+    if (!DKGridSlotFrom(objc_getAssociatedObject(cell, &kDKGridInfoKey), &slot)) return;
     CGFloat containerWidth = CGRectGetWidth(cell.superview.bounds);
     if (containerWidth < 100.0) return;
     CGRect bounds = cell.bounds;
     CGFloat left = slot.column == 0 ? kDKCommentCardInset : 0.0;
     CGFloat right = DKGridReachesRight(slot) ? kDKCommentCardInset : 0.0;
     CGRect card = CGRectMake(left, 0.0, CGRectGetWidth(bounds) - left - right, CGRectGetHeight(bounds));
-    CGFloat column = DKGridColumnWidth(containerWidth, slot.columns);
-    CGRect tile = CGRectMake(left, 0.0, slot.column == slot.columns - 1 ? CGRectGetWidth(card) : column,
-                             CGRectGetHeight(bounds));
 
     NSMutableDictionary *adjusted = DKGridAdjusted(cell, YES);
     DKGridShapeCard(cell, slot, card, adjusted);
     if (slot.columns > 2) {
-        DKGridStackContent(cell, tile, adjusted);
+        DKGridStackContent(cell, card, adjusted);
         return;
     }
-    // 每行 2 个：原生内容区按整行内缩 16pt，右列要左移到格子左缘，图标与左列同样距格子左缘 16pt。
+    // 二列保留原生横排；补宽的尾格按可见内容整体居中。
     UIView *main = DKCellIvar(cell, "$__lazy_storage_$_mainView");
     if (![main isKindOfClass:UIView.class]) return;
+    [main layoutIfNeeded];
     CGRect frame = DKGridPlainFrame(main, cell);
     CGPoint center = [main.superview convertPoint:main.center toView:cell];
-    DKGridMove(main, CGPointMake(center.x + CGRectGetMinX(tile) - CGRectGetMinX(frame), center.y), cell, 1.0, adjusted);
+    CGFloat offset = CGRectGetMinX(card) - CGRectGetMinX(frame);
+    if (slot.last && slot.column < slot.columns - 1) {
+        CGRect content = CGRectNull;
+        const char *ivars[] = {"$__lazy_storage_$_iconImage", "$__lazy_storage_$_contentLabel",
+                              "$__lazy_storage_$_redDot"};
+        for (const char *ivar : ivars) {
+            UIView *view = DKCellIvar(cell, ivar);
+            if ([view isKindOfClass:UIView.class] && !view.hidden && view.alpha > 0 && view.superview) {
+                content = CGRectUnion(content, [view.superview convertRect:view.frame toView:main]);
+            }
+        }
+        if (!CGRectIsEmpty(content)) {
+            content = [main convertRect:content toView:cell];
+            // 当前读数包含上一次居中位移；按原生主视图的横坐标计算下一次位移。
+            CGPoint midpoint = CGPointMake(CGRectGetMidX(main.bounds), CGRectGetMidY(main.bounds));
+            CGFloat previousOffset = [main convertPoint:midpoint toView:cell].x - center.x;
+            offset = CGRectGetMidX(card) - CGRectGetMidX(content) + previousOffset;
+        }
+    }
+    DKGridMove(main, CGPointMake(center.x + offset, center.y), cell, adjusted);
+}
+
+static void DKGridResetCell(UIView *cell) {
+    DKGridRestoreCell(cell);
+    objc_setAssociatedObject(cell, &kDKGridInfoKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 #pragma mark - 钩子
@@ -252,6 +360,7 @@ static void DKGridLayoutCell(UIView *cell) {
 }
 
 - (void)configCell:(id)cell index:(NSInteger)index model:(id)model {
+    if ([cell isKindOfClass:UIView.class]) DKGridResetCell(cell);
     %orig;
     if (![cell isKindOfClass:UIView.class]) return;
     NSInteger columns = DKLongPressMenuColumns(DKLongPressMenuComment);
@@ -265,10 +374,20 @@ static void DKGridLayoutCell(UIView *cell) {
 %hook CommentLongPressPanelNormalBaseCell
 
 - (void)layoutSubviews {
+    NSArray *info = objc_getAssociatedObject(self, &kDKGridInfoKey);
+    if (info && [info.lastObject integerValue] != DKLongPressMenuColumns(DKLongPressMenuComment)) {
+        DKGridResetCell(self);
+    }
     %orig;
-    if (objc_getAssociatedObject(self, &kDKGridInfoKey) || objc_getAssociatedObject(self, &kDKGridAdjustedKey)) {
+    if (objc_getAssociatedObject(self, &kDKGridInfoKey)) {
+        [self.contentView layoutIfNeeded];
         DKGridLayoutCell(self);
     }
+}
+
+- (void)prepareForReuse {
+    DKGridResetCell(self);
+    %orig;
 }
 
 %end
