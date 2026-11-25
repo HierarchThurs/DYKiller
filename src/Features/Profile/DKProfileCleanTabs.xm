@@ -16,6 +16,7 @@
 #import "DouyinHeaders.h"
 #import "DKKeys.h"
 #import "DKProfileClean.h"
+#import "DKProfileSettingsEntry.h"
 #import "DKUtils.h"
 #import <objc/runtime.h>
 
@@ -122,6 +123,7 @@ NSString *DKProfileCleanTabsStatus(void) {
     %orig;
     AWEUserProfileTabHelper *helper = [self respondsToSelector:@selector(tabHelper)] ? [self tabHelper] : nil;
     if (!DKProfileTabHelperMine(helper)) return;
+    DKProfileComposeEntryRefresh();
     if (!gDKProfileTabComponents) gDKProfileTabComponents = [NSHashTable weakObjectsHashTable];
     [gDKProfileTabComponents addObject:self];
 }

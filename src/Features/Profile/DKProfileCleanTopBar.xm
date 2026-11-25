@@ -15,6 +15,7 @@
 #import "DouyinHeaders.h"
 #import "DKKeys.h"
 #import "DKProfileClean.h"
+#import "DKProfileSettingsEntry.h"
 #import "DKUtils.h"
 #import "DKViewAdjust.h"
 #import <objc/runtime.h>
@@ -176,9 +177,12 @@ NSString *DKProfileCleanTopBarStatus(void) {
     for (UIView *view in self.subviews) {
         if (DKProfileNaviItemOfView(view) != DKProfileNaviItemNone || DKAdjustFadeFactor(view) < 1.0) DKProfileNaviApplyView(view);
     }
+    DKProfileTopEntryLayout(self);
 }
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *entryHit = DKProfileTopEntryHit(self, point, event);
+    if (entryHit) return entryHit;
     UIView *hit = %orig;
     return (hit && DKProfileNaviHitRemoved(self, hit)) ? nil : hit;
 }

@@ -21,6 +21,7 @@
 #import "DouyinHeaders.h"
 #import "DKKeys.h"
 #import "DKProfileClean.h"
+#import "DKProfileSettingsEntry.h"
 #import "DKSettings.h"
 #import "DKUtils.h"
 #import <objc/runtime.h>
@@ -44,10 +45,31 @@ static BOOL DKEntryMine(id owner) {
 }
 
 static BOOL DKEntryWanted(id owner) {
-    return DKPrefBool(DKKeyProfileSettingsEntry) && !DKPrefBool(DKKeyProfileRemoveServiceArea) && DKEntryMine(owner);
+    return DKProfileEntryInServiceArea() && DKEntryMine(owner);
 }
 
-static NSString *DKEntryTitle(void) {
+typedef NS_ENUM(NSInteger, DKProfileEntryPosition) {
+    DKProfileEntryPositionServiceArea,
+    DKProfileEntryPositionTopBar,
+    DKProfileEntryPositionBoth,
+};
+
+static DKProfileEntryPosition DKEntryPosition(void) {
+    NSInteger value = DKPrefInteger(DKKeyProfileSettingsEntryPosition);
+    return value == DKProfileEntryPositionTopBar || value == DKProfileEntryPositionBoth
+        ? (DKProfileEntryPosition)value : DKProfileEntryPositionServiceArea;
+}
+
+BOOL DKProfileEntryInServiceArea(void) {
+    return DKPrefBool(DKKeyProfileSettingsEntry) && !DKPrefBool(DKKeyProfileRemoveServiceArea)
+        && DKEntryPosition() != DKProfileEntryPositionTopBar;
+}
+
+BOOL DKProfileEntryInTopBar(void) {
+    return DKPrefBool(DKKeyProfileSettingsEntry) && DKEntryPosition() != DKProfileEntryPositionServiceArea;
+}
+
+NSString *DKProfileEntryTitle(void) {
     return DKPrefInteger(DKKeyProfileSettingsEntryName) == 1 ? @"插件设置" : @"DYKiller";
 }
 
@@ -63,7 +85,7 @@ static AWEProfileExtensionAreaCardModel *DKEntryMakeModel(void) {
     AWEProfileExtensionAreaCardModel *model = [[%c(AWEProfileExtensionAreaCardModel) alloc] init];
     if (![model respondsToSelector:@selector(setTitle:)] || ![model respondsToSelector:@selector(setCardType:)]) return nil;
     model.cardType = kDKEntryCardType;
-    model.title = DKEntryTitle();
+    model.title = DKProfileEntryTitle();
     objc_setAssociatedObject(model, &kDKEntryModelKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return model;
 }
@@ -105,10 +127,12 @@ static BOOL DKEntryAtIndexPath(AWEProfileEAVajraViewHolder *holder, NSIndexPath 
 
 #pragma mark - 图标
 
-static UIImage *DKEntryGearImage(CGSize size) {
-    static UIImage *image;
-    static CGSize imageSize;
-    if (image && CGSizeEqualToSize(size, imageSize)) return image;
+UIImage *DKProfileEntryGearImage(CGSize size) {
+    static NSMutableDictionary<NSValue *, UIImage *> *images;
+    if (!images) images = [NSMutableDictionary dictionary];
+    NSValue *key = [NSValue valueWithCGSize:size];
+    UIImage *image = images[key];
+    if (image) return image;
     UIImage *gear = nil;
     if ([UIImage respondsToSelector:@selector(svg_userProfileImageWithName:size:color:)]) {
         gear = [UIImage svg_userProfileImageWithName:kDKEntryIconName size:size color:UIColor.blackColor];
@@ -119,7 +143,7 @@ static UIImage *DKEntryGearImage(CGSize size) {
         gear = [UIImage systemImageNamed:@"gearshape" withConfiguration:config];
     }
     image = [gear imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-    imageSize = size;
+    images[key] = image;
     return image;
 }
 
@@ -128,7 +152,7 @@ static void DKEntryApplyIcon(UIView *cardView) {
     if (![imageView isKindOfClass:UIImageView.class]) return;
     CGSize size = imageView.bounds.size;
     if (size.width < 1.0 || size.height < 1.0) size = CGSizeMake(24.0, 24.0);
-    UIImage *gear = DKEntryGearImage(size);
+    UIImage *gear = DKProfileEntryGearImage(size);
     if (gear && imageView.image != gear) imageView.image = gear;
     UILabel *label = [cardView respondsToSelector:@selector(titleLabel)] ? [(AWEProfileExtensionAreaVajraStyleCardView *)cardView titleLabel] : nil;
     if ([label isKindOfClass:UILabel.class] && label.textColor) imageView.tintColor = label.textColor;
@@ -167,6 +191,12 @@ static UIViewController *DKEntryPresenter(UIView *view) {
     return nil;
 }
 
+void DKProfileEntryConfigureButton(UIButton *button) {
+    [button addAction:[UIAction actionWithHandler:^(UIAction *action) {
+        DKSettingsOpenMain(DKEntryPresenter(action.sender));
+    }] forControlEvents:UIControlEventTouchUpInside];
+}
+
 #pragma mark - 刷新与诊断
 
 void DKProfileSettingsEntryRefresh(void) {
@@ -174,6 +204,8 @@ void DKProfileSettingsEntryRefresh(void) {
         dispatch_async(dispatch_get_main_queue(), ^{ DKProfileSettingsEntryRefresh(); });
         return;
     }
+    DKProfileComposeEntryRefresh();
+    DKProfileTopEntryRefresh();
     for (AWEProfileEAVajraViewHolder *holder in gDKEntryHolders.allObjects) {
         if (!DKEntryMine(holder)) continue;
         AWEProfileExtensionAreaContext *context = [holder respondsToSelector:@selector(context)] ? [holder context] : nil;
@@ -185,8 +217,8 @@ void DKProfileSettingsEntryRefresh(void) {
 
 NSString *DKProfileSettingsEntryStatus(void) {
     NSMutableString *out = [NSMutableString string];
-    [out appendFormat:@"主页入口=%d 名称=%@ 功能区移除=%d 已见功能区=%lu 最近一次让位：%@\n", DKPrefBool(DKKeyProfileSettingsEntry),
-        DKEntryTitle(), DKPrefBool(DKKeyProfileRemoveServiceArea), (unsigned long)gDKEntryHolders.allObjects.count,
+    [out appendFormat:@"主页入口=%d 位置=%ld 名称=%@ 功能区移除=%d 已见原生功能区=%lu 最近一次让位：%@\n", DKPrefBool(DKKeyProfileSettingsEntry),
+        (long)DKEntryPosition(), DKProfileEntryTitle(), DKPrefBool(DKKeyProfileRemoveServiceArea), (unsigned long)gDKEntryHolders.allObjects.count,
         gDKEntryLastTrim ?: @"无"];
     for (AWEProfileEAVajraViewHolder *holder in gDKEntryHolders.allObjects) {
         NSMutableArray<NSString *> *titles = [NSMutableArray array];
@@ -298,14 +330,18 @@ NSString *DKProfileSettingsEntryStatus(void) {
 %ctor {
     DKSettingsRegister(DKKeyProfileSettingsEntry, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeSwitch(DKKeyProfileSettingsEntry, @"个人主页添加DYKiller入口",
-            @"在个人主页功能区（观看历史、全部功能那一行）的最后加一个 DYKiller 设置入口，点击直接打开插件设置。"
-            @"功能区最多五个入口：已有四个入口加「全部功能」时，第四个入口让位给 DYKiller，关闭后恢复。只作用于自己的主页。");
+            @"只在自己的主页添加入口，点击直接打开插件设置。可在下方选择入口位置。");
         DKSettingsOnChange(item, ^{ DKProfileSettingsEntryRefresh(); });
         return item;
+    });
+    DKSettingsRegister(DKKeyProfileSettingsEntryPosition, ^AWESettingItemModel *{
+        AWESettingItemModel *item = DKMakeChoice(DKKeyProfileSettingsEntryPosition, @"入口位置", @[ @"功能区", @"顶部", @"顶部+功能区" ]);
+        DKSettingsOnChange(item, ^{ DKProfileSettingsEntryRefresh(); });
+        return DKSettingsWithInfo(item, @"功能区：入口在「观看历史」所在行的末尾。顶部：在主页顶栏显示齿轮。顶部+功能区：在两处显示。移除主页功能区时，仍可使用顶部入口。");
     });
     DKSettingsRegister(DKKeyProfileSettingsEntryName, ^AWESettingItemModel *{
         AWESettingItemModel *item = DKMakeChoice(DKKeyProfileSettingsEntryName, @"主页设置入口名称", @[ @"DYKiller", @"插件设置" ]);
         DKSettingsOnChange(item, ^{ DKProfileSettingsEntryRefresh(); });
-        return DKSettingsWithInfo(item, @"个人主页 DYKiller 入口图标下方的文字。需先开启「个人主页添加DYKiller入口」。");
+        return DKSettingsWithInfo(item, @"功能区图标下方的文字，也是顶部齿轮的辅助功能名称。需先开启「个人主页添加DYKiller入口」。");
     });
 }
